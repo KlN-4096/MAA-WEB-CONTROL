@@ -23,6 +23,14 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
+const FEATURE_CONTEXT = {
+  state,
+  api,
+  renderAll,
+  renderView,
+  refreshStatus,
+  showError
+};
 
 function restoreCurrentView() {
   const value = MaaStorage.get(CURRENT_VIEW_KEY, DEFAULT_VIEW);
@@ -89,9 +97,7 @@ async function loadOptions() {
   if (typeof setTaskFormOptions === "function") {
     setTaskFormOptions(state.options);
   }
-  if (typeof setCopilotViewOptions === "function") {
-    setCopilotViewOptions(state.options);
-  }
+  window.MaaFeatures?.call("copilot", "setOptions", state.options);
 }
 
 async function loadProfile(name) {
@@ -118,11 +124,14 @@ async function refreshStatus() {
 }
 
 function renderAll() {
+  renderView();
+}
+
+function renderBasementView() {
   renderProfileForm();
   renderProfiles();
   renderTasks();
   renderEditor();
-  renderView();
 }
 
 function renderView() {
@@ -134,17 +143,9 @@ function renderView() {
   document.querySelectorAll(".navButton").forEach((button) => button.classList.remove("active"));
   $(`view-${state.currentView}`).classList.add("active");
   document.querySelector(`[data-view="${state.currentView}"]`).classList.add("active");
-  setText("viewTitle", VIEW_TITLES[state.currentView]);
+  setText("viewTitle", window.MaaFeatures?.title(state.currentView) || VIEW_TITLES[state.currentView] || state.currentView);
   setText("viewSubtitle", state.profile?.name || "");
-  if (state.currentView === "copilot" && typeof renderCopilotView === "function") {
-    renderCopilotView();
-  }
-  if (state.currentView === "tools" && typeof renderToolsView === "function") {
-    renderToolsView();
-  }
-  if (state.currentView === "settings" && typeof renderSettingsView === "function") {
-    renderSettingsView();
-  }
+  window.MaaFeatures?.render(state.currentView, FEATURE_CONTEXT);
 }
 
 function renderProfiles() {
@@ -314,15 +315,7 @@ function wireEvents() {
   }
   $("taskEditor").addEventListener("change", onTaskEditorChange);
   $("taskEditor").addEventListener("click", onTaskEditorClick);
-  if (typeof wireCopilotView === "function") {
-    wireCopilotView();
-  }
-  if (typeof wireToolsView === "function") {
-    wireToolsView();
-  }
-  if (typeof wireSettingsView === "function") {
-    wireSettingsView();
-  }
+  window.MaaFeatures?.list().forEach((feature) => window.MaaFeatures.wire(feature.id, FEATURE_CONTEXT));
 }
 
 function switchView(event) {
@@ -480,6 +473,25 @@ function currentStagePlan(params) {
   return plan.length ? [...plan] : ["当前/上次"];
 }
 
+function persistBasementState() {
+  persistSelectedTask();
+  persistSettingMode();
+}
+
+function registerAppFeatures() {
+  window.MaaFeatures?.register("basement", {
+    id: "basement",
+    title: VIEW_TITLES.basement,
+    render: renderBasementView,
+    getState: () => ({
+      profile: state.profile?.name || "",
+      selectedTask: state.selectedTask,
+      settingMode: state.settingMode
+    }),
+    persist: persistBasementState
+  });
+}
+
 function connectEvents() {
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   const socket = new WebSocket(`${protocol}//${location.host}/api/events`);
@@ -507,6 +519,7 @@ async function boot() {
   await refreshStatus();
 }
 
+registerAppFeatures();
 wireEvents();
 connectEvents();
 boot().catch(showError);

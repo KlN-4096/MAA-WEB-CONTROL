@@ -413,3 +413,14 @@ function clampInt(value, min, max) {
   if (Number.isNaN(parsed)) return min;
   return Math.min(max, Math.max(min, parsed));
 }
+
+if (window.MaaFeatures) {
+  window.MaaFeatures.register("tools", {
+    id: "tools",
+    title: "小工具",
+    render: renderToolsView,
+    wire: wireToolsView,
+    getState: () => TOOLS_STATE,
+    persist: persistToolsState
+  });
+}

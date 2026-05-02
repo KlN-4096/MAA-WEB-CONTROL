@@ -758,3 +758,14 @@ function syncSettingsNavActive() {
     button.classList.toggle("active", Number(button.dataset.settingsNav) === SETTINGS_STATE.selected);
   });
 }
+
+if (window.MaaFeatures) {
+  window.MaaFeatures.register("settings", {
+    id: "settings",
+    title: "设置",
+    render: renderSettingsView,
+    wire: wireSettingsView,
+    getState: () => SETTINGS_STATE,
+    persist: persistSettingsState
+  });
+}

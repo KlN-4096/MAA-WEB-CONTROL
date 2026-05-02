@@ -452,3 +452,15 @@ function basenameWithoutExt(path) {
   const name = String(path || "").split(/[\\/]/).pop() || "";
   return name.replace(/\.json$/i, "");
 }
+
+if (window.MaaFeatures) {
+  window.MaaFeatures.register("copilot", {
+    id: "copilot",
+    title: "自动战斗",
+    render: renderCopilotView,
+    wire: wireCopilotView,
+    setOptions: setCopilotViewOptions,
+    getState: () => COPILOT_STATE,
+    persist: persistCopilotState
+  });
+}
