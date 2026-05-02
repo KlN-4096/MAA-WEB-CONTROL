@@ -16,12 +16,49 @@ const SETTINGS_SECTIONS = [
   { key: "about", title: "关于我们", render: renderAboutSection }
 ];
 
+const SETTINGS_STORAGE_KEY = "maa-web.settingsState";
+const SETTINGS_CONDITIONAL_FIELDS = new Set([
+  "forceStart",
+  "customConfig",
+  "clientType",
+  "blockSleep",
+  "enablePenguin",
+  "autoDetectConnection",
+  "connectConfig",
+  "ldManualIndex",
+  "mumuBridge",
+  "useTray",
+  "useCardLog",
+  "updateSource",
+  "proxyType",
+  "achievementPopupDisabled"
+]);
+const SETTINGS_AUTO_SCROLL_SUPPRESS_MS = 120;
+const SETTINGS_SMOOTH_SCROLL_SUPPRESS_MS = 1200;
+
 const SETTINGS_STATE = {
   selected: 0,
   expanded: Object.fromEntries(SETTINGS_SECTIONS.map((section) => [section.key, true])),
   customConfig: true,
   forceStart: true,
   showBeforeForce: false,
+  clientType: "Official",
+  blockSleep: true,
+  blockSleepScreenOn: true,
+  enablePenguin: true,
+  connectConfig: "LDPlayer",
+  autoDetectConnection: false,
+  ldExtrasEnabled: true,
+  ldManualIndex: false,
+  mumuExtrasEnabled: true,
+  mumuBridge: false,
+  useTray: true,
+  useCardLog: true,
+  updateSource: "Overseas",
+  forceGithub: true,
+  proxyType: "",
+  achievementPopupDisabled: true,
+  achievementPopupAutoClose: true,
   newConfigName: "",
   configs: [],
   currentConfig: "",
@@ -35,8 +72,117 @@ const SETTINGS_STATE = {
   }))
 };
 
+Object.assign(SETTINGS_STATE, restoreSettingsState());
+
 let settingsWired = false;
 let settingsScrollRaf = 0;
+let settingsProgrammaticScrollUntil = 0;
+let settingsProgrammaticScrollTimer = 0;
+
+function restoreSettingsState() {
+  const parsed = readSettingsStorage();
+  if (!parsed) return {};
+  const restored = {};
+  if (Number.isInteger(parsed.selected)) {
+    restored.selected = Math.max(0, Math.min(parsed.selected, SETTINGS_SECTIONS.length - 1));
+  }
+  if (parsed.expanded && typeof parsed.expanded === "object" && !Array.isArray(parsed.expanded)) {
+    restored.expanded = Object.fromEntries(SETTINGS_SECTIONS.map((section) => [
+      section.key,
+      typeof parsed.expanded[section.key] === "boolean" ? parsed.expanded[section.key] : true
+    ]));
+  }
+  [
+    "customConfig",
+    "forceStart",
+    "showBeforeForce",
+    "blockSleep",
+    "blockSleepScreenOn",
+    "enablePenguin",
+    "autoDetectConnection",
+    "ldExtrasEnabled",
+    "ldManualIndex",
+    "mumuExtrasEnabled",
+    "mumuBridge",
+    "useTray",
+    "useCardLog",
+    "forceGithub",
+    "achievementPopupDisabled",
+    "achievementPopupAutoClose"
+  ].forEach((field) => copySettingsBoolean(parsed, restored, field));
+  ["clientType", "connectConfig", "updateSource", "proxyType"].forEach((field) => copySettingsString(parsed, restored, field));
+  if (Array.isArray(parsed.timers)) restored.timers = restoreTimers(parsed.timers);
+  return restored;
+}
+
+function readSettingsStorage() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || "");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistSettingsState() {
+  const payload = {
+    selected: SETTINGS_STATE.selected,
+    expanded: SETTINGS_STATE.expanded,
+    customConfig: SETTINGS_STATE.customConfig,
+    forceStart: SETTINGS_STATE.forceStart,
+    showBeforeForce: SETTINGS_STATE.showBeforeForce,
+    clientType: SETTINGS_STATE.clientType,
+    blockSleep: SETTINGS_STATE.blockSleep,
+    blockSleepScreenOn: SETTINGS_STATE.blockSleepScreenOn,
+    enablePenguin: SETTINGS_STATE.enablePenguin,
+    connectConfig: SETTINGS_STATE.connectConfig,
+    autoDetectConnection: SETTINGS_STATE.autoDetectConnection,
+    ldExtrasEnabled: SETTINGS_STATE.ldExtrasEnabled,
+    ldManualIndex: SETTINGS_STATE.ldManualIndex,
+    mumuExtrasEnabled: SETTINGS_STATE.mumuExtrasEnabled,
+    mumuBridge: SETTINGS_STATE.mumuBridge,
+    useTray: SETTINGS_STATE.useTray,
+    useCardLog: SETTINGS_STATE.useCardLog,
+    updateSource: SETTINGS_STATE.updateSource,
+    forceGithub: SETTINGS_STATE.forceGithub,
+    proxyType: SETTINGS_STATE.proxyType,
+    achievementPopupDisabled: SETTINGS_STATE.achievementPopupDisabled,
+    achievementPopupAutoClose: SETTINGS_STATE.achievementPopupAutoClose,
+    timers: SETTINGS_STATE.timers
+  };
+  try {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // Storage can be unavailable in private or restricted browser contexts.
+  }
+}
+
+function restoreTimers(timers) {
+  return SETTINGS_STATE.timers.map((timer, index) => {
+    const value = timers[index];
+    if (!value || typeof value !== "object" || Array.isArray(value)) return timer;
+    return {
+      enabled: typeof value.enabled === "boolean" ? value.enabled : timer.enabled,
+      hour: clampNumber(value.hour, 0, 23, timer.hour),
+      minute: clampNumber(value.minute, 0, 59, timer.minute),
+      config: typeof value.config === "string" ? value.config : timer.config
+    };
+  });
+}
+
+function copySettingsBoolean(source, target, field) {
+  if (typeof source[field] === "boolean") target[field] = source[field];
+}
+
+function copySettingsString(source, target, field) {
+  if (typeof source[field] === "string") target[field] = source[field];
+}
+
+function clampNumber(value, min, max, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
 
 function renderSettingsView() {
   const root = $("settingsViewRoot");
@@ -48,6 +194,9 @@ function renderSettingsView() {
       ${SETTINGS_SECTIONS.map((section) => settingsSection(section, section.render())).join("")}
     </section>
   `;
+  if (typeof state !== "undefined" && state.currentView === "settings") {
+    requestAnimationFrame(() => scrollSettingsSection(SETTINGS_STATE.selected, "auto"));
+  }
 }
 
 function wireSettingsView() {
@@ -157,15 +306,29 @@ function renderPerformanceSection() {
 }
 
 function renderGameSection() {
+  const overseasTip = SETTINGS_STATE.clientType && !["Official", "Bilibili"].includes(SETTINGS_STATE.clientType)
+    ? '<p class="settingsLineText">海外服资源适配提示</p>'
+    : "";
+  const yostarTip = SETTINGS_STATE.clientType === "YoStarEN"
+    ? '<p class="settingsLineText">YoStarEN 需要使用 1920x1080 分辨率</p>'
+    : "";
   return settingsColumn(`
-    ${fieldRow("客户端类型", selectBox(["官服", "Bilibili", "YoStarEN", "YoStarJP", "YoStarKR"], 0))}
+    ${fieldRow("客户端类型", selectBox([
+      { label: "官服", value: "Official" },
+      { label: "Bilibili", value: "Bilibili" },
+      { label: "YoStarEN", value: "YoStarEN" },
+      { label: "YoStarJP", value: "YoStarJP" },
+      { label: "YoStarKR", value: "YoStarKR" }
+    ], SETTINGS_STATE.clientType, "clientType"))}
+    ${yostarTip}
+    ${overseasTip}
     ${checkLine("划火柴模式（自动战斗相关）（不稳定，暂不推荐开启）")}
     ${fieldRow("开始前脚本", textBox("Example: \"C:\\\\1.cmd\" -minimized", "settingsControlXL"))}
     ${fieldRow("结束后脚本", textBox("Example: \"C:\\\\1.cmd\" -noWindow", "settingsControlXL"))}
     <div class="settingsInlinePair">${checkLine("自动战斗时启用上述脚本")}${checkLine("手动暂停时启用上述脚本")}</div>
-    <div class="settingsInlinePair">${checkLine("运行任务时阻止休眠", true)}${checkLine("阻止休眠时保持屏幕常亮", true)}</div>
-    <div class="settingsInlinePair">${checkLine("上报企鹅物流", true)}${checkLine("上报一图流")}</div>
-    ${fieldRow("企鹅物流 ID（仅数字部分）", textBox("614858333", "settingsControlL"))}
+    <div class="settingsInlinePair">${checkLine("运行任务时阻止休眠", true, "", "blockSleep")}${SETTINGS_STATE.blockSleep ? checkLine("阻止休眠时保持屏幕常亮", true, "", "blockSleepScreenOn") : ""}</div>
+    <div class="settingsInlinePair">${checkLine("上报企鹅物流", true, "", "enablePenguin")}${checkLine("上报一图流")}</div>
+    ${SETTINGS_STATE.enablePenguin ? fieldRow("企鹅物流 ID（仅数字部分）", textBox("614858333", "settingsControlL")) : ""}
     <div class="settingsInlinePair">
       ${fieldRow("任务超时时间（分钟）", numberBox("60", "settingsControlS"))}
       ${fieldRow("提醒间隔时间（分钟）", numberBox("30", "settingsControlS"))}
@@ -174,14 +337,26 @@ function renderGameSection() {
 }
 
 function renderConnectionSection() {
+  const disabledAuto = SETTINGS_STATE.autoDetectConnection ? " disabled" : "";
+  const isLd = SETTINGS_STATE.connectConfig === "LDPlayer";
+  const isMumu = SETTINGS_STATE.connectConfig === "MuMuEmulator12";
   return settingsColumn(`
-    ${checkLine("自动检测连接", false, "自动寻找可用模拟器连接。")}
-    ${fieldRow("连接配置", selectBox(["雷电模拟器", "MuMu 模拟器", "通用"], 0), "", "settingsControlXL")}
-    ${fieldRow("连接地址", selectBox(["emulator-5554", "127.0.0.1:5555"], 0), "历史连接地址", "settingsControlXL")}
-    ${fieldRow("ADB 路径", inputButton("D:\\\\APPS\\\\AppGroup_2_china\\\\LeidianMoNoQi\\\\leidi", "选择", "settingsControlXL"))}
-    ${checkLine("启用 LD 截图增强模式", true)}
-    ${fieldRow("LD 安装路径", textBox("D:\\\\APPS\\\\AppGroup_2_china\\\\LeidianMoNoQi\\\\Leidian\\\\LDPlayer", "settingsControlXXL"))}
-    ${checkLine("手动填写「实例编号」")}
+    ${checkLine("自动检测连接", false, "自动寻找可用模拟器连接。", "autoDetectConnection")}
+    ${fieldRow("连接配置", selectBox([
+      { label: "雷电模拟器", value: "LDPlayer" },
+      { label: "MuMu 模拟器", value: "MuMuEmulator12" },
+      { label: "通用", value: "General" }
+    ], SETTINGS_STATE.connectConfig, "connectConfig"), "", "settingsControlXL")}
+    ${fieldRow("连接地址", selectBox(["emulator-5554", "127.0.0.1:5555"], 0, "", "settingsControlXL", disabledAuto), "历史连接地址")}
+    ${fieldRow("ADB 路径", inputButton("D:\\\\APPS\\\\AppGroup_2_china\\\\LeidianMoNoQi\\\\leidi", "选择", "settingsControlXL", disabledAuto))}
+    ${isLd ? checkLine("启用 LD 截图增强模式", true, "", "ldExtrasEnabled") : ""}
+    ${isLd ? fieldRow("LD 安装路径", textBox("D:\\\\APPS\\\\AppGroup_2_china\\\\LeidianMoNoQi\\\\Leidian\\\\LDPlayer", "settingsControlXXL")) : ""}
+    ${isLd ? checkLine("手动填写「实例编号」", false, "", "ldManualIndex") : ""}
+    ${isLd && SETTINGS_STATE.ldManualIndex ? fieldRow("实例编号", numberBox("0", "settingsControlS")) : ""}
+    ${isMumu ? checkLine("启用 MuMu 截图增强模式", true, "", "mumuExtrasEnabled") : ""}
+    ${isMumu ? fieldRow("MuMu 安装路径", textBox("C:\\\\Program Files\\\\Netease\\\\MuMuPlayer-12.0", "settingsControlXXL")) : ""}
+    ${isMumu ? checkLine("MuMu 网络桥接模式", false, "", "mumuBridge") : ""}
+    ${isMumu && SETTINGS_STATE.mumuBridge ? fieldRow("MuMu 实例编号", numberBox("0", "settingsControlS")) : ""}
     <button class="settingsButtonSmall" type="button">截图测试</button>
     <p class="settingsLineText">截图耗时 min/avg/max(ms): -- / -- / -- (---)</p>
     ${checkLine("ADB 连接失败时尝试启动模拟器", true, "连接失败后自动启动模拟器。")}
@@ -231,15 +406,15 @@ function renderUiSection() {
     <p class="settingsGlobalTip">此选项页为全局配置</p>
     <div class="settingsSplit">
       <div class="settingsColumn">
-        ${checkLine("显示托盘图标", true)}
-        ${checkLine("最小化时隐藏至托盘")}
+        ${checkLine("显示托盘图标", true, "", "useTray")}
+        ${SETTINGS_STATE.useTray ? checkLine("最小化时隐藏至托盘") : ""}
         ${checkLine("重要信息弹出系统通知", false, "重要事件弹出系统通知。")}
         ${checkLine("隐藏关闭按钮")}
         ${checkLine("窗口标题滚动")}
         ${checkLine("反转主任务右键单击效果", false, "切换主任务右键行为。")}
         ${checkLine("使用软件渲染", false, "用于规避部分图形模块异常。")}
-        ${checkLine("使用卡片样式日志", true)}
-        ${fieldRow("日志缩略图最大数量", numberBox("20", "settingsControlL"))}
+        ${checkLine("使用卡片样式日志", true, "", "useCardLog")}
+        ${SETTINGS_STATE.useCardLog ? fieldRow("日志缩略图最大数量", numberBox("20", "settingsControlL")) : ""}
         ${fieldRow("日期格式字符串", selectBox(["HH:mm:ss", "HH:mm", "yyyy-MM-dd HH:mm:ss"], 0))}
       </div>
       <div class="settingsColumn">
@@ -286,11 +461,14 @@ function renderAchievementSection() {
       <button class="settingsButtonSmall" type="button">加载备份</button>
     </div>
     <div class="achievementMedal">♜</div>
-    ${checkLine("禁用成就提示气泡", true)}
+    ${checkLine("禁用成就提示气泡", true, "", "achievementPopupDisabled")}
+    ${SETTINGS_STATE.achievementPopupDisabled ? "" : checkLine("成就提示气泡自动关闭", true, "", "achievementPopupAutoClose")}
   `);
 }
 
 function renderUpdateSection() {
+  const isGithub = SETTINGS_STATE.updateSource === "Github";
+  const isMirror = SETTINGS_STATE.updateSource === "MirrorChyan";
   return settingsColumn(`
     <p class="settingsGlobalTip">此选项页为全局配置</p>
     <div class="settingsSplit settingsUpdateGrid">
@@ -300,14 +478,19 @@ function renderUpdateSection() {
         ${checkLine("自动下载更新包", true)}
         ${checkLine("自动安装更新包", true)}
         ${checkLine("显示 MAA.Updater 控制台输出")}
-        ${checkLine("强制使用 GitHub", true, "忽略代理源配置。")}
+        ${isGithub ? checkLine("强制使用 GitHub", true, "忽略代理源配置。", "forceGithub") : ""}
         ${fieldRow("更新渠道", selectBox(["公测版", "稳定版", "内测版"], 0))}
-        ${fieldRow("更新源", selectBox(["海外源", "GitHub", "Mirror酱"], 0))}
-        <a class="settingsLink" href="#" tabindex="-1">Mirror酱</a>
+        ${fieldRow("更新源", selectBox([
+          { label: "海外源", value: "Overseas" },
+          { label: "GitHub", value: "Github" },
+          { label: "Mirror酱", value: "MirrorChyan" }
+        ], SETTINGS_STATE.updateSource, "updateSource"))}
+        ${isMirror ? fieldRow("Mirror酱 CDK", inputButton("", "复制", "settingsControlL")) : ""}
+        ${isMirror ? '<a class="settingsLink" href="#" tabindex="-1">Mirror酱</a>' : ""}
       </div>
       <div class="settingsColumn">
-        ${fieldRow("HTTP Proxy", selectBox(["", "HTTP Proxy"], 0))}
-        ${textBox("192.168.31.45:7890", "settingsControlL")}
+        ${fieldRow("HTTP Proxy", selectBox(["", "HTTP Proxy"], SETTINGS_STATE.proxyType, "proxyType"))}
+        ${SETTINGS_STATE.proxyType ? textBox("192.168.31.45:7890", "settingsControlL") : ""}
         ${badgeRow("软件版本", "v6.9.0")}
         ${badgeRow("资源版本", "承诺")}
         ${badgeRow("构建日期", "2026/5/2 12:30:07")}
@@ -370,33 +553,41 @@ function fieldRow(label, control, tip = "") {
   </label>`;
 }
 
-function checkLine(label, checked = false, tip = "") {
+function checkLine(label, checked = false, tip = "", key = "") {
+  const value = key ? SETTINGS_STATE[key] : checked;
+  const attr = key ? ` data-settings-field="${key}"` : "";
   return `<span class="settingsCheckLine">
     <label class="settingsCheck">
-      <input type="checkbox"${checked ? " checked" : ""} />
+      <input type="checkbox"${attr}${value ? " checked" : ""} />
       <span>${escapeHtml(label)}</span>
     </label>
     ${settingsTip(tip)}
   </span>`;
 }
 
-function textBox(value = "", className = "settingsControlL") {
-  return `<input class="${className}" type="text" value="${escapeHtml(value)}" />`;
+function textBox(value = "", className = "settingsControlL", key = "", attrs = "") {
+  const attr = key ? ` data-settings-field="${key}"` : "";
+  return `<input class="${className}" type="text" value="${escapeHtml(value)}"${attr}${attrs} />`;
 }
 
-function numberBox(value = "", className = "settingsControlS") {
-  return `<input class="${className}" type="number" value="${escapeHtml(value)}" />`;
+function numberBox(value = "", className = "settingsControlS", key = "", attrs = "") {
+  const attr = key ? ` data-settings-field="${key}"` : "";
+  return `<input class="${className}" type="number" value="${escapeHtml(value)}"${attr}${attrs} />`;
 }
 
-function selectBox(options, selectedIndex = 0) {
-  return `<select class="settingsControlL">${options.map((option, index) => {
-    const selected = index === selectedIndex ? " selected" : "";
-    return `<option${selected}>${escapeHtml(option)}</option>`;
+function selectBox(options, selected = 0, key = "", className = "settingsControlL", attrs = "") {
+  const attr = key ? ` data-settings-field="${key}"` : "";
+  return `<select class="${className}"${attr}${attrs}>${options.map((option, index) => {
+    const normalized = typeof option === "object" ? option : { label: option, value: option };
+    const isSelected = key
+      ? String(normalized.value) === String(selected)
+      : index === Number(selected);
+    return `<option value="${escapeHtml(normalized.value)}"${isSelected ? " selected" : ""}>${escapeHtml(normalized.label)}</option>`;
   }).join("")}</select>`;
 }
 
-function inputButton(value, label, className = "settingsControlL") {
-  return `${textBox(value, className)}<button class="settingsButtonSmall" type="button">${escapeHtml(label)}</button>`;
+function inputButton(value, label, className = "settingsControlL", attrs = "") {
+  return `${textBox(value, className, "", attrs)}<button class="settingsButtonSmall" type="button"${attrs}>${escapeHtml(label)}</button>`;
 }
 
 function sliderRow(label, value) {
@@ -427,6 +618,7 @@ function onSettingsClick(event) {
   const nav = event.target.closest("[data-settings-nav]");
   if (nav) {
     SETTINGS_STATE.selected = Number(nav.dataset.settingsNav);
+    persistSettingsState();
     syncSettingsNavActive();
     requestAnimationFrame(() => scrollSettingsSection(SETTINGS_STATE.selected));
     return;
@@ -435,6 +627,7 @@ function onSettingsClick(event) {
   if (toggle) {
     const key = toggle.dataset.settingsToggle;
     SETTINGS_STATE.expanded[key] = !SETTINGS_STATE.expanded[key];
+    persistSettingsState();
     renderSettingsView();
     return;
   }
@@ -450,15 +643,21 @@ function onSettingsClick(event) {
 function onSettingsChange(event) {
   if (event.target.matches("[data-settings-current-config]")) {
     SETTINGS_STATE.currentConfig = event.target.value;
+    persistSettingsState();
     return;
   }
   const flag = event.target.closest("[data-settings-flag]");
   if (flag) {
     SETTINGS_STATE[flag.dataset.settingsFlag] = flag.checked;
+    persistSettingsState();
     renderSettingsView();
     return;
   }
-  updateTimerField(event.target);
+  if (updateSettingsField(event.target)) return;
+  if (updateTimerField(event.target)) {
+    persistSettingsState();
+    renderSettingsView();
+  }
 }
 
 function onSettingsInput(event) {
@@ -466,7 +665,8 @@ function onSettingsInput(event) {
     SETTINGS_STATE.newConfigName = event.target.value;
     return;
   }
-  updateTimerField(event.target);
+  if (updateSettingsField(event.target)) return;
+  if (updateTimerField(event.target)) persistSettingsState();
 }
 
 function syncSettingsConfigs() {
@@ -486,6 +686,7 @@ function addLocalConfig() {
   SETTINGS_STATE.configsDirty = true;
   SETTINGS_STATE.currentConfig = name;
   SETTINGS_STATE.newConfigName = "";
+  persistSettingsState();
   renderSettingsView();
 }
 
@@ -494,24 +695,36 @@ function deleteLocalConfig() {
   SETTINGS_STATE.configs = SETTINGS_STATE.configs.filter((name) => name !== SETTINGS_STATE.currentConfig);
   SETTINGS_STATE.configsDirty = true;
   SETTINGS_STATE.currentConfig = SETTINGS_STATE.configs[0];
+  persistSettingsState();
   renderSettingsView();
 }
 
 function updateTimerField(target) {
   const timerKey = Object.keys(target.dataset).find((key) => key.startsWith("timer"));
-  if (!timerKey) return;
+  if (!timerKey) return false;
   const index = Number(target.dataset[timerKey]);
   const field = timerKey.replace("timer", "").toLowerCase();
-  if (!SETTINGS_STATE.timers[index]) return;
+  if (!SETTINGS_STATE.timers[index]) return false;
   SETTINGS_STATE.timers[index][field] = target.type === "checkbox" ? target.checked : target.value;
+  return true;
 }
 
-function scrollSettingsSection(index) {
+function updateSettingsField(target) {
+  const field = target.dataset.settingsField;
+  if (!field) return false;
+  SETTINGS_STATE[field] = target.type === "checkbox" ? target.checked : target.value;
+  persistSettingsState();
+  if (SETTINGS_CONDITIONAL_FIELDS.has(field)) renderSettingsView();
+  return true;
+}
+
+function scrollSettingsSection(index, behavior = "smooth") {
   const section = SETTINGS_SECTIONS[index];
   const target = document.querySelector(`[data-settings-section="${section?.key}"]`);
   if (!target) return;
+  suppressSettingsScroll(behavior === "smooth" ? SETTINGS_SMOOTH_SCROLL_SUPPRESS_MS : SETTINGS_AUTO_SCROLL_SUPPRESS_MS);
   const top = target.getBoundingClientRect().top + window.scrollY - 64;
-  window.scrollTo({ top, behavior: "smooth" });
+  window.scrollTo({ top, behavior });
 }
 
 function onSettingsScroll() {
@@ -523,6 +736,7 @@ function onSettingsScroll() {
 }
 
 function updateSettingsNavFromScroll() {
+  if (isSettingsScrollSuppressed()) return;
   const sections = [...document.querySelectorAll(".settingsFold")];
   if (!sections.length) return;
   if (window.scrollY >= document.body.scrollHeight - window.innerHeight - 2) {
@@ -539,9 +753,24 @@ function updateSettingsNavFromScroll() {
   setSettingsSelected(selected);
 }
 
+function suppressSettingsScroll(duration) {
+  settingsProgrammaticScrollUntil = Math.max(settingsProgrammaticScrollUntil, Date.now() + duration);
+  clearTimeout(settingsProgrammaticScrollTimer);
+  settingsProgrammaticScrollTimer = setTimeout(() => {
+    if (Date.now() >= settingsProgrammaticScrollUntil) {
+      settingsProgrammaticScrollUntil = 0;
+    }
+  }, duration + 20);
+}
+
+function isSettingsScrollSuppressed() {
+  return Date.now() < settingsProgrammaticScrollUntil;
+}
+
 function setSettingsSelected(index) {
   if (index === SETTINGS_STATE.selected) return;
   SETTINGS_STATE.selected = index;
+  persistSettingsState();
   syncSettingsNavActive();
 }
 

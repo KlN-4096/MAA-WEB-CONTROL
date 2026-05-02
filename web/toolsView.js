@@ -48,6 +48,21 @@ const MINI_GAMES = [
   { label: "隐秘战线", value: "MiniGame@SecretFront", tip: "在选小队界面开始，如有存档须手动删除。\n第一次打自己看完把教程关了。\n推荐勾选游戏内 ｢继承上一支队伍发回的数据｣" }
 ];
 
+const TOOLS_STORAGE_KEY = "maa-web.toolsState";
+const TOOLS_PERSISTED_FIELDS = [
+  "tab",
+  "autoTime",
+  "showPotential",
+  "levels",
+  "times",
+  "operListTab",
+  "gachaDisclaimer",
+  "fps",
+  "miniGame",
+  "secretEnding",
+  "secretEvent"
+];
+
 const TOOLS_STATE = {
   tab: 0,
   autoTime: true,
@@ -68,10 +83,72 @@ const TOOLS_STATE = {
   secretEnding: "A",
   secretEvent: "",
   miniRunning: false,
-  miniDropdownOpen: false
+  miniDropdownOpen: false,
+  ...restoreToolsState()
 };
 
+TOOLS_STATE.peeping = false;
+TOOLS_STATE.miniRunning = false;
+TOOLS_STATE.miniDropdownOpen = false;
+
 let toolsWired = false;
+
+function restoreToolsState() {
+  const parsed = readToolsStorage();
+  if (!parsed) return {};
+  const restored = {};
+  if (Number.isInteger(parsed.tab) && parsed.tab >= 0 && parsed.tab < TOOL_TABS.length) restored.tab = parsed.tab;
+  copyToolsBoolean(parsed, restored, "autoTime");
+  copyToolsBoolean(parsed, restored, "showPotential");
+  copyToolsBoolean(parsed, restored, "gachaDisclaimer");
+  copyToolsString(parsed, restored, "operListTab");
+  copyToolsString(parsed, restored, "miniGame");
+  copyToolsString(parsed, restored, "secretEnding");
+  copyToolsString(parsed, restored, "secretEvent");
+  if (Number.isFinite(Number(parsed.fps))) restored.fps = clampInt(parsed.fps, 1, 600);
+  if (parsed.levels && typeof parsed.levels === "object" && !Array.isArray(parsed.levels)) {
+    restored.levels = { 3: true, 4: true, 5: true, 6: true };
+    [3, 4, 5, 6].forEach((level) => {
+      if (typeof parsed.levels[level] === "boolean") restored.levels[level] = parsed.levels[level];
+    });
+  }
+  if (parsed.times && typeof parsed.times === "object" && !Array.isArray(parsed.times)) {
+    restored.times = { 3: ["09", "00"], 4: ["09", "00"], 5: ["09", "00"] };
+    [3, 4, 5].forEach((level) => {
+      if (Array.isArray(parsed.times[level]) && parsed.times[level].length >= 2) {
+        restored.times[level] = [String(parsed.times[level][0]), String(parsed.times[level][1])];
+      }
+    });
+  }
+  return restored;
+}
+
+function readToolsStorage() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TOOLS_STORAGE_KEY) || "");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistToolsState() {
+  const payload = {};
+  TOOLS_PERSISTED_FIELDS.forEach((field) => { payload[field] = TOOLS_STATE[field]; });
+  try {
+    localStorage.setItem(TOOLS_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // Storage can be unavailable in private or restricted browser contexts.
+  }
+}
+
+function copyToolsString(source, target, field) {
+  if (typeof source[field] === "string") target[field] = source[field];
+}
+
+function copyToolsBoolean(source, target, field) {
+  if (typeof source[field] === "boolean") target[field] = source[field];
+}
 
 function renderToolsView() {
   const root = $("toolsViewRoot");
@@ -252,6 +329,7 @@ function onToolsClick(event) {
   if (tab) {
     TOOLS_STATE.tab = Number(tab.dataset.toolsTab);
     TOOLS_STATE.miniDropdownOpen = false;
+    persistToolsState();
     renderToolsView();
     return;
   }
@@ -259,11 +337,15 @@ function onToolsClick(event) {
   if (miniValue) {
     TOOLS_STATE.miniGame = miniValue;
     TOOLS_STATE.miniDropdownOpen = false;
+    persistToolsState();
     renderToolsView();
     return;
   }
   const operTab = event.target.closest("[data-tools-oper-tab]");
-  if (operTab) TOOLS_STATE.operListTab = operTab.dataset.toolsOperTab;
+  if (operTab) {
+    TOOLS_STATE.operListTab = operTab.dataset.toolsOperTab;
+    persistToolsState();
+  }
   const action = event.target.closest("[data-tools-action]")?.dataset.toolsAction;
   if (action) runToolAction(action);
   if (operTab || action) renderToolsView();
@@ -273,13 +355,20 @@ function onToolsChange(event) {
   const field = event.target.dataset.toolsField;
   if (!field) return;
   updateToolsField(field, event.target);
+  persistToolsState();
   renderToolsView();
 }
 
 function onToolsInput(event) {
   const time = event.target.dataset.toolsTime;
-  if (time) updateRecruitTime(time, event.target.value);
-  if (event.target.dataset.toolsField === "fps") TOOLS_STATE.fps = clampInt(event.target.value, 1, 600);
+  if (time) {
+    updateRecruitTime(time, event.target.value);
+    persistToolsState();
+  }
+  if (event.target.dataset.toolsField === "fps") {
+    TOOLS_STATE.fps = clampInt(event.target.value, 1, 600);
+    persistToolsState();
+  }
 }
 
 function updateToolsField(field, target) {
@@ -303,6 +392,7 @@ function runToolAction(action) {
   if (action === "togglePeep") TOOLS_STATE.peeping = !TOOLS_STATE.peeping;
   if (action === "startMini") TOOLS_STATE.miniRunning = !TOOLS_STATE.miniRunning;
   if (action === "toggleMiniDropdown") TOOLS_STATE.miniDropdownOpen = !TOOLS_STATE.miniDropdownOpen;
+  if (action === "agreeGacha") persistToolsState();
 }
 
 function updateRecruitTime(token, value) {

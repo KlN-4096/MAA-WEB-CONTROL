@@ -1,5 +1,8 @@
 const CURRENT_VIEW_KEY = "maa-web.currentView";
+const SELECTED_TASK_KEY = "maa-web.selectedTaskByProfile";
+const SETTING_MODE_KEY = "maa-web.settingMode";
 const DEFAULT_VIEW = "basement";
+const FALLBACK_PROFILE_KEY = "__default__";
 
 const VIEW_TITLES = {
   basement: "一键长草",
@@ -13,7 +16,7 @@ const state = {
   profile: null,
   selectedTask: 0,
   currentView: restoreCurrentView(),
-  settingMode: "general",
+  settingMode: restoreSettingMode(),
   options: null,
   saveTimer: null,
   logs: []
@@ -36,6 +39,56 @@ function persistCurrentView() {
   } catch {
     // Storage can be unavailable in private or restricted browser contexts.
   }
+}
+
+function storageGet(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function storageSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Storage can be unavailable in private or restricted browser contexts.
+  }
+}
+
+function readJsonStorage(key, fallback) {
+  try {
+    const parsed = JSON.parse(storageGet(key) || "");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function profileStorageKey(profile = state.profile) {
+  return profile?.name || FALLBACK_PROFILE_KEY;
+}
+
+function restoreSelectedTask(profile) {
+  const values = readJsonStorage(SELECTED_TASK_KEY, {});
+  const value = values[profileStorageKey(profile)] ?? values[FALLBACK_PROFILE_KEY];
+  return Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
+function persistSelectedTask() {
+  const values = readJsonStorage(SELECTED_TASK_KEY, {});
+  values[profileStorageKey()] = state.selectedTask;
+  storageSet(SELECTED_TASK_KEY, JSON.stringify(values));
+}
+
+function restoreSettingMode() {
+  const value = storageGet(SETTING_MODE_KEY);
+  return value === "advanced" ? "advanced" : "general";
+}
+
+function persistSettingMode() {
+  storageSet(SETTING_MODE_KEY, state.settingMode);
 }
 
 function escapeHtml(value) {
@@ -76,7 +129,8 @@ async function loadOptions() {
 
 async function loadProfile(name) {
   state.profile = await api(`/api/profiles/${encodeURIComponent(name)}`);
-  state.selectedTask = preferredTaskIndex(state.profile.tasks);
+  state.selectedTask = preferredTaskIndex(state.profile.tasks, restoreSelectedTask(state.profile));
+  persistSelectedTask();
   renderAll();
 }
 
@@ -169,6 +223,7 @@ function renderEditor() {
   const task = selectedTask();
   if (task && state.settingMode === "advanced" && !taskSupportsAdvanced(task.type)) {
     state.settingMode = "general";
+    persistSettingMode();
   }
   $("taskEditor").className = task ? "taskEditor" : "taskEditor empty";
   $("taskEditor").innerHTML = renderTaskEditor(task, escapeHtml, state.settingMode);
@@ -179,9 +234,9 @@ function selectedTask() {
   return state.profile?.tasks?.[state.selectedTask] || null;
 }
 
-function preferredTaskIndex(tasks) {
+function preferredTaskIndex(tasks, index = state.selectedTask) {
   if (!tasks?.length) return 0;
-  return Math.max(0, Math.min(state.selectedTask, tasks.length - 1));
+  return Math.max(0, Math.min(index, tasks.length - 1));
 }
 
 function collectProfileForm() {
@@ -211,6 +266,7 @@ function moveTask(offset) {
   if (to < 0 || to >= tasks.length) return;
   [tasks[from], tasks[to]] = [tasks[to], tasks[from]];
   state.selectedTask = to;
+  persistSelectedTask();
   renderTasks();
   renderEditor();
 }
@@ -315,6 +371,7 @@ function switchSettingMode(event) {
   if (!button || button.disabled) return;
   collectTaskForm();
   state.settingMode = button.dataset.settingMode;
+  persistSettingMode();
   renderEditor();
   scheduleSave();
 }
@@ -338,6 +395,7 @@ function onTaskClick(event) {
   if (!target) return;
   collectTaskForm();
   state.selectedTask = Number(target.dataset.taskSelect);
+  persistSelectedTask();
   renderTasks();
   renderEditor();
 }
@@ -355,6 +413,7 @@ function onTaskEnableChange(event) {
 function addTask() {
   state.profile.tasks.push(defaultTask());
   state.selectedTask = state.profile.tasks.length - 1;
+  persistSelectedTask();
   renderTasks();
   renderEditor();
   scheduleSave();
@@ -382,6 +441,7 @@ function createProfile() {
     tasks: [defaultTask("StartUp"), defaultTask("Fight"), defaultTask("Award")]
   };
   state.selectedTask = 0;
+  persistSelectedTask();
   renderAll();
   scheduleSave();
 }

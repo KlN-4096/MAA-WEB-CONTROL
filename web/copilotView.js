@@ -40,6 +40,26 @@ const USE_COPILOT_LIST_TIP = [
   "当「多作业模式」启用后, 选择单个作业时会自动添加到「作业列表」"
 ].join("\n");
 
+const COPILOT_STORAGE_KEY = "maa-web.copilotState";
+const COPILOT_PERSISTED_FIELDS = [
+  "tab",
+  "filename",
+  "form",
+  "useFormation",
+  "formationIndex",
+  "ignoreRequirements",
+  "useSupportUnit",
+  "supportUsage",
+  "addTrust",
+  "addUserAdditional",
+  "useCopilotList",
+  "useSanityPotion",
+  "loop",
+  "loopTimes",
+  "taskName",
+  "tasks"
+];
+
 const COPILOT_STATE = {
   tab: 0,
   filename: "",
@@ -58,11 +78,77 @@ const COPILOT_STATE = {
   loop: false,
   loopTimes: 1,
   taskName: "",
-  tasks: []
+  tasks: [],
+  ...restoreCopilotState()
 };
+
+COPILOT_STATE.idle = true;
+COPILOT_STATE.filePopupOpen = false;
+normalizeCopilotState();
 
 let COPILOT_OPTIONS = null;
 let copilotWired = false;
+
+function restoreCopilotState() {
+  const parsed = readCopilotStorage();
+  if (!parsed) return {};
+  const restored = {};
+  if (Number.isInteger(parsed.tab) && parsed.tab >= 0 && parsed.tab < COPILOT_TABS.length) restored.tab = parsed.tab;
+  copyStringField(parsed, restored, "filename");
+  copyStringField(parsed, restored, "formationIndex");
+  copyStringField(parsed, restored, "supportUsage");
+  copyStringField(parsed, restored, "taskName");
+  copyBooleanField(parsed, restored, "form");
+  copyBooleanField(parsed, restored, "useFormation");
+  copyBooleanField(parsed, restored, "ignoreRequirements");
+  copyBooleanField(parsed, restored, "useSupportUnit");
+  copyBooleanField(parsed, restored, "addTrust");
+  copyBooleanField(parsed, restored, "addUserAdditional");
+  copyBooleanField(parsed, restored, "useCopilotList");
+  copyBooleanField(parsed, restored, "useSanityPotion");
+  copyBooleanField(parsed, restored, "loop");
+  if (Number.isFinite(Number(parsed.loopTimes))) restored.loopTimes = parsed.loopTimes;
+  if (Array.isArray(parsed.tasks)) restored.tasks = parsed.tasks.map(normalizeCopilotTask).filter(Boolean);
+  return restored;
+}
+
+function readCopilotStorage() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(COPILOT_STORAGE_KEY) || "");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistCopilotState() {
+  normalizeCopilotState();
+  const payload = {};
+  COPILOT_PERSISTED_FIELDS.forEach((field) => { payload[field] = COPILOT_STATE[field]; });
+  try {
+    localStorage.setItem(COPILOT_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // Storage can be unavailable in private or restricted browser contexts.
+  }
+}
+
+function copyStringField(source, target, field) {
+  if (typeof source[field] === "string") target[field] = source[field];
+}
+
+function copyBooleanField(source, target, field) {
+  if (typeof source[field] === "boolean") target[field] = source[field];
+}
+
+function normalizeCopilotTask(task) {
+  if (!task || typeof task !== "object" || Array.isArray(task)) return null;
+  return {
+    name: typeof task.name === "string" ? task.name : "未命名",
+    path: typeof task.path === "string" ? task.path : "",
+    raid: Boolean(task.raid),
+    checked: task.checked !== false
+  };
+}
 
 function setCopilotViewOptions(options) {
   COPILOT_OPTIONS = options || null;
@@ -273,6 +359,7 @@ async function onCopilotClick(event) {
   if (file) {
     COPILOT_STATE.filename = file.dataset.copilotFile;
     COPILOT_STATE.filePopupOpen = false;
+    persistCopilotState();
     renderCopilotView();
     return;
   }
@@ -295,6 +382,7 @@ function onCopilotChange(event) {
   if (field) {
     COPILOT_STATE[field] = event.target.type === "checkbox" ? event.target.checked : event.target.value;
     normalizeCopilotState();
+    persistCopilotState();
     renderCopilotView();
     return;
   }
@@ -302,10 +390,12 @@ function onCopilotChange(event) {
   const taskIndex = event.target.dataset.copilotTaskCheck;
   if (taskIndex !== undefined) {
     COPILOT_STATE.tasks[Number(taskIndex)].checked = event.target.checked;
+    persistCopilotState();
   }
 
   if (event.target.id === "copilotFilePicker" && event.target.files?.[0]) {
     COPILOT_STATE.filename = event.target.files[0].name;
+    persistCopilotState();
     renderCopilotView();
   }
 }
@@ -314,14 +404,17 @@ function onCopilotInput(event) {
   if (!COPILOT_STATE.idle) return;
   if (event.target.id === "copilotFilenameInput") {
     COPILOT_STATE.filename = event.target.value;
+    persistCopilotState();
   }
   if (event.target.id === "copilotTaskNameInput") {
     COPILOT_STATE.taskName = event.target.value.replace(/[:',.()|[\]?，。【】{}；：]/g, "").trim();
+    persistCopilotState();
   }
 }
 
 async function runCopilotAction(action, event, alternate = false) {
   if (!COPILOT_STATE.idle && action !== "stop") return;
+  const persistedAction = ["pasteTask", "pasteSet", "addTask", "clearTasks", "deleteTask", "selectTask"].includes(action);
   if (action === "toggleFiles") COPILOT_STATE.filePopupOpen = !COPILOT_STATE.filePopupOpen;
   if (action === "selectFile") $("copilotFilePicker")?.click();
   if (action === "pasteTask" || action === "pasteSet") await pasteCopilotText();
@@ -335,6 +428,7 @@ async function runCopilotAction(action, event, alternate = false) {
   if (action === "clearTasks") clearCopilotTasks(alternate);
   if (action === "deleteTask") COPILOT_STATE.tasks.splice(Number(event.target.closest("[data-task-index]").dataset.taskIndex), 1);
   if (action === "selectTask") selectCopilotTask(Number(event.target.closest("[data-task-index]").dataset.taskIndex), alternate);
+  if (persistedAction) persistCopilotState();
   renderCopilotView();
 }
 
@@ -343,6 +437,7 @@ function setCopilotTab(tab) {
   COPILOT_STATE.tab = tab;
   if (tab === 1 || tab === 3) COPILOT_STATE.useCopilotList = false;
   normalizeCopilotState();
+  persistCopilotState();
   renderCopilotView();
 }
 
