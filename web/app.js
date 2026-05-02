@@ -4,13 +4,6 @@ const SETTING_MODE_KEY = "maa-web.settingMode";
 const DEFAULT_VIEW = "basement";
 const FALLBACK_PROFILE_KEY = "__default__";
 
-const VIEW_TITLES = {
-  basement: "一键长草",
-  copilot: "自动战斗",
-  tools: "小工具",
-  settings: "设置"
-};
-
 const state = {
   profiles: [],
   profile: null,
@@ -23,9 +16,13 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
+let basementWired = false;
+
 const FEATURE_CONTEXT = {
   state,
+  features: window.MaaFeatures,
   api,
+  runFeatureAction,
   renderAll,
   renderView,
   refreshStatus,
@@ -34,7 +31,7 @@ const FEATURE_CONTEXT = {
 
 function restoreCurrentView() {
   const value = MaaStorage.get(CURRENT_VIEW_KEY, DEFAULT_VIEW);
-  return Object.hasOwn(VIEW_TITLES, value) ? value : DEFAULT_VIEW;
+  return typeof value === "string" && value ? value : DEFAULT_VIEW;
 }
 
 function persistCurrentView() {
@@ -78,6 +75,10 @@ async function api(path, options = {}) {
   const response = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
   if (!response.ok) throw new Error(await response.text() || response.statusText);
   return response.json();
+}
+
+function runFeatureAction(featureId, actionName, payload = {}) {
+  return window.MaaFeatures?.action(featureId, actionName, payload, FEATURE_CONTEXT);
 }
 
 async function loadProfiles() {
@@ -127,6 +128,15 @@ function renderAll() {
   renderView();
 }
 
+function renderMainNav() {
+  const nav = document.querySelector(".mainNav");
+  if (!nav) return;
+  nav.innerHTML = window.MaaFeatures?.list().map((feature) => {
+    const active = feature.id === state.currentView ? " active" : "";
+    return `<button class="navButton${active}" type="button" data-view="${escapeHtml(feature.id)}">${escapeHtml(feature.title)}</button>`;
+  }).join("") || "";
+}
+
 function renderBasementView() {
   renderProfileForm();
   renderProfiles();
@@ -135,15 +145,15 @@ function renderBasementView() {
 }
 
 function renderView() {
-  if (!$(`view-${state.currentView}`) || !document.querySelector(`[data-view="${state.currentView}"]`)) {
-    state.currentView = DEFAULT_VIEW;
+  if (!window.MaaFeatures?.has(state.currentView) || !$(`view-${state.currentView}`)) {
+    state.currentView = window.MaaFeatures?.firstId() || DEFAULT_VIEW;
     persistCurrentView();
   }
   document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
   document.querySelectorAll(".navButton").forEach((button) => button.classList.remove("active"));
   $(`view-${state.currentView}`).classList.add("active");
-  document.querySelector(`[data-view="${state.currentView}"]`).classList.add("active");
-  setText("viewTitle", window.MaaFeatures?.title(state.currentView) || VIEW_TITLES[state.currentView] || state.currentView);
+  document.querySelector(`[data-view="${state.currentView}"]`)?.classList.add("active");
+  setText("viewTitle", window.MaaFeatures?.title(state.currentView) || state.currentView);
   setText("viewSubtitle", state.profile?.name || "");
   window.MaaFeatures?.render(state.currentView, FEATURE_CONTEXT);
 }
@@ -294,28 +304,32 @@ function renderLogs() {
 
 function wireEvents() {
   document.querySelector(".mainNav").addEventListener("click", switchView);
-  document.querySelector(".modeTabs").addEventListener("click", switchSettingMode);
-  if ($("profileList")) {
-    $("profileList").addEventListener("click", onProfileClick);
-  }
-  $("taskList").addEventListener("click", onTaskClick);
-  $("taskList").addEventListener("change", onTaskEnableChange);
   $("refreshButton").addEventListener("click", () => boot().catch(showError));
-  if ($("saveButton")) {
-    $("saveButton").addEventListener("click", () => saveProfile().catch(showError));
-  }
-  $("runButton").addEventListener("click", () => runProfile().catch(showError));
-  $("stopButton").addEventListener("click", () => stopRun().catch(showError));
-  $("addTaskButton").addEventListener("click", addTask);
-  $("deleteTaskButton").addEventListener("click", clearTasks);
-  $("moveUpButton").addEventListener("click", selectAllTasks);
-  $("clearLogsButton").addEventListener("click", () => { state.logs = []; renderLogs(); });
-  if ($("newProfileButton")) {
-    $("newProfileButton").addEventListener("click", createProfile);
-  }
-  $("taskEditor").addEventListener("change", onTaskEditorChange);
-  $("taskEditor").addEventListener("click", onTaskEditorClick);
   window.MaaFeatures?.list().forEach((feature) => window.MaaFeatures.wire(feature.id, FEATURE_CONTEXT));
+}
+
+function wireBasementView() {
+  if (basementWired) return;
+  addListener(".modeTabs", "click", switchSettingMode);
+  addListener("#profileList", "click", onProfileClick);
+  addListener("#taskList", "click", onTaskClick);
+  addListener("#taskList", "change", onTaskEnableChange);
+  addListener("#saveButton", "click", () => runFeatureAction("basement", "save")?.catch(showError));
+  addListener("#runButton", "click", () => runFeatureAction("basement", "run")?.catch(showError));
+  addListener("#stopButton", "click", () => runFeatureAction("basement", "stop")?.catch(showError));
+  addListener("#addTaskButton", "click", () => runFeatureAction("basement", "addTask"));
+  addListener("#deleteTaskButton", "click", () => runFeatureAction("basement", "clearTasks"));
+  addListener("#moveUpButton", "click", () => runFeatureAction("basement", "selectAllTasks"));
+  addListener("#clearLogsButton", "click", () => runFeatureAction("basement", "clearLogs"));
+  addListener("#newProfileButton", "click", () => runFeatureAction("basement", "createProfile"));
+  addListener("#taskEditor", "change", onTaskEditorChange);
+  addListener("#taskEditor", "click", onTaskEditorClick);
+  basementWired = true;
+}
+
+function addListener(selector, type, listener) {
+  const element = document.querySelector(selector);
+  if (element) element.addEventListener(type, listener);
 }
 
 function switchView(event) {
@@ -329,8 +343,13 @@ function switchView(event) {
 function switchSettingMode(event) {
   const button = event.target.closest("[data-setting-mode]");
   if (!button || button.disabled) return;
+  setSettingMode(button.dataset.settingMode);
+}
+
+function setSettingMode(mode) {
+  if (mode !== "general" && mode !== "advanced") return;
   collectTaskForm();
-  state.settingMode = button.dataset.settingMode;
+  state.settingMode = mode;
   persistSettingMode();
   renderEditor();
   scheduleSave();
@@ -353,8 +372,13 @@ function onProfileClick(event) {
 function onTaskClick(event) {
   const target = event.target.closest("[data-task-select]");
   if (!target) return;
+  selectTaskIndex(Number(target.dataset.taskSelect));
+}
+
+function selectTaskIndex(index) {
+  if (!state.profile?.tasks?.[index]) return;
   collectTaskForm();
-  state.selectedTask = Number(target.dataset.taskSelect);
+  state.selectedTask = index;
   persistSelectedTask();
   renderTasks();
   renderEditor();
@@ -363,8 +387,12 @@ function onTaskClick(event) {
 function onTaskEnableChange(event) {
   const checkbox = event.target.closest("[data-task-enable]");
   if (!checkbox) return;
-  const index = Number(checkbox.dataset.taskEnable);
-  state.profile.tasks[index].enabled = checkbox.checked;
+  setTaskEnabled(Number(checkbox.dataset.taskEnable), checkbox.checked);
+}
+
+function setTaskEnabled(index, enabled) {
+  if (!state.profile?.tasks?.[index]) return;
+  state.profile.tasks[index].enabled = Boolean(enabled);
   renderTasks();
   if (index === state.selectedTask) renderEditor();
   scheduleSave();
@@ -391,6 +419,11 @@ function selectAllTasks() {
   renderTasks();
   renderEditor();
   scheduleSave();
+}
+
+function clearLogs() {
+  state.logs = [];
+  renderLogs();
 }
 
 function createProfile() {
@@ -478,11 +511,41 @@ function persistBasementState() {
   persistSettingMode();
 }
 
+function basementPayload(payload) {
+  return payload && typeof payload === "object" ? payload : { value: payload };
+}
+
+const BASEMENT_ACTIONS = {
+  save: () => saveProfile(),
+  run: () => runProfile(),
+  stop: () => stopRun(),
+  addTask: () => addTask(),
+  clearTasks: () => clearTasks(),
+  selectAllTasks: () => selectAllTasks(),
+  createProfile: () => createProfile(),
+  clearLogs: () => clearLogs(),
+  selectTask: (payload) => {
+    const value = basementPayload(payload);
+    selectTaskIndex(Number(value.index ?? value.value));
+  },
+  setTaskEnabled: (payload) => {
+    const value = basementPayload(payload);
+    setTaskEnabled(Number(value.index), value.enabled);
+  },
+  setSettingMode: (payload) => {
+    const value = basementPayload(payload);
+    setSettingMode(value.mode ?? value.value);
+  }
+};
+
 function registerAppFeatures() {
   window.MaaFeatures?.register("basement", {
     id: "basement",
-    title: VIEW_TITLES.basement,
+    order: 0,
+    title: "一键长草",
     render: renderBasementView,
+    wire: wireBasementView,
+    actions: BASEMENT_ACTIONS,
     getState: () => ({
       profile: state.profile?.name || "",
       selectedTask: state.selectedTask,
@@ -520,6 +583,7 @@ async function boot() {
 }
 
 registerAppFeatures();
+renderMainNav();
 wireEvents();
 connectEvents();
 boot().catch(showError);

@@ -303,10 +303,7 @@ function renderSecretFrontOptions() {
 function onToolsClick(event) {
   const tab = event.target.closest("[data-tools-tab]");
   if (tab) {
-    TOOLS_STATE.tab = Number(tab.dataset.toolsTab);
-    TOOLS_STATE.miniDropdownOpen = false;
-    persistToolsState();
-    renderToolsView();
+    setToolsTab(Number(tab.dataset.toolsTab));
     return;
   }
   const miniValue = event.target.closest("[data-mini-value]")?.dataset.miniValue;
@@ -323,7 +320,7 @@ function onToolsClick(event) {
     persistToolsState();
   }
   const action = event.target.closest("[data-tools-action]")?.dataset.toolsAction;
-  if (action) runToolAction(action);
+  if (action) runToolsAction(action, { render: false });
   if (operTab || action) renderToolsView();
 }
 
@@ -355,6 +352,21 @@ function updateToolsField(field, target) {
   if (field === "secretEnding") TOOLS_STATE.secretEnding = target.value;
   if (field === "secretEvent") TOOLS_STATE.secretEvent = target.value;
   if (field === "fps") TOOLS_STATE.fps = clampInt(target.value, 1, 600);
+}
+
+function setToolsTab(tab) {
+  if (!Number.isInteger(tab) || tab < 0 || tab >= TOOL_TABS.length) return;
+  TOOLS_STATE.tab = tab;
+  TOOLS_STATE.miniDropdownOpen = false;
+  persistToolsState();
+  renderToolsView();
+}
+
+function runToolsAction(action, payload = {}) {
+  const options = payload && typeof payload === "object" ? payload : {};
+  runToolAction(action);
+  if (options.render !== false) renderToolsView();
+  return action;
 }
 
 function runToolAction(action) {
@@ -414,12 +426,38 @@ function clampInt(value, min, max) {
   return Math.min(max, Math.max(min, parsed));
 }
 
+const TOOL_ACTION_NAMES = [
+  "startRecruit",
+  "copyOper",
+  "startOper",
+  "exportArkplanner",
+  "exportLolicon",
+  "startDepot",
+  "agreeGacha",
+  "gachaOnce",
+  "gachaTen",
+  "togglePeep",
+  "toggleMiniDropdown",
+  "startMini"
+];
+
+const TOOLS_ACTIONS = Object.fromEntries(
+  TOOL_ACTION_NAMES.map((action) => [action, (payload) => runToolsAction(action, payload)])
+);
+
+TOOLS_ACTIONS.setTab = (payload) => {
+  const value = payload && typeof payload === "object" ? payload.tab : payload;
+  setToolsTab(Number(value));
+};
+
 if (window.MaaFeatures) {
   window.MaaFeatures.register("tools", {
     id: "tools",
+    order: 2,
     title: "小工具",
     render: renderToolsView,
     wire: wireToolsView,
+    actions: TOOLS_ACTIONS,
     getState: () => TOOLS_STATE,
     persist: persistToolsState
   });

@@ -600,26 +600,20 @@ function configOptions(selectedValue) {
 function onSettingsClick(event) {
   const nav = event.target.closest("[data-settings-nav]");
   if (nav) {
-    SETTINGS_STATE.selected = Number(nav.dataset.settingsNav);
-    persistSettingsState();
-    syncSettingsNavActive();
-    requestAnimationFrame(() => scrollSettingsSection(SETTINGS_STATE.selected));
+    runSettingsAction("selectSection", { index: Number(nav.dataset.settingsNav) });
     return;
   }
   const toggle = event.target.closest("[data-settings-toggle]");
   if (toggle) {
-    const key = toggle.dataset.settingsToggle;
-    SETTINGS_STATE.expanded[key] = !SETTINGS_STATE.expanded[key];
-    persistSettingsState();
-    renderSettingsView();
+    runSettingsAction("toggleSection", { key: toggle.dataset.settingsToggle });
     return;
   }
   if (event.target.closest("[data-settings-add-config]")) {
-    addLocalConfig();
+    runSettingsAction("addConfig");
     return;
   }
   if (event.target.closest("[data-settings-delete-config]")) {
-    deleteLocalConfig();
+    runSettingsAction("deleteConfig");
   }
 }
 
@@ -650,6 +644,31 @@ function onSettingsInput(event) {
   }
   if (updateSettingsField(event.target)) return;
   if (updateTimerField(event.target)) persistSettingsState();
+}
+
+function runSettingsAction(action, payload = {}) {
+  const value = payload && typeof payload === "object" ? payload : { value: payload };
+  if (action === "selectSection") return selectSettingsSection(Number(value.index ?? value.value));
+  if (action === "toggleSection") return toggleSettingsSection(value.key ?? value.value);
+  if (action === "addConfig") return addLocalConfig();
+  if (action === "deleteConfig") return deleteLocalConfig();
+  if (action === "persist") return persistSettingsState();
+  return undefined;
+}
+
+function selectSettingsSection(index) {
+  if (!Number.isInteger(index) || !SETTINGS_SECTIONS[index]) return;
+  SETTINGS_STATE.selected = index;
+  persistSettingsState();
+  syncSettingsNavActive();
+  requestAnimationFrame(() => scrollSettingsSection(SETTINGS_STATE.selected));
+}
+
+function toggleSettingsSection(key) {
+  if (!Object.hasOwn(SETTINGS_STATE.expanded, key)) return;
+  SETTINGS_STATE.expanded[key] = !SETTINGS_STATE.expanded[key];
+  persistSettingsState();
+  renderSettingsView();
 }
 
 function syncSettingsConfigs() {
@@ -759,12 +778,19 @@ function syncSettingsNavActive() {
   });
 }
 
+const SETTINGS_ACTION_NAMES = ["selectSection", "toggleSection", "addConfig", "deleteConfig", "persist"];
+const SETTINGS_ACTIONS = Object.fromEntries(
+  SETTINGS_ACTION_NAMES.map((action) => [action, (payload) => runSettingsAction(action, payload)])
+);
+
 if (window.MaaFeatures) {
   window.MaaFeatures.register("settings", {
     id: "settings",
+    order: 3,
     title: "设置",
     render: renderSettingsView,
     wire: wireSettingsView,
+    actions: SETTINGS_ACTIONS,
     getState: () => SETTINGS_STATE,
     persist: persistSettingsState
   });

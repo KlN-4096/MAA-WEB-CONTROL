@@ -346,14 +346,14 @@ async function onCopilotClick(event) {
 
   const action = event.target.closest("[data-copilot-action]")?.dataset.copilotAction;
   if (!action) return;
-  await runCopilotAction(action, event);
+  await runCopilotAction(action, { event });
 }
 
 async function onCopilotContextMenu(event) {
   const action = event.target.closest("[data-copilot-action]")?.dataset.copilotAction;
   if (action !== "addTask" && action !== "clearTasks") return;
   event.preventDefault();
-  await runCopilotAction(action, event, true);
+  await runCopilotAction(action, { event, alternate: true });
 }
 
 function onCopilotChange(event) {
@@ -392,8 +392,10 @@ function onCopilotInput(event) {
   }
 }
 
-async function runCopilotAction(action, event, alternate = false) {
+async function runCopilotAction(action, payload = {}) {
   if (!COPILOT_STATE.idle && action !== "stop") return;
+  const options = copilotPayload(action, payload);
+  const alternate = Boolean(options.alternate);
   const persistedAction = ["pasteTask", "pasteSet", "addTask", "clearTasks", "deleteTask", "selectTask"].includes(action);
   if (action === "toggleFiles") COPILOT_STATE.filePopupOpen = !COPILOT_STATE.filePopupOpen;
   if (action === "selectFile") $("copilotFilePicker")?.click();
@@ -406,10 +408,26 @@ async function runCopilotAction(action, event, alternate = false) {
   if (action === "importFiles") $("copilotFilePicker")?.click();
   if (action === "addTask") addCopilotTask(alternate);
   if (action === "clearTasks") clearCopilotTasks(alternate);
-  if (action === "deleteTask") COPILOT_STATE.tasks.splice(Number(event.target.closest("[data-task-index]").dataset.taskIndex), 1);
-  if (action === "selectTask") selectCopilotTask(Number(event.target.closest("[data-task-index]").dataset.taskIndex), alternate);
+  if (action === "deleteTask") deleteCopilotTask(copilotPayloadIndex(options));
+  if (action === "selectTask") selectCopilotTask(copilotPayloadIndex(options), alternate);
   if (persistedAction) persistCopilotState();
   renderCopilotView();
+}
+
+function copilotPayload(action, payload) {
+  if (payload && typeof payload === "object") return payload;
+  if (action === "addTask" || action === "clearTasks") return { alternate: Boolean(payload) };
+  return { taskIndex: payload };
+}
+
+function copilotPayloadIndex(payload) {
+  if (Number.isInteger(Number(payload.taskIndex))) return Number(payload.taskIndex);
+  return Number(payload.event?.target.closest("[data-task-index]")?.dataset.taskIndex);
+}
+
+function deleteCopilotTask(index) {
+  if (!Number.isInteger(index) || !COPILOT_STATE.tasks[index]) return;
+  COPILOT_STATE.tasks.splice(index, 1);
 }
 
 function setCopilotTab(tab) {
@@ -453,12 +471,37 @@ function basenameWithoutExt(path) {
   return name.replace(/\.json$/i, "");
 }
 
+const COPILOT_ACTION_NAMES = [
+  "toggleFiles",
+  "selectFile",
+  "pasteTask",
+  "pasteSet",
+  "start",
+  "stop",
+  "importFiles",
+  "addTask",
+  "clearTasks",
+  "deleteTask",
+  "selectTask"
+];
+
+const COPILOT_ACTIONS = Object.fromEntries(
+  COPILOT_ACTION_NAMES.map((action) => [action, (payload) => runCopilotAction(action, payload)])
+);
+
+COPILOT_ACTIONS.setTab = (payload) => {
+  const value = payload && typeof payload === "object" ? payload.tab : payload;
+  setCopilotTab(Number(value));
+};
+
 if (window.MaaFeatures) {
   window.MaaFeatures.register("copilot", {
     id: "copilot",
+    order: 1,
     title: "自动战斗",
     render: renderCopilotView,
     wire: wireCopilotView,
+    actions: COPILOT_ACTIONS,
     setOptions: setCopilotViewOptions,
     getState: () => COPILOT_STATE,
     persist: persistCopilotState
