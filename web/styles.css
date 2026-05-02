@@ -17,9 +17,16 @@
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
+  height: 100%;
   min-width: 1120px;
+  overflow: hidden;
   background: #0f0f0f;
   color: var(--text);
   font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
@@ -89,6 +96,9 @@ p {
 }
 
 .windowShell {
+  display: grid;
+  grid-template-rows: 32px 25px minmax(0, 1fr);
+  height: 100vh;
   min-height: 100vh;
   border: 1px solid #33363a;
   background: var(--bg);
@@ -156,7 +166,8 @@ p {
 }
 
 .content {
-  min-height: calc(100vh - 58px);
+  min-height: 0;
+  overflow: auto;
 }
 
 .view {
@@ -165,13 +176,14 @@ p {
 
 .view.active {
   display: block;
+  min-height: 100%;
 }
 
 .maaLayout {
   display: grid;
   grid-template-columns: 210px minmax(420px, 1fr);
   gap: 38px;
-  min-height: calc(100vh - 58px);
+  min-height: 100%;
   padding: 31px 20px 34px 108px;
 }
 
@@ -208,6 +220,18 @@ p {
   padding: 0 6px;
   background: transparent;
   text-align: left;
+}
+
+.taskItem.dragging {
+  opacity: 0.45;
+}
+
+.taskItem.dropBefore {
+  box-shadow: inset 0 2px 0 var(--blue);
+}
+
+.taskItem.dropAfter {
+  box-shadow: inset 0 -2px 0 var(--blue);
 }
 
 .taskItem.disabled {
@@ -273,6 +297,54 @@ p {
 
 .taskButtons button:last-child {
   border-radius: 0 4px 4px 0;
+}
+
+.taskPopupMenu {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  min-width: 146px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #1b1b1d;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.taskPopupMenu button {
+  display: grid;
+  min-height: 28px;
+  border: 0;
+  background: transparent;
+  padding: 4px 9px;
+  text-align: left;
+}
+
+.taskPopupMenu button:hover {
+  background: var(--blue-soft);
+}
+
+.taskPopupMenu button.danger {
+  color: #ff8a8a;
+}
+
+.taskTypeMenu {
+  min-width: 170px;
+}
+
+.taskTypeMenu button {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 14px;
+}
+
+.taskTypeMenu strong {
+  font-weight: 400;
+}
+
+.taskTypeMenu span {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .afterRun {
@@ -1384,7 +1456,7 @@ input[type="checkbox"] {
   grid-template-columns: 175px minmax(620px, 1fr);
   align-items: start;
   gap: 20px;
-  min-height: calc(100vh - 58px);
+  min-height: 100%;
   padding: 26px 34px;
   overflow: visible;
 }

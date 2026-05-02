@@ -3,6 +3,7 @@ const SELECTED_TASK_KEY = "maa-web.selectedTaskByProfile";
 const SETTING_MODE_KEY = "maa-web.settingMode";
 const DEFAULT_VIEW = "basement";
 const FALLBACK_PROFILE_KEY = "__default__";
+const ADD_TASK_TYPES = ["StartUp", "Fight", "Infrast", "Recruit", "Mall", "Award", "Roguelike", "Reclamation", "CloseDown"];
 
 const state = {
   profiles: [],
@@ -18,6 +19,7 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 let basementWired = false;
+let draggedTaskIndex = null;
 const wiredFeatureIds = new Set();
 
 const FEATURE_CONTEXT = {
@@ -213,6 +215,7 @@ function renderProfileForm() {
 
 function renderTasks() {
   const tasks = state.profile?.tasks || [];
+  closeTaskContextMenu();
   $("taskList").innerHTML = tasks.map((task, index) => taskListItem(task, index)).join("");
 }
 
@@ -221,7 +224,7 @@ function taskListItem(task, index) {
   const disabled = task.enabled ? "" : " disabled";
   const title = task.name || task.id;
   const checked = task.enabled ? " checked" : "";
-  return `<div class="taskItem${active}${disabled}" data-task-index="${index}">
+  return `<div class="taskItem${active}${disabled}" data-task-index="${index}" draggable="true">
     <input class="taskEnable" type="checkbox" data-task-enable="${index}"${checked} />
     <button class="taskNameButton" type="button" data-task-select="${index}">
       <strong>${escapeHtml(title)}</strong>
@@ -339,6 +342,9 @@ function renderLogs() {
 function wireEvents() {
   document.querySelector(".mainNav").addEventListener("click", switchView);
   $("refreshButton").addEventListener("click", () => boot().catch(showError));
+  document.addEventListener("click", onDocumentClick);
+  document.addEventListener("keydown", onDocumentKeyDown);
+  wireSettingsContentScroll();
 }
 
 function wireBasementView() {
@@ -347,10 +353,16 @@ function wireBasementView() {
   addListener("#profileList", "click", onProfileClick);
   addListener("#taskList", "click", onTaskClick);
   addListener("#taskList", "change", onTaskEnableChange);
+  addListener("#taskList", "contextmenu", onTaskContextMenu);
+  addListener("#taskList", "dragstart", onTaskDragStart);
+  addListener("#taskList", "dragover", onTaskDragOver);
+  addListener("#taskList", "dragleave", onTaskDragLeave);
+  addListener("#taskList", "drop", onTaskDrop);
+  addListener("#taskList", "dragend", onTaskDragEnd);
   addListener("#saveButton", "click", () => runFeatureAction("basement", "save")?.catch(showError));
   addListener("#runButton", "click", () => runFeatureAction("basement", "run")?.catch(showError));
   addListener("#stopButton", "click", () => runFeatureAction("basement", "stop")?.catch(showError));
-  addListener("#addTaskButton", "click", () => runFeatureAction("basement", "addTask"));
+  addListener("#addTaskButton", "click", onAddTaskButtonClick);
   addListener("#deleteTaskButton", "click", () => runFeatureAction("basement", "clearTasks"));
   addListener("#moveUpButton", "click", () => runFeatureAction("basement", "selectAllTasks"));
   addListener("#clearLogsButton", "click", () => runFeatureAction("basement", "clearLogs"));
@@ -368,6 +380,7 @@ function addListener(selector, type, listener) {
 function switchView(event) {
   const button = event.target.closest("[data-view]");
   if (!button) return;
+  closeTaskMenus();
   state.currentView = button.dataset.view;
   persistCurrentView();
   renderView();
@@ -431,13 +444,265 @@ function setTaskEnabled(index, enabled) {
   scheduleSave();
 }
 
-function addTask() {
-  state.profile.tasks.push(defaultTask());
+function addTask(type) {
+  state.profile.tasks.push(defaultTask(type));
   state.selectedTask = state.profile.tasks.length - 1;
   persistSelectedTask();
   renderTasks();
   renderEditor();
   scheduleSave();
+}
+
+function deleteTask(index) {
+  const tasks = state.profile?.tasks || [];
+  if (!tasks[index]) return;
+  collectTaskForm();
+  tasks.splice(index, 1);
+  state.selectedTask = preferredTaskIndex(tasks, Math.min(state.selectedTask, tasks.length - 1));
+  persistSelectedTask();
+  renderTasks();
+  renderEditor();
+  scheduleSave();
+}
+
+function renameTask(index) {
+  const task = state.profile?.tasks?.[index];
+  if (!task) return;
+  collectTaskForm();
+  const currentName = task.name || task.id;
+  const nextName = prompt("重命名任务", currentName);
+  if (nextName === null) return;
+  const trimmed = nextName.trim();
+  if (!trimmed || trimmed === currentName) return;
+  task.name = trimmed;
+  renderTasks();
+  renderEditor();
+  scheduleSave();
+}
+
+function runTaskOnce(index) {
+  const task = state.profile?.tasks?.[index];
+  if (!task) return;
+  const title = task.name || task.id;
+  addLocalLog("info", "task.once", `单次运行：${title}`);
+}
+
+function reorderTask(from, target, insertAfter) {
+  const tasks = state.profile?.tasks || [];
+  if (!tasks[from] || !tasks[target]) return;
+  let to = insertAfter ? target + 1 : target;
+  if (from < to) to -= 1;
+  if (from === to) return;
+  collectTaskForm();
+  const [task] = tasks.splice(from, 1);
+  tasks.splice(to, 0, task);
+  updateSelectedTaskAfterReorder(from, to);
+  persistSelectedTask();
+  renderTasks();
+  renderEditor();
+  scheduleSave();
+}
+
+function updateSelectedTaskAfterReorder(from, to) {
+  if (state.selectedTask === from) {
+    state.selectedTask = to;
+  } else if (from < state.selectedTask && state.selectedTask <= to) {
+    state.selectedTask -= 1;
+  } else if (to <= state.selectedTask && state.selectedTask < from) {
+    state.selectedTask += 1;
+  }
+}
+
+function onAddTaskButtonClick(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  closeTaskContextMenu();
+  toggleTaskTypeMenu(event.currentTarget);
+}
+
+function addTaskTypeOptions() {
+  return ADD_TASK_TYPES
+    .filter((type) => typeof taskDefinition !== "function" || taskDefinition(type).enabled !== false)
+    .map((type) => ({
+      id: type,
+      title: typeof taskDefinition === "function" ? taskDefinition(type).title : type
+    }));
+}
+
+function toggleTaskTypeMenu(anchor) {
+  if ($("taskTypeMenu")) {
+    closeTaskTypeMenu();
+    return;
+  }
+  const menu = document.createElement("div");
+  menu.id = "taskTypeMenu";
+  menu.className = "taskPopupMenu taskTypeMenu";
+  menu.innerHTML = addTaskTypeOptions().map((task) => (
+    `<button type="button" data-task-add-type="${escapeHtml(task.id)}">
+      <strong>${escapeHtml(task.title)}</strong>
+      <span>${escapeHtml(task.id)}</span>
+    </button>`
+  )).join("");
+  document.body.appendChild(menu);
+  placeMenu(menu, anchor.getBoundingClientRect().left, anchor.getBoundingClientRect().bottom + 4);
+}
+
+function onTaskContextMenu(event) {
+  const item = event.target.closest("[data-task-index]");
+  if (!item) return;
+  event.preventDefault();
+  closeTaskTypeMenu();
+  showTaskContextMenu(Number(item.dataset.taskIndex), event.clientX, event.clientY);
+}
+
+function showTaskContextMenu(index, x, y) {
+  closeTaskContextMenu();
+  const menu = document.createElement("div");
+  menu.id = "taskContextMenu";
+  menu.className = "taskPopupMenu taskContextMenu";
+  menu.dataset.taskIndex = index;
+  menu.innerHTML = `
+    <button type="button" data-task-context-action="runOnce">单次运行</button>
+    <button type="button" data-task-context-action="rename">重命名</button>
+    <button type="button" data-task-context-action="delete" class="danger">删除</button>
+  `;
+  document.body.appendChild(menu);
+  placeMenu(menu, x, y);
+}
+
+function onDocumentClick(event) {
+  const addType = event.target.closest("[data-task-add-type]");
+  if (addType) {
+    runFeatureAction("basement", "addTask", { type: addType.dataset.taskAddType });
+    closeTaskTypeMenu();
+    return;
+  }
+
+  const contextAction = event.target.closest("[data-task-context-action]");
+  if (contextAction) {
+    runTaskContextAction(contextAction.dataset.taskContextAction);
+    closeTaskContextMenu();
+    return;
+  }
+
+  if (!event.target.closest("#taskTypeMenu") && !event.target.closest("#addTaskButton")) closeTaskTypeMenu();
+  if (!event.target.closest("#taskContextMenu")) closeTaskContextMenu();
+}
+
+function onDocumentKeyDown(event) {
+  if (event.key !== "Escape") return;
+  closeTaskMenus();
+}
+
+function runTaskContextAction(action) {
+  const index = Number($("taskContextMenu")?.dataset.taskIndex);
+  if (!Number.isInteger(index)) return;
+  if (action === "runOnce") runTaskOnce(index);
+  if (action === "rename") renameTask(index);
+  if (action === "delete") deleteTask(index);
+}
+
+function placeMenu(menu, x, y) {
+  const margin = 8;
+  const left = Math.min(x, window.innerWidth - menu.offsetWidth - margin);
+  const top = Math.min(y, window.innerHeight - menu.offsetHeight - margin);
+  menu.style.left = `${Math.max(margin, left)}px`;
+  menu.style.top = `${Math.max(margin, top)}px`;
+}
+
+function closeTaskMenus() {
+  closeTaskTypeMenu();
+  closeTaskContextMenu();
+}
+
+function closeTaskTypeMenu() {
+  $("taskTypeMenu")?.remove();
+}
+
+function closeTaskContextMenu() {
+  $("taskContextMenu")?.remove();
+}
+
+function onTaskDragStart(event) {
+  const item = event.target.closest("[data-task-index]");
+  if (!item) return;
+  draggedTaskIndex = Number(item.dataset.taskIndex);
+  item.classList.add("dragging");
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", String(draggedTaskIndex));
+}
+
+function onTaskDragOver(event) {
+  const item = event.target.closest("[data-task-index]");
+  if (!item || draggedTaskIndex === null) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  markTaskDropTarget(item, event.clientY);
+}
+
+function onTaskDragLeave(event) {
+  const item = event.target.closest("[data-task-index]");
+  if (item && !item.contains(event.relatedTarget)) clearTaskDropMarks(item);
+}
+
+function onTaskDrop(event) {
+  const item = event.target.closest("[data-task-index]");
+  if (!item || draggedTaskIndex === null) return;
+  event.preventDefault();
+  const target = Number(item.dataset.taskIndex);
+  const insertAfter = isAfterTaskMidline(item, event.clientY);
+  clearAllTaskDragState();
+  reorderTask(draggedTaskIndex, target, insertAfter);
+  draggedTaskIndex = null;
+}
+
+function onTaskDragEnd() {
+  draggedTaskIndex = null;
+  clearAllTaskDragState();
+}
+
+function markTaskDropTarget(item, y) {
+  document.querySelectorAll(".taskItem.dropBefore, .taskItem.dropAfter").forEach(clearTaskDropMarks);
+  item.classList.toggle("dropAfter", isAfterTaskMidline(item, y));
+  item.classList.toggle("dropBefore", !isAfterTaskMidline(item, y));
+}
+
+function isAfterTaskMidline(item, y) {
+  const rect = item.getBoundingClientRect();
+  return y > rect.top + rect.height / 2;
+}
+
+function clearTaskDropMarks(item) {
+  item.classList.remove("dropBefore", "dropAfter");
+}
+
+function clearAllTaskDragState() {
+  document.querySelectorAll(".taskItem").forEach((item) => {
+    item.classList.remove("dragging", "dropBefore", "dropAfter");
+  });
+}
+
+function wireSettingsContentScroll() {
+  const content = document.querySelector(".content");
+  if (content && typeof onSettingsScroll === "function") {
+    content.addEventListener("scroll", onSettingsScroll, { passive: true });
+  }
+}
+
+function patchSettingsInternalScroll() {
+  if (typeof scrollSettingsSection !== "function") return;
+  scrollSettingsSection = (index, behavior = "smooth") => {
+    const target = document.querySelectorAll(".settingsFold")[index];
+    const scroller = document.querySelector(".content");
+    if (!target || !scroller) return;
+    if (typeof suppressSettingsScroll === "function") {
+      const smoothDuration = typeof SETTINGS_SMOOTH_SCROLL_SUPPRESS_MS === "number" ? SETTINGS_SMOOTH_SCROLL_SUPPRESS_MS : 1200;
+      const autoDuration = typeof SETTINGS_AUTO_SCROLL_SUPPRESS_MS === "number" ? SETTINGS_AUTO_SCROLL_SUPPRESS_MS : 120;
+      suppressSettingsScroll(behavior === "smooth" ? smoothDuration : autoDuration);
+    }
+    const targetTop = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 16;
+    scroller.scrollTo({ top: Math.max(0, targetTop), behavior });
+  };
 }
 
 function clearTasks() {
@@ -552,7 +817,10 @@ const BASEMENT_ACTIONS = {
   save: () => saveProfile(),
   run: () => runProfile(),
   stop: () => stopRun(),
-  addTask: () => addTask(),
+  addTask: (payload) => {
+    const value = basementPayload(payload);
+    addTask(value.type ?? value.value);
+  },
   clearTasks: () => clearTasks(),
   selectAllTasks: () => selectAllTasks(),
   createProfile: () => createProfile(),
@@ -618,6 +886,7 @@ async function boot() {
   renderAll();
 }
 
+patchSettingsInternalScroll();
 registerAppFeatures();
 wireEvents();
 connectEvents();
