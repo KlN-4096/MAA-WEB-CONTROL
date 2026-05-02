@@ -30,8 +30,17 @@ class ProfileStore:
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return profile
 
+    def ensure_defaults(self, profiles: list[Profile]) -> list[str]:
+        created: list[str] = []
+        for profile in profiles:
+            path = self._path_for(profile.name)
+            if path.exists():
+                continue
+            self.save(profile)
+            created.append(profile.name)
+        return created
+
     def _path_for(self, name: str) -> Path:
         if not PROFILE_NAME_PATTERN.fullmatch(name):
             raise ValueError("Profile name can only contain letters, numbers, dot, dash, and underscore.")
         return self.root / f"{name}.json"
-

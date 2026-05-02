@@ -1,0 +1,115 @@
+{
+  "name": "daily-shoucai",
+  "description": "Daily resource routine.",
+  "adb": {
+    "address": "127.0.0.1:5555",
+    "adb_path": "adb",
+    "client_type": "Official",
+    "connect_config": {}
+  },
+  "tasks": [
+    {
+      "id": "startup",
+      "type": "StartUp",
+      "enabled": true,
+      "name": "开始唤醒",
+      "params": {
+        "account": "",
+        "start_game_enabled": true,
+        "client_type": "官服",
+        "auto_detect": true,
+        "detect_every_time": true,
+        "connection": "雷电模拟器",
+        "touch_mode": "Minitouch（默认）"
+      },
+      "strategy": {}
+    },
+    {
+      "id": "recruit",
+      "type": "Recruit",
+      "enabled": true,
+      "name": "自动公招",
+      "params": {
+        "auto_expedited": false,
+        "max_times": 99,
+        "extra_tags": "",
+        "refresh": true,
+        "skip_robot": true,
+        "reserve_level_1": true,
+        "confirm_3": true,
+        "time3": "09:00",
+        "confirm_4": true,
+        "time4": "09:00",
+        "confirm_5": false,
+        "time5": "09:00",
+        "confirm_6": false
+      },
+      "strategy": {}
+    },
+    {
+      "id": "infrast",
+      "type": "Infrast",
+      "enabled": true,
+      "name": "基建换班",
+      "params": {
+        "mode": "常规模式",
+        "drone": "贸易站-龙门币",
+        "mood": 30,
+        "facilities": [
+          "制造站",
+          "贸易站",
+          "控制中枢",
+          "发电站",
+          "会客室",
+          "办公室",
+          "宿舍",
+          "加工站",
+          "训练室"
+        ],
+        "dorm_trust": false,
+        "skip_entered": true,
+        "stone_fragment": true,
+        "collect_credit": true,
+        "clue_exchange": true,
+        "send_clue": true,
+        "continue_training": false
+      },
+      "strategy": {}
+    },
+    {
+      "id": "mall",
+      "type": "Mall",
+      "enabled": true,
+      "name": "信用收支",
+      "params": {
+        "visit_friends": true,
+        "visit_once": false,
+        "credit_fight": false,
+        "shopping": true,
+        "buy_first": [],
+        "blacklist": [
+          "家具零件"
+        ],
+        "overflow_blacklist": false,
+        "discount_only": false,
+        "stop_if_low": false
+      },
+      "strategy": {}
+    },
+    {
+      "id": "award",
+      "type": "Award",
+      "enabled": true,
+      "name": "领取奖励",
+      "params": {
+        "daily": true,
+        "mail": false,
+        "free_gacha": false,
+        "orundum": true,
+        "limited_orundum": false,
+        "monthly_card": false
+      },
+      "strategy": {}
+    }
+  ]
+}

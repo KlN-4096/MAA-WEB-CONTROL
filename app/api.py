@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
+from .capabilities import build_capabilities
 from .events import EventBus
 from .models import AdbStatus, Profile, RedroidStatus, RunRequest
 from .options import build_ui_options
@@ -23,6 +24,10 @@ def create_api_router(store: ProfileStore, runner: MaaRunnerService, events: Eve
     @router.get("/options")
     async def get_options():
         return build_ui_options()
+
+    @router.get("/capabilities")
+    async def get_capabilities():
+        return build_capabilities()
 
     @router.get("/profiles/{name}")
     async def get_profile(name: str):

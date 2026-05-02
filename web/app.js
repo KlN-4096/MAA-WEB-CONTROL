@@ -11,16 +11,19 @@ const state = {
   currentView: restoreCurrentView(),
   settingMode: restoreSettingMode(),
   options: null,
+  capabilities: null,
   saveTimer: null,
   logs: []
 };
 
 const $ = (id) => document.getElementById(id);
 let basementWired = false;
+const wiredFeatureIds = new Set();
 
 const FEATURE_CONTEXT = {
   state,
   features: window.MaaFeatures,
+  getCapabilities: () => state.capabilities,
   api,
   runFeatureAction,
   renderAll,
@@ -81,9 +84,42 @@ function runFeatureAction(featureId, actionName, payload = {}) {
   return window.MaaFeatures?.action(featureId, actionName, payload, FEATURE_CONTEXT);
 }
 
+function syncTaskFormOptions() {
+  if (typeof setTaskFormOptions === "function") {
+    setTaskFormOptions({ ...(state.options || {}), capabilities: state.capabilities });
+  }
+}
+
+function wireEnabledFeatures() {
+  window.MaaFeatures?.list().forEach((feature) => {
+    if (wiredFeatureIds.has(feature.id)) return;
+    window.MaaFeatures.wire(feature.id, FEATURE_CONTEXT);
+    wiredFeatureIds.add(feature.id);
+  });
+}
+
+async function loadCapabilities() {
+  try {
+    const result = await api("/api/capabilities");
+    state.capabilities = result && typeof result === "object" && !Array.isArray(result) ? result : null;
+    if (!state.capabilities) throw new Error("无效的 capabilities 响应");
+    window.MaaFeatures?.configure(state.capabilities);
+    if (!window.MaaFeatures?.isEnabled(state.currentView)) {
+      state.currentView = window.MaaFeatures?.firstId() || DEFAULT_VIEW;
+      persistCurrentView();
+    }
+  } catch (error) {
+    state.capabilities = null;
+    window.MaaFeatures?.configure(null);
+    addLocalLog("warning", "ui.capabilities", "能力配置加载失败，已回退到内置功能。");
+  }
+  syncTaskFormOptions();
+  wireEnabledFeatures();
+}
+
 async function loadProfiles() {
   const result = await api("/api/profiles");
-  state.profiles = result.profiles;
+  state.profiles = Array.isArray(result.profiles) ? result.profiles : [];
   if (!state.profile && state.profiles.length) await loadProfile(state.profiles[0]);
   renderProfiles();
 }
@@ -95,9 +131,7 @@ async function loadOptions() {
     state.options = null;
     addLocalLog("warning", "ui.options", "动态选项加载失败，已使用内置选项。");
   }
-  if (typeof setTaskFormOptions === "function") {
-    setTaskFormOptions(state.options);
-  }
+  syncTaskFormOptions();
   window.MaaFeatures?.call("copilot", "setOptions", state.options);
 }
 
@@ -145,7 +179,7 @@ function renderBasementView() {
 }
 
 function renderView() {
-  if (!window.MaaFeatures?.has(state.currentView) || !$(`view-${state.currentView}`)) {
+  if (!window.MaaFeatures?.isEnabled(state.currentView) || !window.MaaFeatures?.has(state.currentView) || !$(`view-${state.currentView}`)) {
     state.currentView = window.MaaFeatures?.firstId() || DEFAULT_VIEW;
     persistCurrentView();
   }
@@ -305,7 +339,6 @@ function renderLogs() {
 function wireEvents() {
   document.querySelector(".mainNav").addEventListener("click", switchView);
   $("refreshButton").addEventListener("click", () => boot().catch(showError));
-  window.MaaFeatures?.list().forEach((feature) => window.MaaFeatures.wire(feature.id, FEATURE_CONTEXT));
 }
 
 function wireBasementView() {
@@ -577,13 +610,15 @@ function setText(id, value) {
 }
 
 async function boot() {
+  await loadCapabilities();
+  renderMainNav();
   await loadOptions();
   await loadProfiles();
   await refreshStatus();
+  renderAll();
 }
 
 registerAppFeatures();
-renderMainNav();
 wireEvents();
 connectEvents();
 boot().catch(showError);

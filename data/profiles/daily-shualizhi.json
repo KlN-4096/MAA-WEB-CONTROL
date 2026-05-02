@@ -1,0 +1,83 @@
+{
+  "name": "daily-shualizhi",
+  "description": "Daily sanity routine.",
+  "adb": {
+    "address": "127.0.0.1:5555",
+    "adb_path": "adb",
+    "client_type": "Official",
+    "connect_config": {}
+  },
+  "tasks": [
+    {
+      "id": "startup",
+      "type": "StartUp",
+      "enabled": true,
+      "name": "开始唤醒",
+      "params": {
+        "account": "",
+        "start_game_enabled": true,
+        "client_type": "官服",
+        "auto_detect": true,
+        "detect_every_time": true,
+        "connection": "雷电模拟器",
+        "touch_mode": "Minitouch（默认）"
+      },
+      "strategy": {}
+    },
+    {
+      "id": "fight",
+      "type": "Fight",
+      "enabled": true,
+      "name": "理智作战",
+      "params": {
+        "stage_plan": [
+          "CE-6",
+          "1-7"
+        ],
+        "stage": "CE-6",
+        "use_remaining_sanity_stage": true,
+        "use_medicine": false,
+        "medicine": 0,
+        "use_stone": false,
+        "stone": 0,
+        "has_times_limited": false,
+        "times": 99999,
+        "use_drops": false,
+        "drop": "不选择",
+        "series": 0,
+        "custom_annihilation": false,
+        "dr_grandet": false,
+        "use_expiring_medicine": true,
+        "medicine_expire_hours": "48h",
+        "use_activity_expire": false,
+        "hide_series": false,
+        "allow_stone_save": false,
+        "custom_stage_code": false,
+        "stage_reset": "当前/上次",
+        "use_alternate_stage": true,
+        "hide_unavailable_stage": true,
+        "weekly_schedule": false,
+        "auto_restart": true,
+        "report_to_penguin": true,
+        "penguin_id": "614858333",
+        "server": "CN"
+      },
+      "strategy": {}
+    },
+    {
+      "id": "award",
+      "type": "Award",
+      "enabled": true,
+      "name": "领取奖励",
+      "params": {
+        "daily": true,
+        "mail": false,
+        "free_gacha": false,
+        "orundum": true,
+        "limited_orundum": false,
+        "monthly_card": false
+      },
+      "strategy": {}
+    }
+  ]
+}

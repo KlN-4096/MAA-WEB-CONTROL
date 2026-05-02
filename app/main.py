@@ -6,6 +6,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 
 from .api import create_api_router, events_socket
+from .default_profiles import build_default_profiles
 from .events import EventBus
 from .runner import DryRunMaaAdapter, MaaRunnerService
 from .storage import ProfileStore
@@ -17,6 +18,7 @@ WEB_DIR = PROJECT_ROOT / "web"
 
 event_bus = EventBus()
 profile_store = ProfileStore(PROFILE_DIR)
+profile_store.ensure_defaults(build_default_profiles())
 runner = MaaRunnerService(DryRunMaaAdapter(), event_bus)
 
 app = FastAPI(title="MAA Web Control", version="0.1.0")
@@ -29,4 +31,3 @@ async def websocket_events(websocket: WebSocket) -> None:
 
 
 app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
-

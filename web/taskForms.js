@@ -64,29 +64,90 @@ const FIGHT_TOOLTIPS = {
 let UI_OPTIONS = null;
 
 function setTaskFormOptions(options) {
-  UI_OPTIONS = options || null;
+  UI_OPTIONS = options && typeof options === "object" ? options : null;
 }
 
-function defaultTask(type = "Fight") {
+function taskCapabilities() {
+  const capabilities = UI_OPTIONS?.capabilities;
+  return capabilities && typeof capabilities === "object" ? capabilities : null;
+}
+
+function taskCapabilityMap() {
+  const tasks = taskCapabilities()?.tasks;
+  return tasks && typeof tasks === "object" ? tasks : null;
+}
+
+function taskDefinition(type, sequence = TASK_TYPES.indexOf(type)) {
+  const capability = taskCapabilityMap()?.[type];
+  const fallbackSequence = sequence >= 0 ? sequence : TASK_TYPES.length;
+  return {
+    id: type,
+    title: typeof capability?.title === "string" && capability.title ? capability.title : TASK_NAMES[type] || type,
+    order: Number.isFinite(Number(capability?.order)) ? Number(capability.order) : fallbackSequence,
+    defaultParams: capability?.default_params,
+    supportsAdvanced: capability?.supports_advanced,
+    enabled: capability?.enabled,
+    sequence: fallbackSequence
+  };
+}
+
+function taskDefinitions() {
+  const definitions = TASK_TYPES.map((type, index) => taskDefinition(type, index));
+  const tasks = taskCapabilityMap();
+  if (tasks) {
+    Object.keys(tasks).forEach((type, index) => {
+      if (TASK_TYPES.includes(type)) return;
+      definitions.push(taskDefinition(type, TASK_TYPES.length + index));
+    });
+  }
+  return definitions
+    .filter((definition) => definition.enabled !== false)
+    .sort((left, right) => left.order - right.order || left.sequence - right.sequence);
+}
+
+function firstTaskType() {
+  return taskDefinitions()[0]?.id || "Fight";
+}
+
+function supportsVisitAsMallSubtask() {
+  return taskCapabilities()?.supports_visit_as_mall_subtask !== false;
+}
+
+function cloneObject(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function defaultTask(type = firstTaskType()) {
   const id = `${type.toLowerCase()}-${Date.now().toString().slice(-5)}`;
-  return { id, type, enabled: true, name: TASK_NAMES[type] || type, params: defaultParams(type), strategy: {} };
+  return { id, type, enabled: true, name: taskDefinition(type).title, params: defaultParams(type), strategy: {} };
 }
 
 function defaultParams(type) {
+  const defaults = builtinDefaultParams(type);
+  const capabilityDefaults = taskDefinition(type).defaultParams;
+  if (capabilityDefaults && typeof capabilityDefaults === "object") {
+    return { ...defaults, ...cloneObject(capabilityDefaults) };
+  }
+  return defaults;
+}
+
+function taskSupportsAdvanced(type) {
+  const capability = taskDefinition(type).supportsAdvanced;
+  if (typeof capability === "boolean") return capability;
+  return !NO_ADVANCED_TASKS.has(type);
+}
+
+function builtinDefaultParams(type) {
   if (type === "Fight") return { stage: "当前/上次", stage_plan: ["当前/上次"], medicine: 999, stone: 999, times: 5, series: 0, use_alternate_stage: false };
   if (type === "Custom") return { stage: "当前/上次", stage_plan: ["当前/上次"], medicine: 0, stone: 0, times: 999, series: 0, use_alternate_stage: false };
   if (type === "StartUp") return { client_type: "官服", start_game_enabled: true, connection: "雷电模拟器", touch_mode: "Minitouch（默认）" };
   if (type === "Recruit") return { auto_expedited: false, refresh: true, confirm_3: true, confirm_4: true, max_times: 99 };
   if (type === "Infrast") return { mode: "常规模式", drone: "贸易站-龙门币", mood: 30, facilities: allFacilities() };
-  if (type === "Mall") return { visit_friends: true, shopping: true, buy_first: ["招聘许可"], blacklist: ["碳素", "家具零件"] };
+  if (type === "Mall") return { visit_friends: supportsVisitAsMallSubtask(), shopping: true, buy_first: ["招聘许可"], blacklist: ["碳素", "家具零件"] };
   if (type === "Award") return { daily: true, orundum: true };
   if (type === "Roguelike") return { theme: "萨卡兹", difficulty: "MAX (18)", strategy: ROGUELIKE_STRATEGIES[0], squad: "指挥分队", roles: "稳扎稳打（重装、术师、狙击）", starts_count: 99999, investment_enabled: true, delay_abort: true };
   if (type === "Reclamation") return { theme: "沙洲遗闻", strategy: RECLAMATION_STRATEGIES[1], tool_to_craft: "荧光棒", increment_mode: "连点", max_craft_count: 16 };
   return {};
-}
-
-function taskSupportsAdvanced(type) {
-  return !NO_ADVANCED_TASKS.has(type);
 }
 
 function renderTaskEditor(task, escapeHtml, mode = "general") {
@@ -597,9 +658,13 @@ function escapeHtmlFallback(value) {
 }
 
 function taskTypeOptions(current) {
-  return TASK_TYPES.map((type) => {
-    const selected = type === current ? " selected" : "";
-    return `<option value="${type}"${selected}>${TASK_NAMES[type] || type}</option>`;
+  const definitions = taskDefinitions();
+  const options = current && !definitions.some((definition) => definition.id === current)
+    ? [taskDefinition(current), ...definitions]
+    : definitions;
+  return options.map((definition) => {
+    const selected = definition.id === current ? " selected" : "";
+    return `<option value="${escapeHtmlFallback(definition.id)}"${selected}>${escapeHtmlFallback(definition.title)}</option>`;
   }).join("");
 }
 

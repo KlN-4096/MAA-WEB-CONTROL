@@ -1,6 +1,7 @@
 (function (global) {
   const registry = Object.create(null);
   let nextSequence = 0;
+  let capabilities = null;
 
   function normalizeFeature(id, feature) {
     if (typeof id !== "string" || !id || !feature || typeof feature !== "object") return null;
@@ -15,7 +16,15 @@
     });
   }
 
+  function featureCapability(id) {
+    return capabilities?.features?.[id] || null;
+  }
+
   const api = {
+    configure(nextCapabilities) {
+      capabilities = nextCapabilities && typeof nextCapabilities === "object" ? nextCapabilities : null;
+      return capabilities;
+    },
     register(id, feature) {
       const normalized = normalizeFeature(id, feature);
       if (!normalized) return null;
@@ -68,11 +77,14 @@
     commands(id) {
       return this.actions(id);
     },
+    isEnabled(id) {
+      return featureCapability(id)?.enabled !== false;
+    },
     firstId() {
-      return orderedFeatures()[0]?.id || "";
+      return this.list()[0]?.id || "";
     },
     list() {
-      return orderedFeatures();
+      return orderedFeatures().filter((feature) => this.isEnabled(feature.id));
     }
   };
 
