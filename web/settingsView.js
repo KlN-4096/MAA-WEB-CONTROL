@@ -33,6 +33,31 @@ const SETTINGS_CONDITIONAL_FIELDS = new Set([
   "proxyType",
   "achievementPopupDisabled"
 ]);
+const SETTINGS_PERSISTED_FIELDS = [
+  "selected",
+  "expanded",
+  "customConfig",
+  "forceStart",
+  "showBeforeForce",
+  "clientType",
+  "blockSleep",
+  "blockSleepScreenOn",
+  "enablePenguin",
+  "connectConfig",
+  "autoDetectConnection",
+  "ldExtrasEnabled",
+  "ldManualIndex",
+  "mumuExtrasEnabled",
+  "mumuBridge",
+  "useTray",
+  "useCardLog",
+  "updateSource",
+  "forceGithub",
+  "proxyType",
+  "achievementPopupDisabled",
+  "achievementPopupAutoClose",
+  "timers"
+];
 const SETTINGS_AUTO_SCROLL_SUPPRESS_MS = 120;
 const SETTINGS_SMOOTH_SCROLL_SUPPRESS_MS = 1200;
 
@@ -86,7 +111,7 @@ function restoreSettingsState() {
   if (Number.isInteger(parsed.selected)) {
     restored.selected = Math.max(0, Math.min(parsed.selected, SETTINGS_SECTIONS.length - 1));
   }
-  if (parsed.expanded && typeof parsed.expanded === "object" && !Array.isArray(parsed.expanded)) {
+  if (MaaStorage.isObject(parsed.expanded)) {
     restored.expanded = Object.fromEntries(SETTINGS_SECTIONS.map((section) => [
       section.key,
       typeof parsed.expanded[section.key] === "boolean" ? parsed.expanded[section.key] : true
@@ -109,52 +134,18 @@ function restoreSettingsState() {
     "forceGithub",
     "achievementPopupDisabled",
     "achievementPopupAutoClose"
-  ].forEach((field) => copySettingsBoolean(parsed, restored, field));
-  ["clientType", "connectConfig", "updateSource", "proxyType"].forEach((field) => copySettingsString(parsed, restored, field));
+  ].forEach((field) => MaaStorage.copyBoolean(parsed, restored, field));
+  ["clientType", "connectConfig", "updateSource", "proxyType"].forEach((field) => MaaStorage.copyString(parsed, restored, field));
   if (Array.isArray(parsed.timers)) restored.timers = restoreTimers(parsed.timers);
   return restored;
 }
 
 function readSettingsStorage() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || "");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
+  return MaaStorage.readObject(SETTINGS_STORAGE_KEY, null);
 }
 
 function persistSettingsState() {
-  const payload = {
-    selected: SETTINGS_STATE.selected,
-    expanded: SETTINGS_STATE.expanded,
-    customConfig: SETTINGS_STATE.customConfig,
-    forceStart: SETTINGS_STATE.forceStart,
-    showBeforeForce: SETTINGS_STATE.showBeforeForce,
-    clientType: SETTINGS_STATE.clientType,
-    blockSleep: SETTINGS_STATE.blockSleep,
-    blockSleepScreenOn: SETTINGS_STATE.blockSleepScreenOn,
-    enablePenguin: SETTINGS_STATE.enablePenguin,
-    connectConfig: SETTINGS_STATE.connectConfig,
-    autoDetectConnection: SETTINGS_STATE.autoDetectConnection,
-    ldExtrasEnabled: SETTINGS_STATE.ldExtrasEnabled,
-    ldManualIndex: SETTINGS_STATE.ldManualIndex,
-    mumuExtrasEnabled: SETTINGS_STATE.mumuExtrasEnabled,
-    mumuBridge: SETTINGS_STATE.mumuBridge,
-    useTray: SETTINGS_STATE.useTray,
-    useCardLog: SETTINGS_STATE.useCardLog,
-    updateSource: SETTINGS_STATE.updateSource,
-    forceGithub: SETTINGS_STATE.forceGithub,
-    proxyType: SETTINGS_STATE.proxyType,
-    achievementPopupDisabled: SETTINGS_STATE.achievementPopupDisabled,
-    achievementPopupAutoClose: SETTINGS_STATE.achievementPopupAutoClose,
-    timers: SETTINGS_STATE.timers
-  };
-  try {
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(payload));
-  } catch {
-    // Storage can be unavailable in private or restricted browser contexts.
-  }
+  MaaStorage.writeObject(SETTINGS_STORAGE_KEY, MaaStorage.pick(SETTINGS_STATE, SETTINGS_PERSISTED_FIELDS));
 }
 
 function restoreTimers(timers) {
@@ -168,14 +159,6 @@ function restoreTimers(timers) {
       config: typeof value.config === "string" ? value.config : timer.config
     };
   });
-}
-
-function copySettingsBoolean(source, target, field) {
-  if (typeof source[field] === "boolean") target[field] = source[field];
-}
-
-function copySettingsString(source, target, field) {
-  if (typeof source[field] === "string") target[field] = source[field];
 }
 
 function clampNumber(value, min, max, fallback) {
@@ -739,10 +722,6 @@ function updateSettingsNavFromScroll() {
   if (isSettingsScrollSuppressed()) return;
   const sections = [...document.querySelectorAll(".settingsFold")];
   if (!sections.length) return;
-  if (window.scrollY >= document.body.scrollHeight - window.innerHeight - 2) {
-    setSettingsSelected(SETTINGS_SECTIONS.length - 1);
-    return;
-  }
   const focusY = 90;
   let selected = 0;
   sections.forEach((section, index) => {

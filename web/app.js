@@ -25,45 +25,12 @@ const state = {
 const $ = (id) => document.getElementById(id);
 
 function restoreCurrentView() {
-  try {
-    const value = localStorage.getItem(CURRENT_VIEW_KEY);
-    return Object.hasOwn(VIEW_TITLES, value) ? value : DEFAULT_VIEW;
-  } catch {
-    return DEFAULT_VIEW;
-  }
+  const value = MaaStorage.get(CURRENT_VIEW_KEY, DEFAULT_VIEW);
+  return Object.hasOwn(VIEW_TITLES, value) ? value : DEFAULT_VIEW;
 }
 
 function persistCurrentView() {
-  try {
-    localStorage.setItem(CURRENT_VIEW_KEY, state.currentView);
-  } catch {
-    // Storage can be unavailable in private or restricted browser contexts.
-  }
-}
-
-function storageGet(key) {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function storageSet(key, value) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Storage can be unavailable in private or restricted browser contexts.
-  }
-}
-
-function readJsonStorage(key, fallback) {
-  try {
-    const parsed = JSON.parse(storageGet(key) || "");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : fallback;
-  } catch {
-    return fallback;
-  }
+  MaaStorage.set(CURRENT_VIEW_KEY, state.currentView);
 }
 
 function profileStorageKey(profile = state.profile) {
@@ -71,24 +38,24 @@ function profileStorageKey(profile = state.profile) {
 }
 
 function restoreSelectedTask(profile) {
-  const values = readJsonStorage(SELECTED_TASK_KEY, {});
+  const values = MaaStorage.readObject(SELECTED_TASK_KEY, {});
   const value = values[profileStorageKey(profile)] ?? values[FALLBACK_PROFILE_KEY];
   return Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
 function persistSelectedTask() {
-  const values = readJsonStorage(SELECTED_TASK_KEY, {});
+  const values = MaaStorage.readObject(SELECTED_TASK_KEY, {});
   values[profileStorageKey()] = state.selectedTask;
-  storageSet(SELECTED_TASK_KEY, JSON.stringify(values));
+  MaaStorage.writeObject(SELECTED_TASK_KEY, values);
 }
 
 function restoreSettingMode() {
-  const value = storageGet(SETTING_MODE_KEY);
+  const value = MaaStorage.get(SETTING_MODE_KEY);
   return value === "advanced" ? "advanced" : "general";
 }
 
 function persistSettingMode() {
-  storageSet(SETTING_MODE_KEY, state.settingMode);
+  MaaStorage.set(SETTING_MODE_KEY, state.settingMode);
 }
 
 function escapeHtml(value) {

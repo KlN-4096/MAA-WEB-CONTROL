@@ -94,50 +94,30 @@ function restoreCopilotState() {
   if (!parsed) return {};
   const restored = {};
   if (Number.isInteger(parsed.tab) && parsed.tab >= 0 && parsed.tab < COPILOT_TABS.length) restored.tab = parsed.tab;
-  copyStringField(parsed, restored, "filename");
-  copyStringField(parsed, restored, "formationIndex");
-  copyStringField(parsed, restored, "supportUsage");
-  copyStringField(parsed, restored, "taskName");
-  copyBooleanField(parsed, restored, "form");
-  copyBooleanField(parsed, restored, "useFormation");
-  copyBooleanField(parsed, restored, "ignoreRequirements");
-  copyBooleanField(parsed, restored, "useSupportUnit");
-  copyBooleanField(parsed, restored, "addTrust");
-  copyBooleanField(parsed, restored, "addUserAdditional");
-  copyBooleanField(parsed, restored, "useCopilotList");
-  copyBooleanField(parsed, restored, "useSanityPotion");
-  copyBooleanField(parsed, restored, "loop");
+  ["filename", "formationIndex", "supportUsage", "taskName"].forEach((field) => MaaStorage.copyString(parsed, restored, field));
+  [
+    "form",
+    "useFormation",
+    "ignoreRequirements",
+    "useSupportUnit",
+    "addTrust",
+    "addUserAdditional",
+    "useCopilotList",
+    "useSanityPotion",
+    "loop"
+  ].forEach((field) => MaaStorage.copyBoolean(parsed, restored, field));
   if (Number.isFinite(Number(parsed.loopTimes))) restored.loopTimes = parsed.loopTimes;
   if (Array.isArray(parsed.tasks)) restored.tasks = parsed.tasks.map(normalizeCopilotTask).filter(Boolean);
   return restored;
 }
 
 function readCopilotStorage() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(COPILOT_STORAGE_KEY) || "");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
+  return MaaStorage.readObject(COPILOT_STORAGE_KEY, null);
 }
 
 function persistCopilotState() {
   normalizeCopilotState();
-  const payload = {};
-  COPILOT_PERSISTED_FIELDS.forEach((field) => { payload[field] = COPILOT_STATE[field]; });
-  try {
-    localStorage.setItem(COPILOT_STORAGE_KEY, JSON.stringify(payload));
-  } catch {
-    // Storage can be unavailable in private or restricted browser contexts.
-  }
-}
-
-function copyStringField(source, target, field) {
-  if (typeof source[field] === "string") target[field] = source[field];
-}
-
-function copyBooleanField(source, target, field) {
-  if (typeof source[field] === "boolean") target[field] = source[field];
+  MaaStorage.writeObject(COPILOT_STORAGE_KEY, MaaStorage.pick(COPILOT_STATE, COPILOT_PERSISTED_FIELDS));
 }
 
 function normalizeCopilotTask(task) {

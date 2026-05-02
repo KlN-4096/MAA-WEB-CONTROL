@@ -98,21 +98,16 @@ function restoreToolsState() {
   if (!parsed) return {};
   const restored = {};
   if (Number.isInteger(parsed.tab) && parsed.tab >= 0 && parsed.tab < TOOL_TABS.length) restored.tab = parsed.tab;
-  copyToolsBoolean(parsed, restored, "autoTime");
-  copyToolsBoolean(parsed, restored, "showPotential");
-  copyToolsBoolean(parsed, restored, "gachaDisclaimer");
-  copyToolsString(parsed, restored, "operListTab");
-  copyToolsString(parsed, restored, "miniGame");
-  copyToolsString(parsed, restored, "secretEnding");
-  copyToolsString(parsed, restored, "secretEvent");
+  ["autoTime", "showPotential", "gachaDisclaimer"].forEach((field) => MaaStorage.copyBoolean(parsed, restored, field));
+  ["operListTab", "miniGame", "secretEnding", "secretEvent"].forEach((field) => MaaStorage.copyString(parsed, restored, field));
   if (Number.isFinite(Number(parsed.fps))) restored.fps = clampInt(parsed.fps, 1, 600);
-  if (parsed.levels && typeof parsed.levels === "object" && !Array.isArray(parsed.levels)) {
+  if (MaaStorage.isObject(parsed.levels)) {
     restored.levels = { 3: true, 4: true, 5: true, 6: true };
     [3, 4, 5, 6].forEach((level) => {
       if (typeof parsed.levels[level] === "boolean") restored.levels[level] = parsed.levels[level];
     });
   }
-  if (parsed.times && typeof parsed.times === "object" && !Array.isArray(parsed.times)) {
+  if (MaaStorage.isObject(parsed.times)) {
     restored.times = { 3: ["09", "00"], 4: ["09", "00"], 5: ["09", "00"] };
     [3, 4, 5].forEach((level) => {
       if (Array.isArray(parsed.times[level]) && parsed.times[level].length >= 2) {
@@ -124,30 +119,11 @@ function restoreToolsState() {
 }
 
 function readToolsStorage() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(TOOLS_STORAGE_KEY) || "");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
+  return MaaStorage.readObject(TOOLS_STORAGE_KEY, null);
 }
 
 function persistToolsState() {
-  const payload = {};
-  TOOLS_PERSISTED_FIELDS.forEach((field) => { payload[field] = TOOLS_STATE[field]; });
-  try {
-    localStorage.setItem(TOOLS_STORAGE_KEY, JSON.stringify(payload));
-  } catch {
-    // Storage can be unavailable in private or restricted browser contexts.
-  }
-}
-
-function copyToolsString(source, target, field) {
-  if (typeof source[field] === "string") target[field] = source[field];
-}
-
-function copyToolsBoolean(source, target, field) {
-  if (typeof source[field] === "boolean") target[field] = source[field];
+  MaaStorage.writeObject(TOOLS_STORAGE_KEY, MaaStorage.pick(TOOLS_STATE, TOOLS_PERSISTED_FIELDS));
 }
 
 function renderToolsView() {
