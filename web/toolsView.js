@@ -1,0 +1,349 @@
+const TOOL_TABS = ["公招识别", "干员识别", "仓库识别", "牛牛抽卡", "牛牛监控", "小游戏"];
+
+const TOOL_TEXT = {
+  recruitTip: "小提示: 和主界面的自动公招是两个独立的功能，请手动打开游戏公招 Tags 界面后使用~",
+  showPotential: "显示干员潜能（4/5/6★ Tags）",
+  showPotentialTip: "请使用 ｢干员识别｣ 获取干员信息。",
+  operTip: "特别关注会影响干员识别准确率，如有特别关注干员识别错误请自行判断。",
+  depotTip: "该功能尚处于测试阶段，请检查结果是否准确再行使用。若有误，欢迎打包 debug/depot 文件夹后向我们提交 issue ~",
+  gachaInfo: "在罗德岛竟然有这么多志同道合的志士。是的，诗歌！战争！自由！能在历史的洪流中汇集众人的力量，为这片大地的改变而奋斗。真是令人振奋！这些悲壮又非凡的故事，是应当被传颂下去的。",
+  peepTip: "看看牛牛眼中的世界？",
+  miniEmptyTip: "在上方选择小游戏以开始运行。"
+};
+
+const GACHA_TIPS = [
+  "保佑胜利的英雄，我将领受你们的祝福。",
+  "伟大的战士们啊，我会在你们身边，与你们一同奋勇搏杀。",
+  "再转身回头的时候，我们将带着胜利归来。",
+  "不需畏惧，我们会战胜那些鲁莽的家伙！",
+  "欢呼吧！",
+  "来吧——",
+  "现在可没有后悔的余地了。",
+  "无需退路。",
+  "英雄们啊，为这最强大的信念，请站在我们这边。",
+  "颤抖吧，在真正的勇敢面前。",
+  "哭嚎吧，为你们不堪一击的信念。",
+  "你将在此跪拜。",
+  "是吗，我们做到了吗……我现在，正体会至高的荣誉和幸福。",
+  "转身吧，勇士们。我们已经获得了完美的胜利，现在是该回去享受庆祝的盛典了。",
+  "听啊，悲鸣停止了。这是幸福的和平到来前的宁静。",
+  "纵使人类的战争没尽头……在这一刻，我们守护住了自己生的尊严。离开吧。但要昂首挺胸。",
+  "这对角可能会不小心撞倒些家具，我会尽量小心。"
+];
+
+const MINI_GAMES = [
+  { label: "争锋频道：绿藤城", value: "MiniGame@ALL@IvyVine", tip: "手动跳过教程对话，然后可以直接退出。\n在活动主界面（右下角有 ｢加入赛事｣ 处）开始任务。\n\n跟着鸭总喝口汤。" },
+  { label: "PV-烟花筹委会", value: "MiniGame@PV", tip: "从所选关卡开始并自动通关。若选择第一关，则从活动页最左侧开始；若选择其他关卡，请先进入上一关再返回以校准位置。" },
+  { label: "卫戍协议：盟约", value: "MiniGame@SPA", tip: "在活动主界面（有 ｢独立模拟｣ 处开始任务）\n在有存档时需要先手动放弃\n最高只测试过 ｢险境模拟｣" },
+  { label: "OS-喀兰贸易技术研发部", value: "MiniGame@OS", tip: "在活动主界面（右下角有 ｢开始重建｣ 处）开始任务。" },
+  { label: "次生预案 RM-TR-1", value: "MiniGame@RM-TR-1", tip: "过完新手教程后进入前哨支点，滑动到界面最左侧。" },
+  { label: "次生预案 RM-1", value: "MiniGame@RM-1", tip: "刷 RM-TR-1 大约 3 小时，营建策略中，石材开采线点到底。\n手动进入关卡并退出，让 RM-1 位于屏幕中央后运行。" },
+  { label: "AT-相谈室", value: "MiniGame@AT@ConversationRoom", tip: "在活动主界面（右下角有 ｢开始营业｣ 处）开始任务。" },
+  { label: "争锋频道：青草城", value: "MiniGame@ALL@GreenGrass", tip: "手动跳过教程对话，然后可以直接退出。\n在活动主界面（右下角有 ｢加入赛事｣ 处）开始任务。\n\n跟着鸭总喝口汤。" },
+  { label: "争锋频道：蜜果城", value: "MiniGame@ALL@HoneyFruit", tip: "手动跳过教程对话，然后可以直接退出。\n在活动主界面（右下角有 ｢加入赛事｣ 处）开始任务。\n\n跟着鸭总喝口汤。" },
+  { label: "活动商店", value: "SS@Store@Begin", tip: "请在活动商店页面开始。\n不买无限池。" },
+  { label: "绿票商店", value: "GreenTicket@Store@Begin", tip: "1层全买。\n2层买寻访凭证和招聘许可。" },
+  { label: "黄票商店", value: "YellowTicket@Store@Begin", tip: "请确保自己至少有258张黄票。" },
+  { label: "生息演算商店", value: "RA@Store@Begin", tip: "请在活动商店页面开始。" },
+  { label: "隐秘战线", value: "MiniGame@SecretFront", tip: "在选小队界面开始，如有存档须手动删除。\n第一次打自己看完把教程关了。\n推荐勾选游戏内 ｢继承上一支队伍发回的数据｣" }
+];
+
+const TOOLS_STATE = {
+  tab: 0,
+  autoTime: true,
+  showPotential: true,
+  levels: { 3: true, 4: true, 5: true, 6: true },
+  times: { 3: ["09", "00"], 4: ["09", "00"], 5: ["09", "00"] },
+  recruitInfo: TOOL_TEXT.recruitTip,
+  operInfo: TOOL_TEXT.operTip,
+  depotInfo: TOOL_TEXT.depotTip,
+  operSyncTime: "",
+  depotSyncTime: "",
+  operListTab: "have",
+  gachaDisclaimer: true,
+  gachaInfo: TOOL_TEXT.gachaInfo,
+  peeping: false,
+  fps: 20,
+  miniGame: "SS@Store@Begin",
+  secretEnding: "A",
+  secretEvent: "",
+  miniRunning: false,
+  miniDropdownOpen: false
+};
+
+let toolsWired = false;
+
+function renderToolsView() {
+  const root = $("toolsViewRoot");
+  if (!root) return;
+  root.innerHTML = `
+    <section class="toolsPanel">
+      <div class="toolsTabs">${TOOL_TABS.map(toolTabButton).join("")}</div>
+      <div class="toolsContent">${renderToolTab()}</div>
+    </section>
+  `;
+}
+
+function wireToolsView() {
+  const root = $("toolsViewRoot");
+  if (!root || toolsWired) return;
+  root.addEventListener("click", onToolsClick);
+  root.addEventListener("change", onToolsChange);
+  root.addEventListener("input", onToolsInput);
+  toolsWired = true;
+}
+
+function toolTabButton(label, index) {
+  const active = TOOLS_STATE.tab === index ? " active" : "";
+  return `<button class="toolsTab${active}" type="button" data-tools-tab="${index}">${escapeHtml(label)}</button>`;
+}
+
+function renderToolTab() {
+  if (TOOLS_STATE.tab === 0) return renderRecruitTool();
+  if (TOOLS_STATE.tab === 1) return renderOperBoxTool();
+  if (TOOLS_STATE.tab === 2) return renderDepotTool();
+  if (TOOLS_STATE.tab === 3) return renderGachaTool();
+  if (TOOLS_STATE.tab === 4) return renderPeepTool();
+  return renderMiniGameTool();
+}
+
+function renderRecruitTool() {
+  return `
+    <div class="toolsGrid recruitTool">
+      <div class="toolsScroll">
+        <p class="toolsInfo recruitInfo">${escapeHtml(TOOLS_STATE.recruitInfo)}</p>
+      </div>
+      <div class="recruitBottom">
+        <div class="recruitLeft">
+          ${toolCheck("autoTime", "自动设置时间", TOOLS_STATE.autoTime)}
+          <label class="toolCheck wrapCheck">
+            <input type="checkbox" data-tools-field="showPotential" ${checked(TOOLS_STATE.showPotential)} />
+            <span>${escapeHtml(TOOL_TEXT.showPotential)}</span>${tipIcon(TOOL_TEXT.showPotentialTip)}
+          </label>
+        </div>
+        <div class="recruitLevels">${[3, 4, 5, 6].map(renderRecruitLevel).join("")}</div>
+        <button class="toolBigButton" type="button" data-tools-action="startRecruit">开始识别</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderRecruitLevel(level) {
+  const disabledTime = level === 6 ? " disabled" : "";
+  const time = level === 6 ? ["09", "00"] : TOOLS_STATE.times[level];
+  return `
+    <div class="recruitLevel">
+      ${toolCheck(`level${level}`, `自动选择 ${level} 星 Tags`, TOOLS_STATE.levels[level])}
+      ${TOOLS_STATE.autoTime ? `<div class="timePair">
+        <input type="number" min="1" max="9" value="${time[0]}" data-tools-time="${level}-h"${disabledTime} />
+        <span>:</span>
+        <input type="number" min="0" max="50" step="10" value="${time[1]}" data-tools-time="${level}-m"${disabledTime} />
+      </div>` : ""}
+    </div>
+  `;
+}
+
+function renderOperBoxTool() {
+  return `
+    <div class="toolsGrid resultTool">
+      ${syncLine("上次同步时间", TOOLS_STATE.operSyncTime)}
+      <p class="toolsInfo centered">${escapeHtml(TOOLS_STATE.operInfo)}</p>
+      ${renderOperTabs()}
+      <div class="toolButtonRow">
+        <button class="toolBigButton" type="button" data-tools-action="copyOper">复制到剪切板</button>
+        <button class="toolBigButton" type="button" data-tools-action="startOper">开始识别</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderOperTabs() {
+  return `
+    <section class="nestedToolPanel emptyResultPanel" aria-label="干员识别结果"></section>
+  `;
+}
+
+function renderDepotTool() {
+  return `
+    <div class="toolsGrid resultTool">
+      ${syncLine("上次同步时间", TOOLS_STATE.depotSyncTime)}
+      <p class="toolsInfo centered">${escapeHtml(TOOLS_STATE.depotInfo)}</p>
+      <div class="cardGrid depotGrid emptyResultPanel" aria-label="仓库识别结果"></div>
+      <div class="toolButtonRow wide">
+        <button class="toolBigButton" type="button" data-tools-action="exportArkplanner">导出至企鹅物流刷图规划</button>
+        <button class="toolBigButton" type="button" data-tools-action="exportLolicon">导出至明日方舟工具箱</button>
+        <button class="toolBigButton" type="button" data-tools-action="startDepot">开始识别</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderGachaTool() {
+  if (TOOLS_STATE.gachaDisclaimer) {
+    return `
+      <div class="gachaDisclaimer">
+        <div class="disclaimerLine"><span>请注意，这是</span><strong class="rainbowText">真正的抽卡</strong></div>
+        <button class="gachaAgreeButton" type="button" data-tools-action="agreeGacha">知道了</button>
+        <label class="toolCheck disabledCheck"><input type="checkbox" disabled /><span>下次不再提示</span></label>
+      </div>
+    `;
+  }
+  return `
+    <div class="gachaTool">
+      <p class="toolsInfo centered">${escapeHtml(TOOLS_STATE.gachaInfo)}</p>
+      <div class="peepScreen">${fpsBadge()}</div>
+      <div class="toolButtonRow">
+        <button class="toolBigButton" type="button" data-tools-action="gachaOnce">寻访一次</button>
+        <button class="toolBigButton" type="button" data-tools-action="gachaTen">寻访十次</button>
+        <button class="toolBigButton" type="button" data-tools-action="togglePeep">Peep!</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderPeepTool() {
+  return `
+    <div class="peepTool">
+      <div class="peepStage">${TOOLS_STATE.peeping ? `<div class="peepScreen active"><div class="deviceFrame">${fpsBadge()}</div></div>` : `<p>${escapeHtml(TOOL_TEXT.peepTip)}</p>`}</div>
+      <div class="peepControls">
+        <button class="toolBigButton" type="button" data-tools-action="togglePeep">${TOOLS_STATE.peeping ? "Stop!" : "Peep!"}</button>
+        <label class="fpsControl"><span>目标帧率</span><input type="number" min="1" max="600" value="${TOOLS_STATE.fps}" data-tools-field="fps" /></label>
+      </div>
+    </div>
+  `;
+}
+
+function renderMiniGameTool() {
+  const selected = MINI_GAMES.find((item) => item.value === TOOLS_STATE.miniGame);
+  return `
+    <div class="miniGameTool">
+      <div class="miniCombo">
+        <span class="miniComboTitle">小游戏名称</span>
+        <button class="miniComboButton${TOOLS_STATE.miniDropdownOpen ? " open" : ""}" type="button" data-tools-action="toggleMiniDropdown">
+          <span>${escapeHtml(selected?.label || "")}</span><span class="miniComboArrow">${TOOLS_STATE.miniDropdownOpen ? "⌃" : "⌄"}</span>
+        </button>
+        ${TOOLS_STATE.miniDropdownOpen ? renderMiniDropdown() : ""}
+      </div>
+      ${TOOLS_STATE.miniGame === "MiniGame@SecretFront" ? renderSecretFrontOptions() : ""}
+      <p class="miniTip">${escapeHtml(selected?.tip || TOOL_TEXT.miniEmptyTip)}</p>
+      <button class="miniStart" type="button" data-tools-action="startMini">${TOOLS_STATE.miniRunning ? "Stop!" : "Link Start!"}</button>
+    </div>
+  `;
+}
+
+function renderMiniDropdown() {
+  return `<div class="miniComboMenu">${MINI_GAMES.map((item) => `
+    <button class="miniComboOption${item.value === TOOLS_STATE.miniGame ? " selected" : ""}" type="button" data-mini-value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</button>
+  `).join("")}</div>`;
+}
+
+function renderSecretFrontOptions() {
+  const events = [["", "不选择"], ["支援作战平台", "支援作战平台"], ["游侠", "游侠"], ["诡影迷踪", "诡影迷踪"]];
+  return `
+    <div class="secretFront">
+      <label class="titleSelect"><span>结局</span><select data-tools-field="secretEnding">${["A", "B", "C", "D", "E"].map((item) => option(item, item, TOOLS_STATE.secretEnding)).join("")}</select></label>
+      <label class="titleSelect"><span>优先系列事件</span><select data-tools-field="secretEvent">${events.map(([value, label]) => option(value, label, TOOLS_STATE.secretEvent)).join("")}</select></label>
+    </div>
+  `;
+}
+
+function onToolsClick(event) {
+  const tab = event.target.closest("[data-tools-tab]");
+  if (tab) {
+    TOOLS_STATE.tab = Number(tab.dataset.toolsTab);
+    TOOLS_STATE.miniDropdownOpen = false;
+    renderToolsView();
+    return;
+  }
+  const miniValue = event.target.closest("[data-mini-value]")?.dataset.miniValue;
+  if (miniValue) {
+    TOOLS_STATE.miniGame = miniValue;
+    TOOLS_STATE.miniDropdownOpen = false;
+    renderToolsView();
+    return;
+  }
+  const operTab = event.target.closest("[data-tools-oper-tab]");
+  if (operTab) TOOLS_STATE.operListTab = operTab.dataset.toolsOperTab;
+  const action = event.target.closest("[data-tools-action]")?.dataset.toolsAction;
+  if (action) runToolAction(action);
+  if (operTab || action) renderToolsView();
+}
+
+function onToolsChange(event) {
+  const field = event.target.dataset.toolsField;
+  if (!field) return;
+  updateToolsField(field, event.target);
+  renderToolsView();
+}
+
+function onToolsInput(event) {
+  const time = event.target.dataset.toolsTime;
+  if (time) updateRecruitTime(time, event.target.value);
+  if (event.target.dataset.toolsField === "fps") TOOLS_STATE.fps = clampInt(event.target.value, 1, 600);
+}
+
+function updateToolsField(field, target) {
+  if (field === "autoTime") TOOLS_STATE.autoTime = target.checked;
+  if (field === "showPotential") TOOLS_STATE.showPotential = target.checked;
+  if (field.startsWith("level")) TOOLS_STATE.levels[field.replace("level", "")] = target.checked;
+  if (field === "miniGame") TOOLS_STATE.miniGame = target.value;
+  if (field === "secretEnding") TOOLS_STATE.secretEnding = target.value;
+  if (field === "secretEvent") TOOLS_STATE.secretEvent = target.value;
+  if (field === "fps") TOOLS_STATE.fps = clampInt(target.value, 1, 600);
+}
+
+function runToolAction(action) {
+  if (action === "startRecruit") TOOLS_STATE.recruitInfo = "正在识别……";
+  if (action === "startOper") TOOLS_STATE.operInfo = "正在识别……";
+  if (action === "startDepot") TOOLS_STATE.depotInfo = "正在识别……";
+  if (action === "copyOper") TOOLS_STATE.operInfo = "已复制到剪切板";
+  if (action === "exportArkplanner" || action === "exportLolicon") TOOLS_STATE.depotInfo = "已复制到剪切板";
+  if (action === "agreeGacha") TOOLS_STATE.gachaDisclaimer = false;
+  if (action === "gachaOnce" || action === "gachaTen") TOOLS_STATE.gachaInfo = GACHA_TIPS[Math.floor(Math.random() * GACHA_TIPS.length)];
+  if (action === "togglePeep") TOOLS_STATE.peeping = !TOOLS_STATE.peeping;
+  if (action === "startMini") TOOLS_STATE.miniRunning = !TOOLS_STATE.miniRunning;
+  if (action === "toggleMiniDropdown") TOOLS_STATE.miniDropdownOpen = !TOOLS_STATE.miniDropdownOpen;
+}
+
+function updateRecruitTime(token, value) {
+  const [level, part] = token.split("-");
+  const index = part === "h" ? 0 : 1;
+  const max = part === "h" ? 9 : 50;
+  const normalized = clampInt(value, part === "h" ? 1 : 0, max);
+  TOOLS_STATE.times[level][index] = String(part === "m" ? Math.floor(normalized / 10) * 10 : normalized).padStart(2, "0");
+}
+
+function toolCheck(field, label, value) {
+  return `<label class="toolCheck"><input type="checkbox" data-tools-field="${field}" ${checked(value)} /><span>${escapeHtml(label)}</span></label>`;
+}
+
+function checked(value) {
+  return value ? "checked" : "";
+}
+
+function option(value, label, selected) {
+  return `<option value="${escapeHtml(value)}"${String(value) === String(selected) ? " selected" : ""}>${escapeHtml(label)}</option>`;
+}
+
+function tipIcon(text) {
+  return `<span class="copilotTipIcon" data-tip="${escapeHtml(text)}" tabindex="0">?</span>`;
+}
+
+function emptyResult(text) {
+  return `<div class="toolEmpty">${escapeHtml(text)}</div>`;
+}
+
+function syncLine(label, text) {
+  if (!text) return "";
+  return `<p class="syncLine">${escapeHtml(label)}: ${escapeHtml(text)}</p>`;
+}
+
+function fpsBadge() {
+  return `<span class="fpsBadge">${Number(TOOLS_STATE.fps).toFixed(2)} FPS</span>`;
+}
+
+function clampInt(value, min, max) {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed)) return min;
+  return Math.min(max, Math.max(min, parsed));
+}

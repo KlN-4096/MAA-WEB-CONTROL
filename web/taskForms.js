@@ -1,0 +1,724 @@
+const TASK_TYPES = [
+  "StartUp", "Recruit", "Infrast", "Fight", "Custom", "Mall",
+  "Award", "Roguelike", "Reclamation", "CloseDown"
+];
+
+const TASK_NAMES = {
+  StartUp: "开始唤醒",
+  Recruit: "自动公招",
+  Infrast: "基建换班",
+  Fight: "理智作战",
+  Custom: "剩余理智",
+  Mall: "信用收支",
+  Award: "领取奖励",
+  Roguelike: "自动肉鸽",
+  Reclamation: "生息演算",
+  CloseDown: "关闭游戏"
+};
+
+const NO_ADVANCED_TASKS = new Set(["StartUp", "Award", "CloseDown"]);
+const STARTUP_CLIENT_TYPES = ["官服", "Bilibili服", "国际服 (YostarEN)", "日服 (YostarJP)", "韩服 (YostarKR)", "繁中服 (txwy)"];
+const CONNECTION_PRESETS = ["通用模式", "蓝叠模拟器", "MuMu 模拟器", "雷电模拟器", "应用宝模拟器", "Android 虚拟设备（AVD）", "夜神模拟器", "逍遥模拟器", "PC 端", "WSA 旧版本", "兼容模式", "第二分辨率", "通用模式（屏蔽异常输出）"];
+const TOUCH_MODES = ["Minitouch（默认）", "MaaTouch（实验功能）", "ADB Input（不推荐使用）", "MaaFramework（实验功能）"];
+const INFRAST_MODES = ["常规模式", "队列轮换", "自定义基建配置"];
+const DRONE_OPTIONS = ["不使用无人机", "贸易站-龙门币", "贸易站-合成玉", "制造站-经验书", "制造站-赤金", "制造站-源石碎片", "制造站-芯片组"];
+const STAGE_OPTIONS = ["当前/上次", "1-7", "R8-11", "12-17-HARD", "龙门币-6/5", "红票-5", "技能-5", "经验-6/5", "碳-5", "剿灭模式", "奶/盾芯片", "奶/盾芯片组", "术/狙芯片", "术/狙芯片组", "先/辅芯片", "先/辅芯片组", "近/特芯片", "近/特芯片组", "切尔诺伯格", "龙门外环", "龙门市区"];
+const DROP_OPTIONS = ["不选择", "基础作战记录", "初级作战记录", "中级作战记录", "高级作战记录", "源岩", "固源岩", "固源岩组", "提纯源岩", "代糖", "糖", "糖组", "糖聚块", "赤金", "酯原料", "聚酸酯", "聚酸酯组", "聚酸酯块", "异铁碎片", "异铁", "异铁组", "异铁块", "双酮", "酮凝集", "酮凝集组", "酮阵列", "破损装置", "装置", "全新装置", "改量装置", "扭转醇", "白马醇", "轻锰矿", "三水锰矿", "研磨石", "五水研磨石", "RMA70-12", "RMA70-24", "聚合剂", "双极纳米片", "凝胶", "聚合凝胶", "炽合金", "炽合金块", "晶体元件", "晶体电路", "半自然溶剂", "精炼溶剂", "龙骨", "化合切削液", "切削原液", "转质盐组", "转质盐聚块", "褐素纤维", "固化纤维板", "环烃聚质", "环烃预制体", "类凝结核", "手性屈光体", "碳", "碳素", "碳素组", "基础加固建材", "进阶加固建材", "高级加固建材", "源石碎片", "芯片助剂", "先锋芯片", "先锋芯片组", "先锋双芯片", "近卫芯片", "近卫芯片组", "近卫双芯片", "重装芯片", "重装芯片组", "重装双芯片", "狙击芯片", "狙击芯片组", "狙击双芯片", "术师芯片", "术师芯片组", "术师双芯片", "医疗芯片", "医疗芯片组", "医疗双芯片", "辅助芯片", "辅助芯片组", "辅助双芯片", "特种芯片", "特种芯片组", "特种双芯片", "技巧概要·卷1", "技巧概要·卷2", "技巧概要·卷3", "家具零件", "龙门币", "至纯源石", "合成玉", "高级凭证", "资质凭证", "采购凭证", "声望", "演习券", "招聘许可", "加急许可", "寻访凭证", "十连寻访凭证"];
+const SERIES_OPTIONS = [{ label: "AUTO", value: 0 }, { label: "6", value: 6 }, { label: "5", value: 5 }, { label: "4", value: 4 }, { label: "3", value: 3 }, { label: "2", value: 2 }, { label: "1", value: 1 }, { label: "不切换", value: -1 }];
+const MEDICINE_EXPIRE_OPTIONS = ["24h", "48h", "72h", "96h", "120h", "144h", "168h"];
+const ROGUELIKE_THEMES = ["傀影", "水月", "萨米", "萨卡兹", "界园"];
+const ROGUELIKE_STRATEGIES = ["刷等级，尽可能稳定地打更多层数", "刷源石锭，投资完成后自动退出", "刷开局，刷取热水壶或精二干员开局", "刷月度小队，尽可能稳定地打更多层数", "刷深入调查，尽可能稳定地打更多层数"];
+const ROGUELIKE_THEME_STRATEGIES = {
+  "萨米": ["刷坍缩范式，遇到非稀有坍缩范式后直接重开"],
+  "界园": ["刷常乐节点，第一层进洞，找不到需要的节点就重开"]
+};
+const ROGUELIKE_COMMON_SQUADS = ["指挥分队", "后勤分队", "突击战术分队", "堡垒战术分队", "远程战术分队", "破坏战术分队", "高规格分队"];
+const ROGUELIKE_THEME_SQUADS = {
+  "傀影": ["集群分队", "矛头分队", "研究分队"],
+  "水月": ["集群分队", "矛头分队", "心胜于物分队", "物尽其用分队", "以人为本分队", "研究分队"],
+  "萨米": ["集群分队", "矛头分队", "永恒狩猎分队", "生活至上分队", "科学主义分队", "特训分队"],
+  "萨卡兹": ["集群分队", "矛头分队", "魂灵护送分队", "博闻广记分队", "蓝图测绘分队", "因地制宜分队", "异想天开分队", "点刺成锭分队", "拟态学者分队", "专业人士分队"],
+  "界园": ["特勤分队", "高台突破分队", "地面突破分队", "游客分队", "司岁台分队", "天师府分队", "花团锦簇分队", "棋行险着分队", "岁影回音分队", "代理人分队", "知学分队", "商贾分队"]
+};
+const ROGUELIKE_SARKAZ_INVESTMENT_SQUADS = ["集群分队", "矛头分队", "博闻广记分队", "蓝图测绘分队", "点刺成锭分队", "拟态学者分队"];
+const ROGUELIKE_BASE_ROLES = ["先手必胜（先锋、狙击、特种）", "稳扎稳打（重装、术师、狙击）", "取长补短（近卫、辅助、医疗）"];
+const ROGUELIKE_JIEGARDEN_ROLES = ["灵活部署（先锋、辅助、特种）", "坚不可摧（重装、术师、医疗）"];
+const ROGUELIKE_OPERATOR_OPTIONS = {
+  "傀影": ["", "维什戴尔", "丰川祥子", "棘刺", "新约能天使", "蕾缪安", "圣聆初雪", "假日威龙陈", "焰影苇草", "乌尔比安", "圣约送葬人", "佩佩", "怒潮凛冬", "百炼嘉维尔", "海沫", "羽毛笔", "休谟斯", "锏", "山", "仇白", "煌", "艾丽妮", "帕拉斯", "风丸", "号角", "斑点", "石棉", "寒芒克洛丝", "克洛丝", "令", "稀音", "安赛尔", "凯尔希", "芬", "提丰", "银灰", "夜半"],
+  "水月": ["", "维什戴尔", "百炼嘉维尔", "怒潮凛冬", "海沫", "羽毛笔", "休谟斯", "山", "风丸", "帕拉斯", "幽灵鲨", "归溟幽灵鲨", "令", "稀音", "号角", "新约能天使", "蕾缪安", "圣聆初雪", "丰川祥子", "棘刺", "仇白", "煌", "银灰", "锏", "艾丽妮", "月见夜", "阿米娅-WARRIOR", "寒芒克洛丝", "凯尔希", "安赛尔", "芬", "斑点", "石棉", "坚雷", "阿米娅", "史都华德", "克洛丝", "梓兰", "佩佩", "乌尔比安", "歌蕾蒂娅"],
+  "萨米": ["", "维什戴尔", "焰影苇草", "凯尔希", "银灰", "锏", "假日威龙陈", "圣约送葬人", "怒潮凛冬", "百炼嘉维尔", "海沫", "羽毛笔", "休谟斯", "佩佩", "丰川祥子", "山", "仇白", "煌", "艾丽妮", "帕拉斯", "医生", "风丸", "号角", "斑点", "石棉", "新约能天使", "克洛丝", "令", "稀音", "安赛尔", "芬", "圣聆初雪", "林", "蕾缪安", "提丰"],
+  "萨卡兹": ["", "维什戴尔", "焰影苇草", "凯尔希", "银灰", "锏", "假日威龙陈", "圣约送葬人", "怒潮凛冬", "百炼嘉维尔", "佩佩", "乌尔比安", "海沫", "丰川祥子", "山", "羽毛笔", "休谟斯", "仇白", "煌", "艾丽妮", "帕拉斯", "医生", "风丸", "号角", "古米", "石棉", "斑点", "新约能天使", "梅", "流星", "克洛丝", "令", "稀音", "苏苏洛", "嘉维尔", "安赛尔", "讯使", "芬", "圣聆初雪", "林", "蕾缪安", "提丰", "铅踝", "白雪", "锡人", "跃跃", "芳汀", "松果"],
+  "界园": ["", "维什戴尔", "新约能天使", "电弧", "凯尔希", "银灰", "假日威龙陈", "圣约送葬人", "怒潮凛冬", "百炼嘉维尔", "锏", "佩佩", "乌尔比安", "海沫", "丰川祥子", "山", "羽毛笔", "休谟斯", "仇白", "煌", "艾丽妮", "帕拉斯", "风丸", "斩业星熊", "号角", "古米", "石棉", "斑点", "梅", "流星", "克洛丝", "令", "稀音", "苏苏洛", "嘉维尔", "清流", "安赛尔", "讯使", "芬", "圣聆初雪", "林", "蕾缪安", "提丰", "铅踝", "白雪", "罗小黑", "跃跃", "伊桑", "芳汀", "松果"]
+};
+const RECLAMATION_THEMES = ["沙中之火（活动未开放）", "沙洲遗闻"];
+const RECLAMATION_STRATEGIES = ["无存档，通过进出关卡刷生息点数", "有存档，通过组装支援道具刷生息点数"];
+const RECLAMATION_INCREMENT_MODES = ["连点", "长按"];
+const FIGHT_TOOLTIPS = {
+  onceAsNull: "该选项右键选中时仅生效一次",
+  once: "该选项仅生效一次",
+  drops: "该选项不会自动计算最优关卡",
+  series: "• AUTO:\n自动识别关卡最大代理倍率, 保持最大代理倍率且使用理智药后理智不溢出\n\n• 数值 (1~6):\n按设定倍率执行代理\n若当前理智不足完成设定倍率, 则无法进入战斗\n或者战斗次数不足完成设定倍率, 也将无法进入战斗\n\n• 不切换:\n不调整游戏内代理倍率设定",
+  customStage: "支持大部分主线关卡名与原列表的关卡名（如4-10、AP-5、H10-1-Hard）\n可在关卡结尾输入 Normal/Hard 表示需要切换标准与磨难难度\n可输入 SSReopen-XX 一次性代理 SS 复刻的普通关"
+};
+
+let UI_OPTIONS = null;
+
+function setTaskFormOptions(options) {
+  UI_OPTIONS = options || null;
+}
+
+function defaultTask(type = "Fight") {
+  const id = `${type.toLowerCase()}-${Date.now().toString().slice(-5)}`;
+  return { id, type, enabled: true, name: TASK_NAMES[type] || type, params: defaultParams(type), strategy: {} };
+}
+
+function defaultParams(type) {
+  if (type === "Fight") return { stage: "当前/上次", stage_plan: ["当前/上次"], medicine: 999, stone: 999, times: 5, series: 0, use_alternate_stage: false };
+  if (type === "Custom") return { stage: "当前/上次", stage_plan: ["当前/上次"], medicine: 0, stone: 0, times: 999, series: 0, use_alternate_stage: false };
+  if (type === "StartUp") return { client_type: "官服", start_game_enabled: true, connection: "雷电模拟器", touch_mode: "Minitouch（默认）" };
+  if (type === "Recruit") return { auto_expedited: false, refresh: true, confirm_3: true, confirm_4: true, max_times: 99 };
+  if (type === "Infrast") return { mode: "常规模式", drone: "贸易站-龙门币", mood: 30, facilities: allFacilities() };
+  if (type === "Mall") return { visit_friends: true, shopping: true, buy_first: ["招聘许可"], blacklist: ["碳素", "家具零件"] };
+  if (type === "Award") return { daily: true, orundum: true };
+  if (type === "Roguelike") return { theme: "萨卡兹", difficulty: "MAX (18)", strategy: ROGUELIKE_STRATEGIES[0], squad: "指挥分队", roles: "稳扎稳打（重装、术师、狙击）", starts_count: 99999, investment_enabled: true, delay_abort: true };
+  if (type === "Reclamation") return { theme: "沙洲遗闻", strategy: RECLAMATION_STRATEGIES[1], tool_to_craft: "荧光棒", increment_mode: "连点", max_craft_count: 16 };
+  return {};
+}
+
+function taskSupportsAdvanced(type) {
+  return !NO_ADVANCED_TASKS.has(type);
+}
+
+function renderTaskEditor(task, escapeHtml, mode = "general") {
+  if (!task) return '<div class="taskEditor empty">请选择一个任务</div>';
+  const params = mode === "advanced" ? renderAdvanced(task, escapeHtml) : renderGeneral(task, escapeHtml);
+  const common = renderCommonFields(task, escapeHtml);
+  const strategy = escapeHtml(formatJson(task.strategy || {}));
+  return `${params}${common}<details class="advancedBlock"><summary>策略 JSON</summary><textarea id="taskStrategyInput">${strategy}</textarea></details>`;
+}
+
+function renderCommonFields(task, escapeHtml) {
+  return `
+    <details class="advancedBlock">
+      <summary>任务基础</summary>
+      <div class="formGrid">
+        <label>任务 ID<input id="taskIdInput" value="${escapeHtml(task.id)}" /></label>
+        <label>名称<input id="taskNameInput" value="${escapeHtml(task.name || "")}" /></label>
+        <label>类型<select id="taskTypeInput">${taskTypeOptions(task.type)}</select></label>
+      </div>
+    </details>
+  `;
+}
+
+function renderGeneral(task, escapeHtml) {
+  const p = task.params || {};
+  if (task.type === "Fight") return renderFightGeneral(p, escapeHtml);
+  if (task.type === "Custom") return renderFightGeneral(p, escapeHtml);
+  if (task.type === "StartUp") return renderStartUpGeneral(p, escapeHtml);
+  if (task.type === "Recruit") return renderRecruitGeneral(p);
+  if (task.type === "Infrast") return renderInfrastGeneral(p, escapeHtml);
+  if (task.type === "Mall") return renderMallGeneral(p);
+  if (task.type === "Award") return renderAwardGeneral(p);
+  if (task.type === "Roguelike") return renderRoguelikeGeneral(p, escapeHtml);
+  if (task.type === "Reclamation") return renderReclamationGeneral(p, escapeHtml);
+  return renderJsonParams(p, escapeHtml);
+}
+
+function renderAdvanced(task, escapeHtml) {
+  const p = task.params || {};
+  if (task.type === "Fight") return renderFightAdvanced(p, escapeHtml);
+  if (task.type === "Custom") return renderFightAdvanced(p, escapeHtml);
+  if (task.type === "Recruit") return renderRecruitAdvanced(p, escapeHtml);
+  if (task.type === "Infrast") return renderInfrastAdvanced(p);
+  if (task.type === "Mall") return renderMallAdvanced(p, escapeHtml);
+  if (task.type === "Roguelike") return renderRoguelikeAdvanced(p);
+  if (task.type === "Reclamation") return renderReclamationAdvanced(p, escapeHtml);
+  return `<div class="maaParams"><label class="toggleRow mutedCheck"><input type="checkbox" disabled />高级设置</label></div>`;
+}
+
+function renderFightGeneral(p, escapeHtml) {
+  const stagePlan = stagePlanOf(p);
+  const useAlternate = p.use_alternate_stage === true || stagePlan.length > 1;
+  const addButton = '<button class="addStageButton" type="button" data-stage-action="add">添加候选</button>';
+  return `
+    <div class="maaParams fightForm">
+      ${checkNumberRow("use_medicine", `使用药剂${hint(FIGHT_TOOLTIPS.onceAsNull, escapeHtml)}`, "paramMedicine", p.use_medicine, p.medicine, 999)}
+      ${checkNumberRow("use_stone", `使用源石*${hint(FIGHT_TOOLTIPS.once, escapeHtml)}`, "paramStone", p.use_stone, p.stone, 999)}
+      ${checkNumberRow("has_times_limited", `指定次数${hint(FIGHT_TOOLTIPS.onceAsNull, escapeHtml)}`, "paramTimes", p.has_times_limited, p.times, 6)}
+      <div class="paramRow"><label class="checkLabel"><input id="paramUseDrops" type="checkbox" ${checked(p.use_drops)} />指定材料${hint(FIGHT_TOOLTIPS.drops, escapeHtml)}</label><select id="paramDrops">${selectOptions(dropOptions(), p.drop || "不选择", escapeHtml)}</select></div>
+      <div class="paramRow"><span>代理倍率${hint(FIGHT_TOOLTIPS.series, escapeHtml)}</span><select id="paramSeries">${seriesOptions(p.series, escapeHtml)}</select></div>
+      <div class="stageBlock">
+        <div class="stageLabel"><span>${useAlternate ? "候选关卡" : "关卡指定"}</span>${addButton}</div>
+        <div class="stagePlanList ${useAlternate ? "bordered" : ""}">
+          ${stagePlan.map((stage, index) => stageSelect(stage, index, p.custom_stage_code, stagePlan.length > 1, escapeHtml)).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderFightAdvanced(p, escapeHtml) {
+  return `
+    <div class="maaParams wideForm">
+      ${checkRow("custom_annihilation", "自定义剿灭关卡", p.custom_annihilation)}
+      ${checkRow("dr_grandet", "饿朗台模式", p.dr_grandet)}
+      ${checkRow("use_expiring_medicine", "无限吃 N 小时内过期的理智药", p.use_expiring_medicine ?? true)}
+      <div class="subLine">└ <select id="paramMedicineExpireHours">${selectOptions(MEDICINE_EXPIRE_OPTIONS, p.medicine_expire_hours || "48h", escapeHtml)}</select></div>
+      ${checkRow("use_activity_expire", "活动结束前 48H 吃当周过期理智药", p.use_activity_expire)}
+      <div class="subLine disabled">└ 暂无活动</div>
+      ${checkRow("hide_series", "隐藏代理倍率", p.hide_series)}
+      ${checkRow("allow_stone_save", "允许使用源石保存状态", p.allow_stone_save)}
+      ${checkRow("custom_stage_code", `手动输入关卡名${hint(FIGHT_TOOLTIPS.customStage, escapeHtml)}`, p.custom_stage_code)}
+      <span>过期关卡重置为</span><select id="paramStageReset">${selectOptions(["当前/上次", "不切换"], p.stage_reset || "当前/上次", escapeHtml)}</select>
+      ${checkRow("use_alternate_stage", "使用备选关卡", p.use_alternate_stage ?? true)}
+      ${checkRow("hide_unavailable_stage", "下拉框中隐藏当日不开关卡", p.hide_unavailable_stage)}
+      ${checkRow("weekly_schedule", "启用周计划", p.weekly_schedule)}
+      <strong class="sectionTitle">以下选项为多任务共用</strong>
+      ${checkRow("auto_restart", "游戏掉线时自动重连", p.auto_restart ?? true)}
+    </div>
+  `;
+}
+
+function renderStartUpGeneral(p, escapeHtml) {
+  return `
+    <div class="maaParams wideForm">
+      <span>账号切换${hint("需要切换至的账号，留空以禁用。输入登录界面显示的内容，如 123****4567，可输入 123****4567、4567 或 23****45。仅支持官服、B服，不支持登录账号。", escapeHtml)}</span><div><input id="paramAccount" class="accountInput" value="${escapeHtml(p.account || "")}" /><button disabled>立即切换</button></div>
+      <strong class="sectionTitle">以下选项为多任务共用</strong>
+      ${checkRow("start_game_enabled", "是否启动客户端", p.start_game_enabled ?? true)}
+      <span>客户端类型</span><select id="paramClientType">${selectOptions(STARTUP_CLIENT_TYPES, p.client_type || "官服", escapeHtml)}</select>
+      ${checkRow("auto_detect", `自动检测连接${hint("每次检测完成后会自动取消勾选，如需重新检测可再次勾选。仅当端口经常发生变化时，才需要勾选「每次重新检测」。检测时请确保只开启需要连接的模拟器。", escapeHtml)}`, p.auto_detect ?? true)}
+      ${checkRow("detect_every_time", `每次重新检测${hint("不推荐勾选此选项。仅当端口经常发生变化且确认只运行单个模拟器时才建议勾选。", escapeHtml)}`, p.detect_every_time ?? true, "redText")}
+      <span>连接配置</span><select id="paramConnection">${selectOptions(CONNECTION_PRESETS, p.connection || "雷电模拟器", escapeHtml)}</select>
+      <span>触控模式</span><select id="paramTouchMode">${selectOptions(TOUCH_MODES, p.touch_mode, escapeHtml)}</select>
+    </div>
+  `;
+}
+
+function renderRecruitGeneral(p) {
+  return `
+    <div class="maaParams wideForm">
+      ${checkRow("auto_expedited", "自动使用加急许可*", p.auto_expedited)}
+      <span>每次执行时最大招募次数</span><input id="paramRecruitTimes" type="number" value="${numberValue(p.max_times, 99)}" />
+    </div>
+  `;
+}
+
+function renderRecruitAdvanced(p, escapeHtml) {
+  return `
+    <div class="maaParams wideForm">
+      <span>公招多选 Tag 的策略</span><select id="paramRecruitStrategy"><option>默认不选择额外 Tag</option></select>
+      <input class="wideInput" id="paramExtraTags" value="${escapeHtml(p.extra_tags || "")}" />
+      ${checkRow("refresh", "自动刷新 3 星 Tags", p.refresh ?? true)}
+      ${checkRow("skip_robot", "无招聘许可时继续尝试刷新 Tags", p.skip_robot ?? true)}
+      ${checkRow("reserve_level_1", "保留 1 星词条并跳过该栏位", p.reserve_level_1 ?? true)}
+      ${checkRow("confirm_3", "自动确认 3 星", p.confirm_3 ?? true)}
+      ${timeRow("time3", p.time3 || "09:00")}
+      ${checkRow("confirm_4", "自动确认 4 星", p.confirm_4 ?? true)}
+      ${timeRow("time4", p.time4 || "09:00")}
+      ${checkRow("confirm_5", "自动确认 5 星", p.confirm_5)}
+      ${timeRow("time5", p.time5 || "09:00", true)}
+      ${checkRow("confirm_6", "自动确认 6 星", p.confirm_6, "mutedCheck", true)}
+    </div>
+  `;
+}
+
+function renderInfrastGeneral(p, escapeHtml = escapeHtmlFallback) {
+  const facilities = p.facilities || allFacilities();
+  return `
+    <div class="maaParams wideForm infrastForm">
+      <span>基建模式</span><select id="paramInfrastMode">${selectOptions(INFRAST_MODES, p.mode || "常规模式", escapeHtml)}</select>
+      <span>无人机用途</span><select id="paramDrone">${selectOptions(DRONE_OPTIONS, p.drone || "贸易站-龙门币", escapeHtml)}</select>
+      <span class="centerText">基建工作心情阈值: ${numberValue(p.mood, 30)}% ${hint("若启用自定义换班，该字段仅针对 autofill 和使用干员编组的房间有效", escapeHtml)}</span>
+      <input id="paramMood" type="range" min="0" max="100" value="${numberValue(p.mood, 30)}" />
+      <div class="facilityBox">${allFacilities().map((name) => checkRow(`facility-${name}`, name, facilities.includes(name))).join("")}</div>
+      <div class="twoButtons"><button type="button" data-facility-action="all">全选</button><button type="button" data-facility-action="none">清空</button></div>
+    </div>
+  `;
+}
+
+function renderInfrastAdvanced(p) {
+  return `
+    <div class="maaParams wideForm">
+      ${checkRow("dorm_trust", "宿舍空余位置蹭信赖", p.dorm_trust)}
+      ${checkRow("skip_entered", "不将已进驻的干员放入宿舍", p.skip_entered ?? true)}
+      ${checkRow("stone_fragment", "源石碎片自动补货", p.stone_fragment ?? true)}
+      ${checkRow("collect_credit", "会客室信息板收取信用", p.collect_credit ?? true)}
+      ${checkRow("clue_exchange", "进行线索交流", p.clue_exchange ?? true)}
+      ${checkRow("send_clue", "赠送线索", p.send_clue ?? true)}
+      ${checkRow("continue_training", "训练完成后继续尝试专精当前技能", p.continue_training)}
+    </div>
+  `;
+}
+
+function renderMallGeneral(p) {
+  return `
+    <div class="maaParams wideForm">
+      ${checkRow("visit_friends", "访问好友", p.visit_friends ?? true)}
+      <div class="subLine">└ <label class="inlineCheck"><input id="paramVisitOnce" type="checkbox" ${checked(p.visit_once)} />一日只执行一次</label></div>
+      ${checkRow("credit_fight", "借助战打 OF-1 赚信用", p.credit_fight)}
+      ${checkRow("shopping", "信用交易所自动购物", p.shopping ?? true)}
+      <span>以下功能需在基建换班中设置并执行</span>
+      <div class="readonlyList"><p>会客室信息板收取信用</p><p>进行线索交流</p><p>赠送线索</p></div>
+    </div>
+  `;
+}
+
+function renderMallAdvanced(p, escapeHtml) {
+  return `
+    <div class="maaParams wideForm">
+      <span>优先购买 子串即可 分号分隔</span><input class="wideInput" id="paramBuyFirst" value="${escapeHtml((p.buy_first || []).join(";"))}" />
+      <span>黑名单 子串即可 分号分隔</span><input class="wideInput" id="paramBlacklist" value="${escapeHtml((p.blacklist || []).join(";"))}" />
+      ${checkRow("overflow_blacklist", "信用溢出时无视黑名单", p.overflow_blacklist)}
+      ${checkRow("discount_only", "只购买打折的信用商品", p.discount_only)}
+      ${checkRow("stop_if_low", "信用点低于 300 时停止购买商品", p.stop_if_low)}
+    </div>
+  `;
+}
+
+function renderAwardGeneral(p) {
+  return `
+    <div class="maaParams wideForm">
+      ${checkRow("daily", "领取每日/每周任务奖励", p.daily ?? true)}
+      ${checkRow("mail", "领取所有邮件奖励", p.mail)}
+      ${checkRow("free_gacha", `进行限定池赠送的每日免费单抽${hint("若不存在免费单抽，则不会抽取", escapeHtmlFallback)}`, p.free_gacha)}
+      ${checkRow("orundum", "领取幸运墙的每日合成玉奖励", p.orundum ?? true)}
+      ${checkRow("limited_orundum", "领取限时开采许可的每日合成玉奖励", p.limited_orundum)}
+      ${checkRow("monthly_card", "领取周年赠送月卡奖励", p.monthly_card)}
+    </div>
+  `;
+}
+
+function renderRoguelikeGeneral(p, escapeHtml) {
+  const normalized = normalizeRoguelikeParams({ ...p });
+  return `
+    <div class="maaParams wideForm">
+      <span>肉鸽主题</span><select id="paramRoguelikeTheme">${selectOptions(ROGUELIKE_THEMES, normalized.theme, escapeHtml)}</select>
+      <span>难度</span><select id="paramRoguelikeDifficulty">${selectOptions(roguelikeDifficultyOptions(normalized.theme), normalized.difficulty, escapeHtml)}</select>
+      <span>策略</span><select id="paramRoguelikeStrategy">${selectOptions(roguelikeStrategyOptions(normalized.theme), normalized.strategy, escapeHtml)}</select>
+      <span>开局分队</span><select id="paramRoguelikeSquad">${selectOptions(roguelikeSquadOptions(normalized.theme, normalized.strategy), normalized.squad, escapeHtml)}</select>
+      <span>开局职业组</span><select id="paramRoguelikeRoles">${selectOptions(roguelikeRoleOptions(normalized.theme), normalized.roles, escapeHtml)}</select>
+      <span>开局干员${hint("不填写则使用默认策略。", escapeHtml)}</span><select id="paramRoguelikeOperator">${selectOptions(roguelikeOperatorOptions(normalized.theme), normalized.operator, escapeHtml)}</select>
+    </div>
+  `;
+}
+
+function renderRoguelikeAdvanced(p) {
+  return `
+    <div class="maaParams wideForm roguelikeAdvanced">
+      <span>开始探索 N 次后停止任务</span><input id="paramRoguelikeStarts" type="number" min="0" max="99999" value="${numberValue(p.starts_count, 99999)}" />
+      ${checkRow("investment_enabled", "投资源石锭", p.investment_enabled ?? true)}
+      ${checkRow("use_support_unit", `「开局干员」使用助战${hint("需先填写「开局干员」", escapeHtmlFallback)}`, p.use_support_unit, "mutedCheck", true)}
+      ${checkRow("stop_at_final_boss", "在第五层 BOSS 前暂停", p.stop_at_final_boss)}
+      ${checkRow("stop_at_max_level", "满级后自动停止", p.stop_at_max_level)}
+      ${checkRow("start_with_seed", "使用指定种子开局", p.start_with_seed)}
+      <strong class="sectionTitle">以下选项为多任务共用</strong>
+      ${checkRow("delay_abort", "自动肉鸽在战斗结束前延迟「停止」动作", p.delay_abort ?? true)}
+    </div>
+  `;
+}
+
+function renderReclamationGeneral(p, escapeHtml) {
+  return `
+    <div class="maaParams wideForm">
+      <span>生息演算主题</span><select id="paramReclamationTheme">${selectOptions(RECLAMATION_THEMES, p.theme || "沙洲遗闻", escapeHtml)}</select>
+      <span>策略</span><select id="paramReclamationStrategy">${selectOptions(RECLAMATION_STRATEGIES, p.strategy || RECLAMATION_STRATEGIES[1], escapeHtml)}</select>
+      <div class="reclamationText scrollBox">
+        <p>目前生息演算的支持仍处于中期阶段，使用时请注意以下几点：</p>
+        <p>通过开局刷点数：（小心已有存档被删除）</p>
+        <p>1. 点数刷满后会输出「任务完成」，自动停止任务</p>
+        <p>2. 不要在生息演算的编队中有干员的情况下使用</p>
+        <p>3. 手动确认存档情况并删除，以免 MAA 删除你的珍贵存档</p>
+        <p>4. 导航还没写，不能从生息演算以外的位置开始任务</p>
+        <p>5. 如果任务过程中报错、点数没刷满就任务完成，请前往 GitHub 提交 issue</p>
+        <p>有存档通过制造刷点数（高级设置）：</p>
+        <p>1. 要求是结算后的第一天，且后续三天没有敌袭进入驻扎地</p>
+        <p>2. 必须在进入大地图后的界面开始（能看到驻扎地的界面）</p>
+        <p>3. 如果能制造的数量刚好是 99 的倍数会卡住，在存档前可以先用掉一点，这个之后再修</p>
+      </div>
+    </div>
+  `;
+}
+
+function renderReclamationAdvanced(p, escapeHtml) {
+  const archiveMode = (p.strategy || RECLAMATION_STRATEGIES[1]) === RECLAMATION_STRATEGIES[1];
+  const disabled = archiveMode ? "" : " disabled";
+  return `
+    <div class="maaParams wideForm">
+      <span>支援道具名称</span><input id="paramReclamationTool" value="${escapeHtml(p.tool_to_craft || "荧光棒")}"${disabled} />
+      <span>增加方式</span><select id="paramReclamationIncrement"${disabled}>${selectOptions(RECLAMATION_INCREMENT_MODES, p.increment_mode || "连点", escapeHtml)}</select>
+      <span>单次最大组装轮数</span><input id="paramReclamationCraftCount" type="number" min="0" value="${numberValue(p.max_craft_count, 16)}"${disabled} />
+      ${archiveMode ? "" : checkRow("clear_store", "任务完成后购买商店", p.clear_store)}
+    </div>
+  `;
+}
+
+function renderJsonParams(p, escapeHtml) {
+  return `<label>参数 JSON<textarea id="taskParamsInput">${escapeHtml(formatJson(p))}</textarea></label>`;
+}
+
+function collectTaskEditor(task) {
+  task.id = $("taskIdInput").value.trim();
+  task.name = $("taskNameInput").value.trim();
+  task.type = $("taskTypeInput").value;
+  task.params = { ...(task.params || {}), ...collectParams(task.type) };
+  task.strategy = parseJsonField("taskStrategyInput");
+}
+
+function collectParams(type) {
+  if (type === "Fight") return collectFightParams();
+  if (type === "Custom") return collectFightParams();
+  if (type === "StartUp") return collectStartUpParams();
+  if (type === "Recruit") return collectRecruitParams();
+  if (type === "Infrast") return collectInfrastParams();
+  if (type === "Mall") return collectMallParams();
+  if (type === "Award") return collectAwardParams();
+  if (type === "Roguelike") return collectRoguelikeParams();
+  if (type === "Reclamation") return collectReclamationParams();
+  return $("taskParamsInput") ? parseJsonField("taskParamsInput") : {};
+}
+
+function collectFightParams() {
+  const params = {};
+  addNumber(params, "medicine", "paramMedicine", 999);
+  addNumber(params, "stone", "paramStone", 999);
+  addNumber(params, "times", "paramTimes", 6);
+  addNumber(params, "series", "paramSeries", 1);
+  addBool(params, "use_medicine", "use_medicine");
+  addBool(params, "use_stone", "use_stone");
+  addBool(params, "has_times_limited", "has_times_limited");
+  addBool(params, "use_drops", "paramUseDrops");
+  addValue(params, "drop", "paramDrops", "不选择");
+  const stagePlan = valuesByName("paramStagePlan").map((stage) => stage.trim()).filter(Boolean);
+  if (stagePlan.length) {
+    params.stage_plan = stagePlan;
+    params.stage = stagePlan[0] || "当前/上次";
+  }
+
+  addBool(params, "custom_annihilation", "custom_annihilation");
+  addBool(params, "dr_grandet", "dr_grandet");
+  addBool(params, "use_expiring_medicine", "use_expiring_medicine");
+  addValue(params, "medicine_expire_hours", "paramMedicineExpireHours", "48h");
+  addBool(params, "use_activity_expire", "use_activity_expire");
+  addBool(params, "hide_series", "hide_series");
+  addBool(params, "allow_stone_save", "allow_stone_save");
+  addBool(params, "custom_stage_code", "custom_stage_code");
+  addValue(params, "stage_reset", "paramStageReset", "当前/上次");
+  addBool(params, "use_alternate_stage", "use_alternate_stage");
+  addBool(params, "hide_unavailable_stage", "hide_unavailable_stage");
+  addBool(params, "weekly_schedule", "weekly_schedule");
+  addBool(params, "auto_restart", "auto_restart");
+  return params;
+}
+
+function collectStartUpParams() {
+  const params = {};
+  addValue(params, "account", "paramAccount", "");
+  addValue(params, "client_type", "paramClientType", "官服");
+  addValue(params, "connection", "paramConnection", "雷电模拟器");
+  addValue(params, "touch_mode", "paramTouchMode", "Minitouch（默认）");
+  addBool(params, "start_game_enabled", "start_game_enabled");
+  addBool(params, "auto_detect", "auto_detect");
+  addBool(params, "detect_every_time", "detect_every_time");
+  return params;
+}
+
+function collectRecruitParams() {
+  const params = {};
+  addBool(params, "auto_expedited", "auto_expedited");
+  addNumber(params, "max_times", "paramRecruitTimes", 99);
+  addValue(params, "extra_tags", "paramExtraTags", "");
+  addBool(params, "refresh", "refresh");
+  addBool(params, "skip_robot", "skip_robot");
+  addBool(params, "reserve_level_1", "reserve_level_1");
+  addBool(params, "confirm_3", "confirm_3");
+  addTime(params, "time3", "time3");
+  addBool(params, "confirm_4", "confirm_4");
+  addTime(params, "time4", "time4");
+  addBool(params, "confirm_5", "confirm_5");
+  addTime(params, "time5", "time5");
+  addBool(params, "confirm_6", "confirm_6");
+  return params;
+}
+
+function collectInfrastParams() {
+  const params = {};
+  addValue(params, "mode", "paramInfrastMode", "常规模式");
+  addValue(params, "drone", "paramDrone", "贸易站-龙门币");
+  addNumber(params, "mood", "paramMood", 30);
+  if ($("facility-制造站")) {
+    params.facilities = allFacilities().filter((name) => boolOf(`facility-${name}`));
+  }
+  addBool(params, "dorm_trust", "dorm_trust");
+  addBool(params, "skip_entered", "skip_entered");
+  addBool(params, "stone_fragment", "stone_fragment");
+  addBool(params, "collect_credit", "collect_credit");
+  addBool(params, "clue_exchange", "clue_exchange");
+  addBool(params, "send_clue", "send_clue");
+  addBool(params, "continue_training", "continue_training");
+  return params;
+}
+
+function collectMallParams() {
+  const params = {};
+  addBool(params, "visit_friends", "visit_friends");
+  addBool(params, "visit_once", "paramVisitOnce");
+  addBool(params, "credit_fight", "credit_fight");
+  addBool(params, "shopping", "shopping");
+  addList(params, "buy_first", "paramBuyFirst");
+  addList(params, "blacklist", "paramBlacklist");
+  addBool(params, "overflow_blacklist", "overflow_blacklist");
+  addBool(params, "discount_only", "discount_only");
+  addBool(params, "stop_if_low", "stop_if_low");
+  return params;
+}
+
+function collectAwardParams() {
+  const params = {};
+  addBool(params, "daily", "daily");
+  addBool(params, "mail", "mail");
+  addBool(params, "free_gacha", "free_gacha");
+  addBool(params, "orundum", "orundum");
+  addBool(params, "limited_orundum", "limited_orundum");
+  addBool(params, "monthly_card", "monthly_card");
+  return params;
+}
+
+function collectRoguelikeParams() {
+  const params = {};
+  const hasGeneralFields = Boolean($("paramRoguelikeTheme"));
+  addValue(params, "theme", "paramRoguelikeTheme", "萨卡兹");
+  addValue(params, "difficulty", "paramRoguelikeDifficulty", "MAX (18)");
+  addValue(params, "strategy", "paramRoguelikeStrategy", "刷等级，尽可能稳定地打更多层数");
+  addValue(params, "squad", "paramRoguelikeSquad", "指挥分队");
+  addValue(params, "roles", "paramRoguelikeRoles", "稳扎稳打（重装、术师、狙击）");
+  addValue(params, "operator", "paramRoguelikeOperator", "");
+  addNumber(params, "starts_count", "paramRoguelikeStarts", 99999);
+  addBool(params, "investment_enabled", "investment_enabled");
+  addBool(params, "use_support_unit", "use_support_unit");
+  addBool(params, "stop_at_final_boss", "stop_at_final_boss");
+  addBool(params, "stop_at_max_level", "stop_at_max_level");
+  addBool(params, "start_with_seed", "start_with_seed");
+  addBool(params, "delay_abort", "delay_abort");
+  return hasGeneralFields ? normalizeRoguelikeParams(params) : params;
+}
+
+function collectReclamationParams() {
+  const params = {};
+  addValue(params, "theme", "paramReclamationTheme", "沙洲遗闻");
+  addValue(params, "strategy", "paramReclamationStrategy", RECLAMATION_STRATEGIES[1]);
+  addValue(params, "tool_to_craft", "paramReclamationTool", "荧光棒");
+  addValue(params, "increment_mode", "paramReclamationIncrement", "连点");
+  addNumber(params, "max_craft_count", "paramReclamationCraftCount", 16);
+  addBool(params, "clear_store", "clear_store");
+  return params;
+}
+
+function checkNumberRow(id, text, inputId, enabled, value, fallback) {
+  return `<div class="paramRow"><label class="checkLabel"><input id="${id}" type="checkbox" ${checked(enabled)} />${text}</label><input id="${inputId}" type="number" min="0" value="${numberValue(value, fallback)}" /></div>`;
+}
+
+function checkRow(id, text, value, className = "", disabled = false) {
+  const disabledAttr = disabled ? " disabled" : "";
+  return `<label class="toggleRow ${className}"><input id="${id}" type="checkbox" ${checked(value)}${disabledAttr} />${text}</label>`;
+}
+
+function timeRow(id, value, disabled = false) {
+  const [hour, minute] = String(value).split(":");
+  const disabledAttr = disabled ? " disabled" : "";
+  return `<div class="timeRow"><input id="${id}h" type="number" value="${hour || "09"}"${disabledAttr} /><span>:</span><input id="${id}m" type="number" value="${minute || "00"}"${disabledAttr} /></div>`;
+}
+
+function stageSelect(value, index, manual, removable, escapeHtml) {
+  const control = manual
+    ? `<input class="stagePlanSelect" name="paramStagePlan" value="${escapeHtml(value)}" />`
+    : `<select class="stagePlanSelect" name="paramStagePlan">${stageOptions(value, escapeHtml)}</select>`;
+  const removeButton = removable
+    ? `<button class="stageRemoveButton" type="button" data-stage-action="remove" data-stage-index="${index}" title="删除候选关卡">×</button>`
+    : "";
+  return `<div class="stagePlanItem ${removable ? "" : "single"}">${control}${removeButton}</div>`;
+}
+
+function stageOptions(current, escapeHtml) {
+  return selectOptions(stageOptionsList(), current || "当前/上次", escapeHtml);
+}
+
+function selectOptions(options, current, escapeHtml) {
+  const normalized = options.map(normalizeOption);
+  const selectedValue = current ?? normalized[0]?.value ?? "";
+  const merged = normalized.some((option) => option.value === selectedValue)
+    ? normalized
+    : [normalizeOption(selectedValue), ...normalized];
+  return merged.map(({ label, value }) => {
+    const selected = value === selectedValue ? " selected" : "";
+    return `<option value="${escapeHtml(value)}"${selected}>${escapeHtml(label)}</option>`;
+  }).join("");
+}
+
+function hint(text, escapeHtml) {
+  const escaped = escapeHtml(text);
+  return `<span class="hint" title="${escaped}" data-tip="${escaped}" aria-label="${escaped}" tabindex="0">?</span>`;
+}
+
+function normalizeOption(option) {
+  if (option && typeof option === "object") {
+    return { label: String(option.label ?? option.display ?? option.value ?? ""), value: String(option.value ?? option.label ?? option.display ?? "") };
+  }
+  return { label: String(option ?? ""), value: String(option ?? "") };
+}
+
+function stagePlanOf(params) {
+  const plan = Array.isArray(params.stage_plan) ? params.stage_plan : [params.stage || "当前/上次"];
+  const normalized = plan.map((stage) => String(stage || "当前/上次")).filter(Boolean);
+  if (params.use_alternate_stage === false) {
+    return [normalized[0] || "当前/上次"];
+  }
+  return normalized.length ? normalized : ["当前/上次"];
+}
+
+function stageOptionsList() {
+  return dynamicOptions("stages", STAGE_OPTIONS);
+}
+
+function dropOptions() {
+  return dynamicOptions("drops", DROP_OPTIONS);
+}
+
+function dynamicOptions(key, fallback) {
+  const values = UI_OPTIONS?.[key];
+  return Array.isArray(values) && values.length ? values : fallback;
+}
+
+function escapeHtmlFallback(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function taskTypeOptions(current) {
+  return TASK_TYPES.map((type) => {
+    const selected = type === current ? " selected" : "";
+    return `<option value="${type}"${selected}>${TASK_NAMES[type] || type}</option>`;
+  }).join("");
+}
+
+function seriesOptions(current, escapeHtml) {
+  return SERIES_OPTIONS.map((option) => {
+    const selected = Number(current ?? 0) === option.value ? " selected" : "";
+    return `<option value="${option.value}"${selected}>${escapeHtml(option.label)}</option>`;
+  }).join("");
+}
+
+function normalizeRoguelikeParams(params) {
+  const theme = ROGUELIKE_THEMES.includes(params.theme) ? params.theme : "萨卡兹";
+  const difficulties = roguelikeDifficultyOptions(theme);
+  const strategies = roguelikeStrategyOptions(theme);
+  const strategy = strategies.includes(params.strategy) ? params.strategy : strategies[0];
+  const squads = roguelikeSquadOptions(theme, strategy);
+  const roles = roguelikeRoleOptions(theme);
+  const operators = roguelikeOperatorOptions(theme);
+
+  return {
+    ...params,
+    theme,
+    difficulty: difficulties.includes(params.difficulty) ? params.difficulty : "不切换 (-1)",
+    strategy,
+    squad: squads.includes(params.squad) ? params.squad : "指挥分队",
+    roles: roles.includes(params.roles) ? params.roles : "稳扎稳打（重装、术师、狙击）",
+    operator: operators.includes(params.operator) ? params.operator : ""
+  };
+}
+
+function roguelikeStrategyOptions(theme) {
+  return [...ROGUELIKE_STRATEGIES, ...(ROGUELIKE_THEME_STRATEGIES[theme] || [])];
+}
+
+function roguelikeSquadOptions(theme, strategy) {
+  const themeSquads = theme === "萨卡兹" && strategy === ROGUELIKE_STRATEGIES[1]
+    ? ROGUELIKE_SARKAZ_INVESTMENT_SQUADS
+    : ROGUELIKE_THEME_SQUADS[theme] || ROGUELIKE_THEME_SQUADS["萨卡兹"];
+  return [...themeSquads, ...ROGUELIKE_COMMON_SQUADS];
+}
+
+function roguelikeRoleOptions(theme) {
+  const themeRoles = theme === "界园" ? ROGUELIKE_JIEGARDEN_ROLES : [];
+  return [...ROGUELIKE_BASE_ROLES, ...themeRoles, "随心所欲（三张随机）"];
+}
+
+function roguelikeOperatorOptions(theme) {
+  const dynamicOperators = UI_OPTIONS?.roguelike?.operators?.[theme];
+  if (Array.isArray(dynamicOperators) && dynamicOperators.length) return dynamicOperators;
+  return ROGUELIKE_OPERATOR_OPTIONS[theme] || ROGUELIKE_OPERATOR_OPTIONS["萨卡兹"];
+}
+
+function roguelikeDifficultyOptions(theme) {
+  const max = theme === "傀影" || theme === "萨米" ? 15 : 18;
+  const values = ["不切换 (-1)", `MAX (${max})`, ...Array.from({ length: max }, (_, index) => String(max - index)), "MIN (0)"];
+  return values;
+}
+
+function allFacilities() {
+  return ["制造站", "贸易站", "控制中枢", "发电站", "会客室", "办公室", "宿舍", "加工站", "训练室"];
+}
+
+function checked(value) {
+  return value ? "checked" : "";
+}
+
+function numberValue(value, fallback) {
+  return Number.isFinite(Number(value)) ? Number(value) : fallback;
+}
+
+function numberInput(id, fallback) {
+  const element = $(id);
+  if (!element) return fallback;
+  const value = Number(element.value);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function boolOf(id) {
+  const element = $(id);
+  return element ? element.checked : false;
+}
+
+function valueOf(id, fallback) {
+  const element = $(id);
+  return element ? element.value.trim() : fallback;
+}
+
+function valuesByName(name) {
+  return [...document.querySelectorAll(`[name="${name}"]`)].map((item) => item.value);
+}
+
+function listOf(id) {
+  const text = valueOf(id, "");
+  return text.split(/[;,；，]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function addBool(target, key, id) {
+  if ($(id)) target[key] = boolOf(id);
+}
+
+function addNumber(target, key, id, fallback) {
+  if ($(id)) target[key] = numberInput(id, fallback);
+}
+
+function addValue(target, key, id, fallback) {
+  if ($(id)) target[key] = valueOf(id, fallback);
+}
+
+function addList(target, key, id) {
+  if ($(id)) target[key] = listOf(id);
+}
+
+function addTime(target, key, id) {
+  const hour = $(`${id}h`);
+  const minute = $(`${id}m`);
+  if (!hour || !minute) return;
+  target[key] = `${hour.value.padStart(2, "0")}:${minute.value.padStart(2, "0")}`;
+}
+
+function formatJson(value) {
+  return JSON.stringify(value || {}, null, 2);
+}

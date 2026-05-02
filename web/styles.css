@@ -1,0 +1,2076 @@
+:root {
+  color-scheme: dark;
+  --bg: #171717;
+  --bar: #1f1f1f;
+  --panel: #1b1b1b;
+  --panel-2: #202020;
+  --text: #f0f0f0;
+  --muted: #9a9a9a;
+  --line: #3b3d42;
+  --line-soft: #2a2c30;
+  --blue: #0087d7;
+  --blue-soft: rgba(0, 135, 215, 0.18);
+  --danger: #d14d4d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 1120px;
+  background: #0f0f0f;
+  color: var(--text);
+  font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+  font-size: 12px;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #1d1d1f;
+  color: var(--text);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--blue);
+  color: #50bfff;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+input,
+select,
+textarea {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #1d1e22;
+  color: var(--text);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+input,
+select {
+  width: 110px;
+  height: 30px;
+  padding: 0 8px;
+}
+
+textarea {
+  width: 100%;
+  min-height: 110px;
+  padding: 8px;
+  resize: vertical;
+  font-family: Consolas, "Cascadia Mono", monospace;
+}
+
+h2,
+p {
+  margin: 0;
+}
+
+.windowShell {
+  min-height: 100vh;
+  border: 1px solid #33363a;
+  background: var(--bg);
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 10px;
+  background: var(--bar);
+  border-bottom: 1px solid #27292d;
+}
+
+.windowTitle,
+.windowTools,
+.mainNav,
+.panelHead,
+.buttonRow {
+  display: flex;
+  align-items: center;
+}
+
+.windowTitle {
+  gap: 8px;
+  font-size: 13px;
+}
+
+.appIcon {
+  width: 18px;
+  height: 18px;
+}
+
+.windowTools {
+  gap: 18px;
+  color: #d6d6d6;
+}
+
+.windowTools button {
+  width: 24px;
+  min-height: 24px;
+  padding: 0;
+}
+
+.mainNav {
+  height: 25px;
+  background: var(--bar);
+  border-bottom: 1px solid #34363a;
+}
+
+.navButton {
+  flex: 1;
+  height: 25px;
+  min-height: 25px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+}
+
+.navButton.active {
+  border-bottom-color: var(--blue);
+  color: #28a9ff;
+}
+
+.content {
+  min-height: calc(100vh - 58px);
+}
+
+.view {
+  display: none;
+}
+
+.view.active {
+  display: block;
+}
+
+.maaLayout {
+  display: grid;
+  grid-template-columns: 210px minmax(420px, 1fr);
+  gap: 38px;
+  min-height: calc(100vh - 58px);
+  padding: 31px 20px 34px 108px;
+}
+
+.taskColumn {
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  width: 210px;
+}
+
+.taskBox {
+  display: flex;
+  flex-direction: column;
+  min-height: 657px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 14px 10px 10px;
+}
+
+.taskList {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.taskItem {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 24px;
+  align-items: center;
+  width: 100%;
+  min-height: 23px;
+  border: 0;
+  padding: 0 6px;
+  background: transparent;
+  text-align: left;
+}
+
+.taskItem.disabled {
+  opacity: 0.55;
+}
+
+.taskEnable {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+}
+
+.taskNameButton,
+.taskConfigButton {
+  min-height: 23px;
+  border: 0;
+  background: transparent;
+}
+
+.taskNameButton {
+  padding: 0 0 0 2px;
+  text-align: left;
+}
+
+.taskConfigButton {
+  padding: 0;
+  color: #6f737a;
+}
+
+.taskItem.active .taskNameButton {
+  outline: 1px dotted #3c3c3c;
+}
+
+.taskItem.active .taskConfigButton {
+  color: var(--blue);
+}
+
+.taskNameButton strong {
+  overflow: hidden;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.taskNameButton .meta {
+  display: none;
+}
+
+.taskButtons {
+  display: grid;
+  grid-template-columns: 31px 1fr 1fr;
+  gap: 0;
+  margin-top: 12px;
+}
+
+.taskButtons button {
+  border-radius: 0;
+}
+
+.taskButtons button:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.taskButtons button:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.afterRun {
+  display: grid;
+  gap: 6px;
+  margin: 14px 25px 11px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+
+.afterRun span {
+  color: var(--text);
+}
+
+.afterRun strong {
+  font-weight: 400;
+}
+
+.linkStart {
+  width: 100px;
+  height: 50px;
+  margin: 0 auto;
+}
+
+.ghost {
+  display: none;
+}
+
+.settingsArea {
+  position: relative;
+  min-height: 720px;
+  padding-top: 6px;
+  overflow: visible;
+}
+
+.taskEditor {
+  display: grid;
+  grid-template-columns: minmax(240px, 330px);
+  gap: 10px;
+  margin-left: 128px;
+  overflow: visible;
+}
+
+.taskEditor.empty {
+  color: var(--muted);
+}
+
+.formGrid,
+.maaParams {
+  display: grid;
+  gap: 12px;
+}
+
+.formGrid {
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
+}
+
+.maaParams {
+  width: 230px;
+}
+
+label,
+.paramRow,
+.toggleRow {
+  color: var(--text);
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.toggleRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+}
+
+.toggleRow input[type="checkbox"] {
+  flex: 0 0 15px;
+  margin: 0;
+}
+
+.paramRow {
+  display: grid;
+  grid-template-columns: 100px 110px;
+  align-items: center;
+  min-height: 30px;
+}
+
+.fightForm {
+  width: 300px;
+}
+
+.fightForm .paramRow {
+  grid-template-columns: 116px 122px;
+  column-gap: 10px;
+}
+
+.fightForm .paramRow input[type="number"] {
+  width: 80px;
+}
+
+.paramRow.wide {
+  grid-template-columns: 100px 1fr;
+}
+
+.paramRow .checkLabel {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.paramRow input[type="number"] {
+  width: 70px;
+}
+
+input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--blue);
+}
+
+.modeTabs {
+  position: absolute;
+  left: 126px;
+  bottom: 235px;
+  display: grid;
+  grid-template-columns: 110px 110px;
+}
+
+.modeTabs button {
+  border-radius: 0;
+}
+
+.modeTabs .active {
+  border-color: var(--blue);
+  color: #28a9ff;
+}
+
+.modeTabs button:disabled {
+  color: #666a70;
+  opacity: 0.55;
+}
+
+.tipsBlock {
+  position: absolute;
+  left: 176px;
+  bottom: 0;
+  width: 260px;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.tipsBlock span {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.eventColumn {
+  display: none;
+  align-content: start;
+  gap: 12px;
+}
+
+.miniStatus {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.miniStatus div,
+.eventPanel,
+.placeholderPanel {
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  background: var(--panel);
+  padding: 10px;
+}
+
+.miniStatus span,
+.profileHint {
+  color: var(--muted);
+}
+
+.miniStatus strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+.panelHead {
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.logList,
+.profileList {
+  display: grid;
+  gap: 7px;
+}
+
+.logItem {
+  border-left: 2px solid var(--blue);
+  background: var(--panel-2);
+  padding: 7px 8px;
+}
+
+.logItem.error {
+  border-left-color: var(--danger);
+}
+
+.logItem strong {
+  font-weight: 400;
+}
+
+.logItem time {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.placeholderPanel {
+  width: min(720px, calc(100vw - 80px));
+  min-height: 240px;
+  margin: 34px auto;
+}
+
+.toolsViewRoot {
+  height: calc(100vh - 58px);
+  overflow: hidden;
+  padding: 20px;
+}
+
+.toolsPanel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  border: 0;
+}
+
+.toolsTabs {
+  display: grid;
+  grid-template-columns: repeat(6, max-content);
+  justify-self: center;
+  width: max-content;
+  overflow: hidden;
+  border-radius: 4px;
+  background: transparent;
+}
+
+.toolsTab {
+  min-width: 108px;
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.toolsTab.active {
+  border-color: var(--blue);
+  color: #28a9ff;
+}
+
+.toolsTab:not(:first-child) {
+  border-left: 0;
+}
+
+.toolsContent {
+  min-height: 0;
+  margin-top: 10px;
+  padding: 10px 20px 20px;
+}
+
+.toolsGrid {
+  display: grid;
+  gap: 0;
+  height: 100%;
+}
+
+.recruitTool {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.toolsScroll {
+  min-height: 0;
+  padding-top: 8px;
+}
+
+.toolsInfo {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.recruitInfo {
+  display: inline-block;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.toolsInfo.centered {
+  padding-top: 8px;
+  text-align: center;
+}
+
+.syncLine {
+  padding-top: 0;
+  text-align: center;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.recruitBottom,
+.toolButtonRow,
+.peepControls {
+  display: flex;
+  align-items: center;
+}
+
+.recruitBottom {
+  justify-content: center;
+  gap: 18px;
+  padding-bottom: 18px;
+}
+
+.recruitLeft {
+  display: grid;
+  gap: 8px;
+  min-width: 210px;
+}
+
+.recruitLevels {
+  display: grid;
+  gap: 8px;
+  min-width: 310px;
+}
+
+.recruitLevel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+}
+
+.timePair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.timePair input {
+  width: 55px;
+  height: 30px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.toolCheck,
+.disabledCheck,
+.titleSelect,
+.fpsControl {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.toolCheck input[type="checkbox"],
+.disabledCheck input[type="checkbox"] {
+  flex: 0 0 15px;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--blue);
+}
+
+.wrapCheck {
+  align-items: center;
+}
+
+.wrapCheck span {
+  max-width: 190px;
+  line-height: 1.3;
+}
+
+.toolBigButton {
+  width: 180px;
+  height: 70px;
+  font-size: 12px;
+}
+
+.toolButtonRow {
+  justify-content: center;
+  gap: 18px;
+  margin-top: auto;
+  padding-bottom: 18px;
+}
+
+.toolButtonRow.wide {
+  gap: 18px;
+}
+
+.toolButtonRow.wide .toolBigButton {
+  width: 160px;
+}
+
+.resultTool {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+.nestedToolPanel,
+.cardGrid,
+.emptyResultPanel {
+  min-height: 0;
+}
+
+.nestedToolPanel {
+  display: grid;
+  align-content: start;
+}
+
+.cardGrid {
+  display: grid;
+  gap: 16px;
+}
+
+.depotGrid {
+  grid-template-columns: repeat(auto-fill, minmax(186px, 1fr));
+}
+
+.toolEmpty {
+  display: none;
+}
+
+.gachaDisclaimer,
+.gachaTool,
+.peepTool,
+.miniGameTool {
+  display: grid;
+  height: 100%;
+  justify-items: center;
+}
+
+.gachaDisclaimer {
+  align-content: center;
+  gap: 14px;
+  padding-bottom: 40px;
+  text-align: center;
+}
+
+.disclaimerLine {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.rainbowText {
+  background: linear-gradient(90deg, #b331ff, #ff006e, #ff8d00, #ffe900, #28b338, #008fff);
+  background-clip: text;
+  color: transparent;
+  font-size: 28px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.55);
+}
+
+.gachaAgreeButton {
+  width: 110px;
+  height: 60px;
+  font-size: 14px;
+}
+
+.gachaTool {
+  grid-template-rows: 110px minmax(0, 1fr) auto;
+}
+
+.gachaTool .peepScreen {
+  width: min(560px, 100%);
+  min-height: 220px;
+}
+
+.peepTool {
+  grid-template-rows: minmax(0, 1fr) 100px;
+  width: 100%;
+}
+
+.peepStage {
+  display: grid;
+  width: 100%;
+  place-items: center;
+}
+
+.peepStage p {
+  font-size: 24px;
+}
+
+.peepScreen {
+  position: relative;
+  display: grid;
+  width: min(560px, 80vw);
+  aspect-ratio: 16 / 9;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #101114;
+}
+
+.deviceFrame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #08090b;
+}
+
+.fpsBadge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.72);
+  color: aquamarine;
+  font-weight: 700;
+}
+
+.peepControls {
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  padding-bottom: 18px;
+}
+
+.fpsControl {
+  align-items: start;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fpsControl input {
+  width: 72px;
+  height: 30px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.miniGameTool {
+  grid-template-rows: auto auto minmax(0, 1fr) 80px;
+  width: 100%;
+  padding-top: 8px;
+}
+
+.miniCombo {
+  position: relative;
+  width: 100%;
+  font-size: 12px;
+}
+
+.miniComboTitle {
+  display: block;
+  margin: 0 0 8px 12px;
+}
+
+.miniComboButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 30px;
+  padding: 0 12px 0 16px;
+  border-color: var(--blue);
+  text-align: left;
+}
+
+.miniComboArrow {
+  color: #28a9ff;
+  font-size: 14px;
+}
+
+.miniComboMenu {
+  position: absolute;
+  top: 60px;
+  left: 0;
+  z-index: 80;
+  display: grid;
+  width: 100%;
+  padding: 6px 0;
+  border-radius: 4px;
+  background: #171717;
+  box-shadow: 0 12px 18px rgba(0, 0, 0, 0.26);
+}
+
+.miniComboOption {
+  justify-content: start;
+  width: 100%;
+  min-height: 30px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 18px;
+  font-size: 12px;
+  text-align: left;
+}
+
+.miniComboOption.selected {
+  background: #202024;
+}
+
+.secretFront {
+  display: grid;
+  gap: 10px;
+  justify-self: start;
+  margin-top: 14px;
+}
+
+.titleSelect {
+  justify-content: start;
+  gap: 10px;
+}
+
+.titleSelect span {
+  min-width: 88px;
+  color: var(--muted);
+}
+
+.titleSelect select {
+  width: 240px;
+  height: 30px;
+  font-size: 12px;
+}
+
+.miniTip {
+  justify-self: start;
+  min-height: 120px;
+  padding: 14px 16px;
+  line-height: 1.5;
+  color: var(--text);
+  font-size: 12px;
+  white-space: pre-line;
+}
+
+.miniStart {
+  width: 100px;
+  height: 50px;
+  font-size: 12px;
+}
+
+.copilotViewRoot {
+  display: grid;
+  grid-template-columns: 552px minmax(420px, 1fr);
+  gap: 8px;
+  min-height: calc(100vh - 58px);
+  padding: 31px 34px 34px 40px;
+}
+
+.copilotViewRoot.withList {
+  grid-template-columns: 760px minmax(360px, 1fr);
+}
+
+.copilotMain {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 778px;
+}
+
+.copilotTop {
+  display: grid;
+  gap: 8px;
+}
+
+.copilotTabs {
+  display: grid;
+  grid-template-columns: repeat(4, max-content);
+  justify-content: start;
+  width: max-content;
+  padding: 0;
+  border-radius: 4px;
+  background: transparent;
+}
+
+.copilotTab {
+  min-width: 108px;
+  min-height: 30px;
+  border-radius: 0;
+  padding: 0 10px;
+}
+
+.copilotTab.active {
+  border-color: var(--blue);
+  color: #28a9ff;
+}
+
+.copilotTab:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.copilotTab:not(:first-child) {
+  border-left: 0;
+}
+
+.copilotTab:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.copilotPathRow {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px 34px 34px;
+  width: 552px;
+}
+
+.copilotViewRoot.withList .copilotPathRow {
+  width: 590px;
+}
+
+.copilotPathBox {
+  position: relative;
+}
+
+.copilotPathBox input {
+  width: 100%;
+  border-radius: 4px 0 0 4px;
+  padding-right: 34px;
+}
+
+.pathDropButton {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 30px;
+  min-height: 28px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: #1f2024;
+  font-size: 13px;
+}
+
+.copilotIconButton {
+  position: relative;
+  width: 34px;
+  min-height: 30px;
+  border-left: 0;
+  border-radius: 0;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.copilotIconButton:last-of-type {
+  border-radius: 0 4px 4px 0;
+}
+
+.copilotIconButton.danger {
+  color: var(--danger);
+}
+
+.hiddenFileInput {
+  display: none;
+}
+
+.copilotFilePopup {
+  position: absolute;
+  top: 32px;
+  left: 0;
+  z-index: 70;
+  width: calc(100% + 102px);
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #25262b;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.38);
+  padding: 5px 0;
+}
+
+.fileTreeItem,
+.fileTreeEmpty {
+  min-height: 24px;
+  padding: 4px 10px 4px calc(10px + var(--depth, 0) * 16px);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.fileTreeItem.file {
+  cursor: pointer;
+}
+
+.fileTreeItem.file:hover {
+  background: #30333a;
+  color: #50bfff;
+}
+
+.fileTreeItem.folder {
+  color: #cfd1d6;
+}
+
+.fileTreeEmpty {
+  color: var(--muted);
+}
+
+.copilotBody {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  align-items: start;
+  justify-content: center;
+  padding-top: 16px;
+}
+
+.copilotRunColumn {
+  display: grid;
+  justify-items: center;
+  min-width: 220px;
+}
+
+.copilotStartButton {
+  width: 100px;
+  height: 50px;
+  margin-bottom: 18px;
+}
+
+.copilotOptions {
+  display: grid;
+  gap: 9px;
+  justify-items: start;
+}
+
+.copilotCheck {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+  color: var(--text);
+}
+
+.copilotCheck input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+}
+
+.copilotIndented {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 24px;
+}
+
+.copilotSupportBlock {
+  display: grid;
+  gap: 3px;
+}
+
+.copilotSupportSelect {
+  margin-left: 24px;
+}
+
+.copilotSmallSelect {
+  width: 96px;
+}
+
+.loopTimesInput {
+  width: 68px;
+  height: 22px;
+}
+
+.copilotTaskPanel {
+  display: grid;
+  grid-template-rows: minmax(210px, 1fr) 30px;
+  width: 360px;
+  min-height: 280px;
+  margin-left: 5px;
+}
+
+.copilotTaskList {
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+  background: #1a1b1f;
+  overflow-y: auto;
+}
+
+.copilotListEmpty {
+  min-height: 210px;
+}
+
+.copilotTaskItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px 30px;
+  align-items: center;
+  min-height: 31px;
+  padding-left: 8px;
+}
+
+.copilotTaskItem.raid {
+  background: rgba(255, 0, 0, 0.2);
+}
+
+.copilotTaskCheck {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.copilotTaskCheck span,
+.copilotTaskItem > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copilotTaskItem button {
+  min-height: 30px;
+  border: 0;
+  background: transparent;
+  color: #9fa3aa;
+}
+
+.copilotTaskTools {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 34px 34px;
+}
+
+.taskNameBox {
+  position: relative;
+}
+
+.taskNameBox input {
+  width: 100%;
+  border-radius: 0;
+  text-align: center;
+}
+
+.copilotInfo {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 778px;
+  border-left: 1px solid #202226;
+  padding: 4px 28px 0 8px;
+}
+
+.overlayButton {
+  position: absolute;
+  top: 15px;
+  right: 0;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  color: #9da0a6;
+  font-size: 14px;
+}
+
+.copilotTips {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  max-height: 696px;
+  overflow-y: auto;
+  padding-right: 26px;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.copilotTips p,
+.copilotTips ul {
+  margin: 0;
+}
+
+.copilotTips .tipTitle {
+  margin-bottom: 4px;
+}
+
+.copilotTipGroup {
+  display: grid;
+  gap: 4px;
+}
+
+.copilotTipGroup ul {
+  display: grid;
+  gap: 2px;
+  padding-left: 0;
+  list-style: none;
+}
+
+.copilotTipGroup li {
+  position: relative;
+  padding-left: 16px;
+}
+
+.copilotTipGroup li::before {
+  position: absolute;
+  left: 0;
+  content: "●";
+}
+
+.copilotLink {
+  justify-self: center;
+  color: #008cff;
+  text-decoration: none;
+}
+
+.mapLink {
+  margin-top: 12px;
+}
+
+.copilotTipIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 25;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #292b30;
+  color: #8f949b;
+  cursor: help;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.copilotIconButton > .copilotTipIcon,
+.taskNameBox > .copilotTipIcon {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 14px;
+  height: 14px;
+  opacity: 0.42;
+  font-size: 10px;
+}
+
+.copilotTipIcon::after {
+  position: absolute;
+  bottom: 23px;
+  left: 50%;
+  z-index: 80;
+  width: max-content;
+  max-width: 330px;
+  padding: 7px 9px;
+  border: 1px solid #4c5057;
+  border-radius: 4px;
+  background: #24262b;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  content: attr(data-tip);
+  line-height: 1.45;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(2px);
+  white-space: pre-line;
+}
+
+.copilotIconButton > .copilotTipIcon::after,
+.taskNameBox > .copilotTipIcon::after {
+  right: -2px;
+  left: auto;
+  transform: translateY(2px);
+}
+
+.copilotTipIcon:hover::after,
+.copilotTipIcon:focus::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.copilotIconButton > .copilotTipIcon:hover::after,
+.copilotIconButton > .copilotTipIcon:focus::after,
+.taskNameBox > .copilotTipIcon:hover::after,
+.taskNameBox > .copilotTipIcon:focus::after {
+  transform: translateY(0);
+}
+
+.settingsGrid {
+  display: grid;
+  grid-template-columns: 260px minmax(420px, 620px);
+  gap: 22px;
+  padding: 34px;
+}
+
+.settingsViewRoot {
+  display: grid;
+  grid-template-columns: 175px minmax(620px, 1fr);
+  align-items: start;
+  gap: 20px;
+  min-height: calc(100vh - 58px);
+  padding: 26px 34px;
+  overflow: visible;
+}
+
+.settingsSideNav {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  background: var(--panel);
+  position: sticky;
+  top: 30px;
+  max-height: calc(100vh - 88px);
+  overflow-y: auto;
+}
+
+.settingsNavItem {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.settingsNavItem.active {
+  border-color: var(--blue);
+  color: #28a9ff;
+  background: var(--blue-soft);
+}
+
+.settingsContent {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  overflow: visible;
+}
+
+.settingsFold {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+.settingsFoldHead {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 30px;
+  border: 0;
+  border-radius: 4px 4px 0 0;
+  background: #1d1d1f;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.settingsFoldHead strong {
+  flex: 1;
+  font-weight: 400;
+}
+
+.settingsFoldHead span {
+  width: 14px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  text-align: right;
+}
+
+.settingsFoldBody {
+  display: grid;
+  justify-items: center;
+  min-height: 0;
+  border-top: 1px solid var(--line-soft);
+  padding: 12px 20px 14px;
+}
+
+.settingsFoldBody[hidden] {
+  display: none;
+}
+
+.configReplica,
+.timerReplica,
+.settingsFormReplica {
+  display: grid;
+  justify-items: center;
+  width: min(100%, 520px);
+}
+
+.configReplica {
+  gap: 10px;
+}
+
+.settingsField {
+  align-items: center;
+  width: 250px;
+}
+
+.settingsComboLine,
+.settingsAddLine {
+  display: grid;
+  width: 250px;
+}
+
+.settingsComboLine {
+  grid-template-columns: 1fr 30px;
+}
+
+.settingsComboLine select {
+  width: 100%;
+  border-radius: 4px 0 0 4px;
+}
+
+.settingsIconButton {
+  width: 30px;
+  min-height: 30px;
+  border-left: 0;
+  border-radius: 0 4px 4px 0;
+  font-weight: 700;
+}
+
+.settingsAddLine {
+  grid-template-columns: 1fr 60px;
+}
+
+.settingsAddLine input {
+  width: 100%;
+  border-radius: 4px 0 0 4px;
+}
+
+.settingsAddLine button {
+  border-left: 0;
+  border-radius: 0 4px 4px 0;
+}
+
+.timerReplica {
+  gap: 6px;
+}
+
+.settingsGlobalTip {
+  margin: 0;
+  color: var(--text);
+  font-weight: 700;
+  text-align: center;
+}
+
+.timerFlags,
+.timerShowRow {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  min-height: 30px;
+}
+
+.settingsCheckLine {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+}
+
+.settingsCheck {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  white-space: nowrap;
+}
+
+.settingsCheck input[type="checkbox"] {
+  flex: 0 0 15px;
+  margin: 0;
+}
+
+.timerGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 210px);
+  grid-template-rows: repeat(4, auto);
+  grid-auto-flow: column;
+  column-gap: 26px;
+  row-gap: 4px;
+}
+
+.timerItem {
+  display: grid;
+  grid-template-columns: 74px 126px;
+  align-items: center;
+  min-height: 30px;
+}
+
+.timerTime {
+  display: grid;
+  grid-template-columns: 55px 16px 55px;
+  align-items: center;
+  text-align: center;
+}
+
+.timerTime input {
+  width: 55px;
+  text-align: center;
+}
+
+.timerConfigSelect {
+  grid-column: 2;
+  width: 150px;
+  margin-top: 4px;
+}
+
+.settingsFormReplica {
+  grid-template-columns: repeat(2, 200px);
+  justify-content: center;
+  gap: 7px 22px;
+}
+
+.settingsFormRow {
+  width: 200px;
+}
+
+.settingsFormRow input,
+.settingsFormRow select,
+.settingsFormRow textarea {
+  width: 100%;
+}
+
+.settingsFormRow textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.settingsFormRowWide {
+  grid-column: 1 / -1;
+  width: 422px;
+}
+
+.settingsStaticCheck {
+  justify-self: start;
+}
+
+.settingsWideButton {
+  width: 200px;
+}
+
+.settingsTipIcon {
+  flex: 0 0 14px;
+}
+
+.settingsReplica,
+.settingsColumn {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+}
+
+.settingsReplica {
+  width: min(100%, 560px);
+}
+
+.settingsColumn {
+  align-content: start;
+}
+
+.settingsSplit {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  justify-content: center;
+  align-items: start;
+  gap: 26px;
+}
+
+.settingsFieldRow {
+  display: grid;
+  grid-template-columns: 120px max-content;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  width: max-content;
+}
+
+.settingsFieldText {
+  text-align: right;
+}
+
+.settingsControlLine,
+.settingsInlinePair {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settingsInlinePair {
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.settingsControlS {
+  width: 56px;
+}
+
+.settingsControlL {
+  width: 190px;
+}
+
+.settingsControlXL {
+  width: 260px;
+}
+
+.settingsControlXXL {
+  width: 330px;
+}
+
+.settingsButtonSmall {
+  min-width: 72px;
+  padding: 0 10px;
+}
+
+.settingsPrimaryButton {
+  width: 190px;
+  border-color: var(--blue);
+  background: var(--blue);
+}
+
+.settingsDivider {
+  width: 100%;
+  height: 1px;
+  border: 0;
+  background: var(--line-soft);
+}
+
+.settingsLineText {
+  color: var(--text);
+  line-height: 1.45;
+  text-align: center;
+}
+
+.settingsLink {
+  color: #008cff;
+  text-decoration: none;
+}
+
+.settingsSliderRow {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  width: 330px;
+}
+
+.settingsSliderRow input[type="range"] {
+  width: 330px;
+  accent-color: var(--blue);
+}
+
+.settingsChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 190px;
+  min-height: 54px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #1d1e22;
+}
+
+.settingsChips span,
+.settingsBadgeRow strong {
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: #565c9d;
+}
+
+.achievementMedal {
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  border: 2px solid #cfd2d6;
+  border-radius: 50%;
+  color: #f0f0f0;
+  font-size: 42px;
+}
+
+.settingsBadgeRow {
+  display: grid;
+  grid-template-columns: 72px max-content;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+}
+
+.settingsBadgeRow strong {
+  font-weight: 400;
+}
+
+.settingsIssueGrid,
+.settingsAboutGrid {
+  gap: 18px;
+}
+
+.profileItem {
+  width: 100%;
+  text-align: left;
+}
+
+.profileItem.active {
+  border-color: var(--blue);
+  color: #28a9ff;
+}
+
+.buttonRow {
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.wideForm {
+  width: 220px;
+}
+
+.infrastForm {
+  gap: 9px;
+}
+
+.wideForm > span,
+.sectionTitle {
+  display: block;
+}
+
+.sectionTitle {
+  margin: 2px 0 4px;
+  text-align: center;
+}
+
+.hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 14px;
+  position: relative;
+  z-index: 20;
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: #292b30;
+  color: #8f949b;
+  cursor: help;
+  font-size: 11px;
+  line-height: 14px;
+  vertical-align: middle;
+}
+
+.hint::after {
+  position: absolute;
+  bottom: 19px;
+  left: 50%;
+  z-index: 50;
+  width: max-content;
+  max-width: 340px;
+  padding: 7px 9px;
+  border: 1px solid #4c5057;
+  border-radius: 4px;
+  background: #24262b;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  content: attr(data-tip);
+  line-height: 1.45;
+  opacity: 0;
+  pointer-events: none;
+  text-align: left;
+  transform: translateX(-50%) translateY(2px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  white-space: pre-line;
+}
+
+.hint:hover::after,
+.hint:focus::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.stageBlock {
+  display: grid;
+  grid-template-columns: 116px 178px;
+  column-gap: 10px;
+  align-items: start;
+}
+
+.stageLabel {
+  display: grid;
+  gap: 7px;
+  justify-items: center;
+  padding-top: 7px;
+  text-align: center;
+}
+
+.addStageButton {
+  width: 86px;
+  min-height: 26px;
+}
+
+.stagePlanList {
+  display: grid;
+  gap: 4px;
+  min-height: 30px;
+}
+
+.stagePlanList.bordered {
+  min-height: 75px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px;
+}
+
+.stagePlanItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 4px;
+}
+
+.stagePlanItem.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.stagePlanSelect {
+  width: 100%;
+}
+
+.stageRemoveButton {
+  width: 24px;
+  min-height: 24px;
+  border: 0;
+  background: transparent;
+  color: #8f949b;
+}
+
+.redText {
+  color: #ff2929;
+}
+
+.mutedCheck {
+  opacity: 0.55;
+}
+
+.subLine {
+  margin-top: -7px;
+  margin-left: 18px;
+  color: var(--muted);
+}
+
+.subLine select {
+  margin-left: 6px;
+}
+
+.subLine.disabled {
+  opacity: 0.5;
+}
+
+.smallButton {
+  width: 110px;
+}
+
+.accountInput,
+.wideInput,
+.wideForm select,
+.readonlyList,
+.reclamationText {
+  width: 220px;
+}
+
+.wideForm input[type="number"],
+.wideForm input[type="text"],
+.wideForm input[type="range"],
+.wideForm input:not([type]),
+.wideForm select {
+  width: 220px;
+}
+
+.wideForm > div:has(.accountInput) {
+  display: grid;
+  grid-template-columns: 147px 73px;
+}
+
+.wideForm > div:has(.accountInput) button {
+  border-left: 0;
+  border-radius: 0 4px 4px 0;
+}
+
+.timeRow {
+  display: grid;
+  grid-template-columns: 1fr 16px 1fr;
+  align-items: center;
+  width: 120px;
+}
+
+.timeRow input {
+  width: 50px;
+}
+
+.timeRow span,
+.centerText {
+  text-align: center;
+}
+
+.facilityBox,
+.readonlyList {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.facilityBox {
+  display: grid;
+  gap: 7px;
+  margin-top: -4px;
+  padding: 8px 10px;
+  width: 220px;
+}
+
+.twoButtons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 220px;
+}
+
+.twoButtons button {
+  border-radius: 0;
+}
+
+.twoButtons button:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.twoButtons button:last-child {
+  border-left: 0;
+  border-radius: 0 4px 4px 0;
+}
+
+.inlineCheck {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.readonlyList {
+  display: grid;
+  gap: 16px;
+  min-height: 95px;
+}
+
+.reclamationText {
+  max-height: 410px;
+  overflow-y: auto;
+  padding-right: 8px;
+  line-height: 1.45;
+}
+
+.reclamationText p + p {
+  margin-top: 8px;
+}
+
+.advancedBlock {
+  display: none;
+}
+
+.taskItem.active {
+  background: #252528;
+  outline: 1px dotted #4a4c50;
+}
+
+.taskItem.active .taskNameButton {
+  outline: 0;
+}
+
+@media (max-width: 1000px) {
+  body {
+    min-width: 0;
+  }
+
+  .maaLayout {
+    grid-template-columns: 210px minmax(420px, 1fr);
+    padding-left: 36px;
+  }
+
+  .eventColumn {
+    grid-column: 1 / -1;
+  }
+}

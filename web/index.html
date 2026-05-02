@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MAA Web Control</title>
+    <link rel="icon" href="/newlogo.ico" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="windowShell">
+      <header class="titlebar">
+        <div class="windowTitle">
+          <img class="appIcon" src="/newlogo.ico" alt="" />
+          <span>MAA Web - v0.1.0 - redroid - 官服</span>
+        </div>
+        <div class="windowTools">
+          <button id="refreshButton" type="button" title="刷新">⟳</button>
+          <span>─</span>
+          <span>□</span>
+          <span>×</span>
+        </div>
+      </header>
+
+      <nav class="mainNav" aria-label="主导航">
+        <button class="navButton active" type="button" data-view="basement">一键长草</button>
+        <button class="navButton" type="button" data-view="copilot">自动战斗</button>
+        <button class="navButton" type="button" data-view="tools">小工具</button>
+        <button class="navButton" type="button" data-view="settings">设置</button>
+      </nav>
+
+      <main class="content">
+        <section id="view-basement" class="view active">
+          <div class="maaLayout">
+            <aside class="taskColumn">
+              <div class="taskBox">
+                <div id="taskList" class="taskList"></div>
+                <div class="taskButtons">
+                  <button id="addTaskButton" type="button">＋</button>
+                  <button id="moveUpButton" type="button">全选</button>
+                  <button id="deleteTaskButton" type="button">清空</button>
+                </div>
+              </div>
+              <div class="afterRun">
+                <span>完成后</span>
+                <strong>无动作</strong>
+              </div>
+              <button id="runButton" type="button" class="linkStart">Link Start!</button>
+              <button id="stopButton" type="button" class="ghost">停止</button>
+            </aside>
+
+            <section class="settingsArea">
+              <div id="taskEditor" class="taskEditor empty">请选择一个任务</div>
+              <div class="modeTabs">
+                <button class="active" type="button" data-setting-mode="general">常规设置</button>
+                <button type="button" data-setting-mode="advanced">高级设置</button>
+              </div>
+              <div class="tipsBlock">
+                <span>今日关卡小提示:</span>
+                <p>CE-6: 龙门币</p>
+                <p>AP-5: 红票</p>
+                <p>LS-6: 经验</p>
+                <p>PR-A-1/2: 奶&盾芯片</p>
+                <p>PR-C-1/2: 先锋&辅助芯片</p>
+              </div>
+            </section>
+
+            <aside class="eventColumn" aria-hidden="true">
+              <div class="miniStatus">
+                <div><span>状态</span><strong id="runnerState">Idle</strong></div>
+                <div><span>任务</span><strong id="taskProgress">0 / 0</strong></div>
+                <div><span>ADB</span><strong id="adbStatus">未配置</strong></div>
+                <div><span>redroid</span><strong id="redroidStatus">未配置</strong></div>
+              </div>
+              <div class="eventPanel">
+                <div class="panelHead">
+                  <span>事件</span>
+                  <button id="clearLogsButton" type="button">清空</button>
+                </div>
+                <div id="logList" class="logList"></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="view-copilot" class="view">
+          <div id="copilotViewRoot" class="copilotViewRoot"></div>
+        </section>
+
+        <section id="view-tools" class="view">
+          <div id="toolsViewRoot" class="toolsViewRoot"></div>
+        </section>
+
+        <section id="view-settings" class="view">
+          <div id="settingsViewRoot" class="settingsViewRoot"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/taskForms.js"></script>
+    <script src="/copilotView.js"></script>
+    <script src="/toolsView.js"></script>
+    <script src="/settingsView.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>
