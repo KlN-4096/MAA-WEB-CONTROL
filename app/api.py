@@ -359,16 +359,37 @@ def _parse_adb_devices(output: str) -> list[tuple[str, str]]:
 async def events_socket(websocket: WebSocket, events: EventBus) -> None:
     await websocket.accept()
     queue = events.add_subscriber()
+    receive_task = asyncio.create_task(websocket.receive())
+    event_task = asyncio.create_task(queue.get())
     try:
         for event in events.recent(20):
             await websocket.send_json(event.model_dump(mode="json"))
         while True:
-            event = await queue.get()
-            await websocket.send_json(event.model_dump(mode="json"))
-    except WebSocketDisconnect:
+            done, _ = await asyncio.wait(
+                {receive_task, event_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if receive_task in done:
+                message = receive_task.result()
+                if message.get("type") == "websocket.disconnect":
+                    break
+                receive_task = asyncio.create_task(websocket.receive())
+            if event_task in done:
+                event = event_task.result()
+                await websocket.send_json(event.model_dump(mode="json"))
+                event_task = asyncio.create_task(queue.get())
+    except (WebSocketDisconnect, asyncio.CancelledError):
         pass
     finally:
+        await _cancel_tasks(receive_task, event_task)
         events.remove_subscriber(queue)
+
+
+async def _cancel_tasks(*tasks: asyncio.Task[Any]) -> None:
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def peep_socket(websocket: WebSocket, runner: MaaRunnerService) -> None:
