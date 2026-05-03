@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from threading import Lock
 
 from .models import Profile
 
@@ -14,6 +15,7 @@ class ProfileStore:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.root.mkdir(parents=True, exist_ok=True)
+        self._write_lock = Lock()
 
     def list_names(self) -> list[str]:
         return sorted(path.stem for path in self.root.glob("*.json"))
@@ -27,7 +29,11 @@ class ProfileStore:
     def save(self, profile: Profile) -> Profile:
         path = self._path_for(profile.name)
         payload = profile.model_dump(mode="json", exclude_none=True)
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        content = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+        with self._write_lock:
+            tmp = path.with_suffix(".json.tmp")
+            tmp.write_text(content, encoding="utf-8")
+            tmp.replace(path)
         return profile
 
     def ensure_defaults(self, profiles: list[Profile]) -> list[str]:
