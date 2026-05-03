@@ -12,6 +12,7 @@ RunnerStateName = Literal[
     "AppendingTasks",
     "Running",
     "Stopping",
+    "Stopped",
     "Completed",
     "Failed",
 ]
@@ -84,11 +85,43 @@ class RunRequest(BaseModel):
 class AdbStatus(BaseModel):
     available: bool = False
     devices: list[str] = Field(default_factory=list)
-    message: str = "ADB status adapter is not configured yet."
+    message: str = "ADB 未配置"
 
 
 class RedroidStatus(BaseModel):
     available: bool = False
     container: str = "redroid"
-    message: str = "redroid status adapter is not configured yet."
+    message: str = "redroid 未启用"
 
+
+class PostAction(BaseModel):
+    type: Literal[
+        "none", "exit_game", "exit_emulator", "exit_maa",
+        "hibernate", "shutdown", "sleep",
+    ] = "none"
+    only_if_no_other_maa: bool = False
+
+
+class TimerSlot(BaseModel):
+    enabled: bool = False
+    time: str = "00:00"
+    profile_name: str = ""
+    force_start: bool = False
+
+
+class SchedulerConfig(BaseModel):
+    enabled: bool = False
+    slots: list[TimerSlot] = Field(default_factory=list)
+    post_action: PostAction = Field(default_factory=PostAction)
+
+
+class CopilotJob(BaseModel):
+    name: str = ""
+    path: str = ""
+    formation: int = 0
+    loop_times: int = 1
+
+
+class ToolRequest(BaseModel):
+    tool: str
+    params: dict[str, Any] = Field(default_factory=dict)

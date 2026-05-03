@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from app.events import EventBus
+from app.logs import MaaLogService
 from app.maa_adapter import OfficialMaaAdapter, create_maa_adapter
 from app.models import AdbConfig, AppendCall, Profile
 from app.runner import DryRunMaaAdapter
@@ -25,6 +26,7 @@ class FakeAsst:
 
     def __init__(self, callback=None, arg=None):
         self.callback = callback
+        self.instance_option_calls = []
         self.connect_calls = []
         self.append_calls = []
         self.start_calls = 0
@@ -35,6 +37,10 @@ class FakeAsst:
 
     def connect(self, adb_path, address, config="General"):
         self.connect_calls.append((adb_path, address, config))
+        return True
+
+    def set_instance_option(self, key, value):
+        self.instance_option_calls.append((key, value))
         return True
 
     def append_task(self, type_name, params):
@@ -124,6 +130,7 @@ class OfficialMaaAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(started)
         self.assertTrue(stopped)
         self.assertEqual(FakeAsst.load_calls[0][0], Path("D:/MAA"))
+        self.assertEqual(fake.instance_option_calls, [(6, "Official")])
         self.assertEqual(fake.connect_calls, [("adb", "127.0.0.1:5555", "ProfileConfig")])
         self.assertEqual(fake.append_calls, [("Award", {"enable": True})])
         self.assertEqual(fake.start_calls, 1)
@@ -151,6 +158,56 @@ class OfficialMaaAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(recent[-1].type, "maa.callback")
         self.assertEqual(recent[-1].detail["message"], 10001)
         self.assertEqual(recent[-1].detail["details"], {"what": "started"})
+
+    async def test_task_chain_callbacks_publish_semantic_events_and_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            events = EventBus()
+            logs = MaaLogService(events)
+            adapter = OfficialMaaAdapter(
+                core_dir=Path("D:/MAA"),
+                python_dir=None,
+                user_dir=Path(directory),
+                asst_cls=FakeAsst,
+                events=events,
+                log_service=logs,
+                poll_interval=0,
+            )
+
+            await adapter.connect(Profile(name="daily"))
+            FakeAsst.instances[0].callback(10001, b'{"what":"TaskChainError"}', None)
+            await asyncio.sleep(0)
+
+        recent = events.recent()
+        self.assertEqual(recent[-1].type, "maa.task_chain.error")
+        self.assertEqual(recent[-1].level, "error")
+        self.assertEqual(adapter.task_chain_status, "Failed")
+        log_event = [event for event in recent if event.type == "maa.log.item"][-1]
+        self.assertEqual(log_event.detail["color_key"], "ErrorLogBrush")
+        self.assertEqual(log_event.detail["split_mode"], "Both")
+
+    async def test_callback_maps_common_subtask_extra_info_to_log_item(self):
+        with tempfile.TemporaryDirectory() as directory:
+            events = EventBus()
+            logs = MaaLogService(events)
+            adapter = OfficialMaaAdapter(
+                core_dir=Path("D:/MAA"),
+                python_dir=None,
+                user_dir=Path(directory),
+                asst_cls=FakeAsst,
+                events=events,
+                log_service=logs,
+                poll_interval=0,
+            )
+
+            await adapter.connect(Profile(name="daily"))
+            details = b'{"what":"SubTaskExtraInfo","details":{"what":"EnterFacility","facility":"Manufacture","index":0}}'
+            FakeAsst.instances[0].callback(10001, details, None)
+            await asyncio.sleep(0)
+
+        log_event = [event for event in events.recent() if event.type == "maa.log.item"][-1]
+        self.assertEqual(log_event.message, "当前设施: 制造站 01")
+        self.assertEqual(log_event.detail["split_mode"], "Before")
+        self.assertEqual(log_event.detail["raw"]["what"], "SubTaskExtraInfo")
 
 
 if __name__ == "__main__":

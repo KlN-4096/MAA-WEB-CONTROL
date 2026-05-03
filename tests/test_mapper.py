@@ -53,13 +53,19 @@ class TaskMapperTest(unittest.TestCase):
         self.assertEqual(_select_stage_from_plan(["CE-6", "1-7"], weekday=0), "1-7")
         self.assertEqual(_select_stage_from_plan(["CE-6", "1-7"], weekday=1), "CE-6")
 
-    def test_custom_task_is_mapped_to_fight(self):
-        task = TaskDefinition(id="remaining", type="Custom", params={"stage": "1-7"})
+    def test_custom_task_preserves_official_task_names(self):
+        task = TaskDefinition(id="custom", type="Custom", params={"task_names": "GachaOnce;MiniGame@PV"})
 
         call = task_to_append_call(task)
 
-        self.assertEqual(call.type, "Fight")
-        self.assertEqual(call.params["stage"], "1-7")
+        self.assertEqual(call.type, "Custom")
+        self.assertEqual(call.params["task_names"], ["GachaOnce", "MiniGame@PV"])
+
+    def test_custom_task_requires_task_names(self):
+        task = TaskDefinition(id="custom", type="Custom", params={})
+
+        with self.assertRaisesRegex(TaskMappingError, "task_names"):
+            task_to_append_call(task)
 
     def test_fight_preserves_official_resource_fields_without_ui_switches(self):
         task = TaskDefinition(
@@ -146,6 +152,19 @@ class TaskMapperTest(unittest.TestCase):
         self.assertTrue(call.params["reception_clue_exchange"])
         self.assertFalse(call.params["reception_send_clue"])
 
+    def test_infrast_maps_custom_plan_fields(self):
+        task = TaskDefinition(
+            id="infrast",
+            type="Infrast",
+            params={"mode": "自定义基建配置", "custom_infrast_file": "plan.json", "plan_index": "2"},
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params["mode"], 10000)
+        self.assertEqual(call.params["filename"], "plan.json")
+        self.assertEqual(call.params["plan_index"], 2)
+
     def test_mall_maps_sale_flags(self):
         task = TaskDefinition(
             id="mall",
@@ -159,6 +178,8 @@ class TaskMapperTest(unittest.TestCase):
                 "discount_only": True,
                 "stop_if_low": True,
                 "credit_fight": True,
+                "credit_fight_once": True,
+                "formation_index": 3,
             },
         )
 
@@ -168,6 +189,8 @@ class TaskMapperTest(unittest.TestCase):
         self.assertTrue(call.params["only_buy_discount"])
         self.assertTrue(call.params["reserve_max_credit"])
         self.assertTrue(call.params["credit_fight"])
+        self.assertTrue(call.params["credit_fight_once"])
+        self.assertEqual(call.params["formation_index"], 3)
 
     def test_award_maps_official_flags(self):
         task = TaskDefinition(

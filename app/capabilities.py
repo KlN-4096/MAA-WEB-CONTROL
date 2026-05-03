@@ -8,9 +8,19 @@ CAPABILITIES: dict[str, Any] = {
     "version": 1,
     "features": {
         "basement": {"enabled": True},
-        "copilot": {"enabled": True},
-        "tools": {"enabled": True},
+        "copilot": {
+            "enabled": True,
+            "available": True,
+        },
+        "tools": {
+            "enabled": True,
+            "available": True,
+        },
         "settings": {"enabled": True},
+    },
+    "resources": {
+        "enabled": False,
+        "reason": "资源驱动选项尚未接 MaaCore resource，本轮继续使用静态/自由输入降级。",
     },
     "profiles": {
         "defaults": ["daily-shoucai", "daily-shualizhi"],
@@ -137,12 +147,19 @@ CAPABILITIES: dict[str, Any] = {
         },
         "Custom": {
             "enabled": True,
-            "title": "剩余理智",
+            "title": "自定义任务",
             "supports_advanced": True,
             "default_params": {
-                "stage": "当前/上次",
-                "stage_plan": ["当前/上次"],
-                "use_remaining_sanity_stage": True,
+                "task_names": [],
+            },
+        },
+        "UserDataUpdate": {
+            "enabled": True,
+            "title": "更新用户数据",
+            "supports_advanced": False,
+            "default_params": {
+                "update_oper_box": True,
+                "update_depot": True,
             },
         },
     },

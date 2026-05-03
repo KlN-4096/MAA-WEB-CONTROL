@@ -97,6 +97,8 @@ def _mall_params() -> dict[str, object]:
         "visit_friends": True,
         "visit_once": False,
         "credit_fight": False,
+        "credit_fight_once": False,
+        "formation_index": 0,
         "shopping": True,
         "buy_first": [],
         "blacklist": ["家具零件"],

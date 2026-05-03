@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 from datetime import datetime
-from functools import lru_cache
+from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from .models import AppendCall, Profile, TaskDefinition
@@ -25,9 +26,9 @@ SUPPORTED_TASK_TYPES = {
     "OperBox",
     "Reclamation",
     "Custom",
+    "UserDataUpdate",
 }
 
-FIGHT_LIKE_TASK_TYPES = {"Fight", "Custom"}
 UNLIMITED_TASK_TIMES = 99999
 STAGE_OPEN_WEEKDAYS = {
     "CE-6": {1, 3, 5, 6},
@@ -124,8 +125,8 @@ def task_to_append_call(task: TaskDefinition) -> AppendCall | None:
     params = deepcopy(task.params)
     _normalize_common_fields(params)
 
-    mapped_type = "Fight" if task.type == "Custom" else task.type
-    if task.type in FIGHT_LIKE_TASK_TYPES:
+    mapped_type = task.type
+    if task.type == "Fight":
         _map_fight(params)
     elif task.type == "StartUp":
         _map_startup(params)
@@ -141,6 +142,12 @@ def task_to_append_call(task: TaskDefinition) -> AppendCall | None:
         _map_roguelike(params)
     elif task.type == "Reclamation":
         _map_reclamation(params)
+    elif task.type == "Custom":
+        _map_custom(params)
+    elif task.type == "CloseDown":
+        _map_closedown(params)
+    elif task.type == "UserDataUpdate":
+        _map_userdata_update(params)
 
     params.setdefault("enable", True)
     return AppendCall(task_id=task.id, type=mapped_type, params=params)
@@ -219,9 +226,14 @@ def _map_recruit(params: dict[str, Any]) -> None:
     params["times"] = int(params.get("max_times", params.get("times", 0)))
     params["set_time"] = bool(params.get("set_time", True))
     params["expedite"] = bool(params.get("expedite", params.get("auto_expedited", False)))
+    params["expedite_times"] = int(params.get("expedite_times", params.get("times", params["times"])))
     params["skip_robot"] = bool(params.get("skip_robot", True))
     params["refresh"] = bool(params.get("refresh", False))
     params["force_refresh"] = bool(params.get("force_refresh", params.get("refresh", True)))
+    if "server" in params:
+        params["server"] = str(params.get("server", "CN"))
+    if "report_to_penguin" in params:
+        params["report_to_penguin"] = bool(params.get("report_to_penguin", False))
     params["recruitment_time"] = {
         str(level): _recruitment_minutes(params.get(f"time{level}", "09:00"))
         for level in (3, 4, 5, 6)
@@ -240,10 +252,17 @@ def _map_infrast(params: dict[str, Any]) -> None:
     params["reception_send_clue"] = bool(params.get("reception_send_clue", params.get("send_clue", True)))
     params["replenish"] = bool(params.get("replenish", params.get("stone_fragment", False)))
     params["continue_training"] = bool(params.get("continue_training", False))
+    if "filename" in params:
+        params["filename"] = str(params.get("filename", ""))
+    elif "custom_infrast_file" in params:
+        params["filename"] = str(params.get("custom_infrast_file", ""))
+    if "plan_index" in params:
+        params["plan_index"] = _int_or_default(params.get("plan_index"), 0)
 
 
 def _map_mall(params: dict[str, Any]) -> None:
     params["visit_friends"] = bool(params.get("visit_friends", True))
+    params["visit_friends_once"] = bool(params.get("visit_friends_once", params.get("visit_once", False)))
     params["shopping"] = bool(params.get("shopping", True))
     params["buy_first"] = _split_tags(params.get("buy_first", []))
     params["blacklist"] = _split_tags(params.get("blacklist", []))
@@ -251,6 +270,7 @@ def _map_mall(params: dict[str, Any]) -> None:
     params["only_buy_discount"] = bool(params.get("only_buy_discount", params.get("discount_only", False)))
     params["reserve_max_credit"] = bool(params.get("reserve_max_credit", params.get("stop_if_low", False)))
     params["credit_fight"] = bool(params.get("credit_fight", False))
+    params["credit_fight_once"] = bool(params.get("credit_fight_once", params.get("mall_fight_once", False)))
     params["formation_index"] = int(params.get("formation_index", 0))
 
 
@@ -276,6 +296,88 @@ def _map_roguelike(params: dict[str, Any]) -> None:
         if mode is not None:
             params["mode"] = mode
 
+    # Squad and roles
+    if "squad" in params:
+        params["squad"] = str(params.get("squad", ""))
+    if "roles" in params:
+        params["roles"] = str(params.get("roles", ""))
+    if "core_char" in params or "operator" in params:
+        params["core_char"] = str(params.get("core_char", params.get("operator", "")))
+
+    # Run count
+    if "starts_count" in params:
+        params["starts_count"] = _int_or_default(params.get("starts_count"), 999999)
+
+    # Investment
+    if "investment_enabled" in params:
+        params["investment_enabled"] = bool(params.get("investment_enabled", True))
+    if "investments_count" in params or "invest_count" in params:
+        params["investments_count"] = _int_or_default(
+            params.get("investments_count", params.get("invest_count")), 999
+        )
+    if "invest_with_more_score" in params:
+        params["invest_with_more_score"] = bool(params.get("invest_with_more_score", False))
+    if "stop_when_investment_full" in params or "stop_when_deposit_full" in params:
+        params["stop_when_investment_full"] = bool(
+            params.get("stop_when_investment_full", params.get("stop_when_deposit_full", False))
+        )
+
+    # Stop conditions
+    if "stop_at_final_boss" in params:
+        params["stop_at_final_boss"] = bool(params.get("stop_at_final_boss", False))
+    if "stop_at_max_level" in params or "stop_when_level_max" in params:
+        params["stop_at_max_level"] = bool(
+            params.get("stop_at_max_level", params.get("stop_when_level_max", False))
+        )
+
+    # Support
+    if "use_support" in params or "use_support_unit" in params:
+        params["use_support"] = bool(params.get("use_support", params.get("use_support_unit", False)))
+    if "use_nonfriend_support" in params:
+        params["use_nonfriend_support"] = bool(params.get("use_nonfriend_support", False))
+
+    # Seed
+    if "start_with_seed" in params:
+        params["start_with_seed"] = bool(params.get("start_with_seed", False))
+    if "seed" in params:
+        params["seed"] = str(params.get("seed", ""))
+
+    # Monthly squad
+    if "monthly_squad_auto_iterate" in params:
+        params["monthly_squad_auto_iterate"] = bool(params.get("monthly_squad_auto_iterate", True))
+    if "monthly_squad_check_comms" in params:
+        params["monthly_squad_check_comms"] = bool(params.get("monthly_squad_check_comms", True))
+
+    # Deep exploration
+    if "deep_exploration_auto_iterate" in params:
+        params["deep_exploration_auto_iterate"] = bool(params.get("deep_exploration_auto_iterate", True))
+
+    # Sami foldartal
+    if "first_floor_foldartal" in params or "sami_first_floor_foldartal" in params:
+        params["first_floor_foldartal"] = bool(
+            params.get("first_floor_foldartal", params.get("sami_first_floor_foldartal", False))
+        )
+    if "first_floor_foldartals" in params or "sami_first_floor_foldartals" in params:
+        val = params.get("first_floor_foldartals", params.get("sami_first_floor_foldartals", ""))
+        params["first_floor_foldartals"] = _split_tags(val) if isinstance(val, str) else _normalize_string_list(val)
+
+    # Collectible mode
+    if "start_with_elite_two" in params:
+        params["start_with_elite_two"] = bool(params.get("start_with_elite_two", False))
+    if "only_start_with_elite_two" in params:
+        params["only_start_with_elite_two"] = bool(params.get("only_start_with_elite_two", False))
+
+    # CLP_PDS paradigms
+    if "expected_collapsal_paradigms" in params:
+        val = params.get("expected_collapsal_paradigms", "")
+        params["expected_collapsal_paradigms"] = (
+            _split_tags(val) if isinstance(val, str) else _normalize_string_list(val)
+        )
+
+    # Refresh shop with dice
+    if "refresh_trader_with_dice" in params:
+        params["refresh_trader_with_dice"] = bool(params.get("refresh_trader_with_dice", False))
+
 
 def _map_reclamation(params: dict[str, Any]) -> None:
     if "theme" in params:
@@ -297,6 +399,25 @@ def _map_reclamation(params: dict[str, Any]) -> None:
         params["num_craft_batches"] = _int_or_default(params.get("max_craft_count"), 0)
     if "increment_mode" in params:
         params["increment_mode"] = _normalize_increment_mode(params.get("increment_mode"))
+    if "clear_store" in params:
+        params["clear_store"] = bool(params.get("clear_store", True))
+
+
+def _map_closedown(params: dict[str, Any]) -> None:
+    if "client_type" in params:
+        params["client_type"] = _normalize_client_type(params.get("client_type"))
+
+
+def _map_userdata_update(params: dict[str, Any]) -> None:
+    params.setdefault("update_oper_box", bool(params.get("update_oper_box", True)))
+    params.setdefault("update_depot", bool(params.get("update_depot", True)))
+
+
+def _map_custom(params: dict[str, Any]) -> None:
+    task_names = params.get("task_names", params.get("custom_tasks", []))
+    params["task_names"] = _split_tags(task_names) if isinstance(task_names, str) else _normalize_string_list(task_names)
+    if not params["task_names"]:
+        raise TaskMappingError("Custom task requires task_names. Provide a semicolon-separated list.")
 
 
 def _normalize_stage_plan(params: dict[str, Any]) -> None:
@@ -451,24 +572,37 @@ def _medicine_expire_days(params: dict[str, Any]) -> int:
     return max(hours // 24, 0)
 
 
-@lru_cache(maxsize=1)
+_drop_map_cache: dict[str, str] | None = None
+_drop_map_mtime: float = 0.0
+_drop_map_lock = Lock()
+
+
 def _drop_name_to_id_map() -> dict[str, str]:
+    global _drop_map_cache, _drop_map_mtime
     path = DEFAULT_MAA_SOURCE_DIR / "resource" / "item_index.json"
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(data, dict):
-        return {}
-
-    result: dict[str, str] = {}
-    for item_id, item in data.items():
-        if not str(item_id).isdigit() or str(item_id) in EXCLUDED_DROP_IDS:
-            continue
-        name = item.get("name") if isinstance(item, dict) else None
-        if name:
-            result[str(name)] = str(item_id)
-    return result
+        current_mtime = path.stat().st_mtime
+    except OSError:
+        return _drop_map_cache or {}
+    with _drop_map_lock:
+        if _drop_map_cache is not None and current_mtime == _drop_map_mtime:
+            return _drop_map_cache
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return _drop_map_cache or {}
+        if not isinstance(data, dict):
+            return _drop_map_cache or {}
+        result: dict[str, str] = {}
+        for item_id, item in data.items():
+            if not str(item_id).isdigit() or str(item_id) in EXCLUDED_DROP_IDS:
+                continue
+            name = item.get("name") if isinstance(item, dict) else None
+            if name:
+                result[str(name)] = str(item_id)
+        _drop_map_cache = result
+        _drop_map_mtime = current_mtime
+        return result
 
 
 def _build_drops(params: dict[str, Any]) -> dict[str, int]:
@@ -478,8 +612,25 @@ def _build_drops(params: dict[str, Any]) -> dict[str, int]:
         return {}
 
     drop = params.get("drop", MALL_DROP_FALLBACK)
+    drop_count = _int_or_default(params.get("drop_count", params.get("drop_quantity", 1)), 1)
+
+    # Support list of drops
     if isinstance(drop, list):
-        return {}
+        result: dict[str, int] = {}
+        name_map = _drop_name_to_id_map()
+        for item in drop:
+            if isinstance(item, dict):
+                name = str(item.get("name", ""))
+                count = _int_or_default(item.get("count", item.get("quantity", 1)), 1)
+            else:
+                name = str(item)
+                count = drop_count
+            if name and name != MALL_DROP_FALLBACK:
+                item_id = name_map.get(name, name if name.isdigit() else "")
+                if item_id:
+                    result[item_id] = count
+        return result
+
     drop_name = str(drop or MALL_DROP_FALLBACK)
     if drop_name == MALL_DROP_FALLBACK:
         return {}
@@ -487,4 +638,4 @@ def _build_drops(params: dict[str, Any]) -> dict[str, int]:
     item_id = _drop_name_to_id_map().get(drop_name, drop_name if drop_name.isdigit() else "")
     if not item_id:
         return {}
-    return {item_id: 1}
+    return {item_id: drop_count}
