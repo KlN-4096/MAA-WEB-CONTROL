@@ -2,10 +2,12 @@
   "name": "daily",
   "description": "Daily redroid MAA routine.",
   "adb": {
-    "address": "127.0.0.1:5555",
+    "address": "emulator-5554",
     "adb_path": "adb",
     "client_type": "Official",
-    "connect_config": {}
+    "connect_config": {
+      "preset": "General"
+    }
   },
   "tasks": [
     {
@@ -16,10 +18,10 @@
       "params": {
         "account": "",
         "start_game_enabled": true,
-        "client_type": "官服",
-        "auto_detect": true,
+        "client_type": "Official",
+        "auto_detect": false,
         "detect_every_time": true,
-        "connection": "雷电模拟器",
+        "connection": "General",
         "touch_mode": "Minitouch（默认）"
       },
       "strategy": {}
@@ -27,10 +29,10 @@
     {
       "id": "recruit",
       "type": "Recruit",
-      "enabled": true,
+      "enabled": false,
       "name": "自动公招",
       "params": {
-        "auto_expedited": false,
+        "auto_expedited": true,
         "max_times": 99,
         "extra_tags": "",
         "refresh": true,
@@ -40,7 +42,7 @@
         "time3": "09:00",
         "confirm_4": true,
         "time4": "09:00",
-        "confirm_5": false,
+        "confirm_5": true,
         "time5": "09:00",
         "confirm_6": false
       },
@@ -49,7 +51,7 @@
     {
       "id": "infrast",
       "type": "Infrast",
-      "enabled": true,
+      "enabled": false,
       "name": "基建换班",
       "params": {
         "mode": "常规模式",
@@ -146,7 +148,7 @@
     {
       "id": "mall",
       "type": "Mall",
-      "enabled": true,
+      "enabled": false,
       "name": "信用收支",
       "params": {
         "visit_friends": true,
@@ -166,7 +168,7 @@
     {
       "id": "award",
       "type": "Award",
-      "enabled": true,
+      "enabled": false,
       "name": "领取奖励",
       "params": {
         "daily": true,
