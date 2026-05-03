@@ -41,7 +41,7 @@
                 <strong>无动作</strong>
               </div>
               <button id="runButton" type="button" class="linkStart">Link Start!</button>
-              <button id="stopButton" type="button" class="ghost">停止</button>
+              <button id="stopButton" type="button" class="linkStart stopStart ghost">停止</button>
             </aside>
 
             <section class="settingsArea">
@@ -60,7 +60,7 @@
               </div>
             </section>
 
-            <aside class="eventColumn" aria-hidden="true">
+            <aside class="eventColumn" aria-label="事件日志">
               <div class="miniStatus">
                 <div><span>状态</span><strong id="runnerState">Idle</strong></div>
                 <div><span>任务</span><strong id="taskProgress">0 / 0</strong></div>
@@ -69,7 +69,7 @@
               </div>
               <div class="eventPanel">
                 <div class="panelHead">
-                  <span>事件</span>
+                  <span>事件日志</span>
                   <button id="clearLogsButton" type="button">清空</button>
                 </div>
                 <div id="logList" class="logList"></div>

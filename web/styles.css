@@ -181,10 +181,10 @@ p {
 
 .maaLayout {
   display: grid;
-  grid-template-columns: 210px minmax(420px, 1fr);
-  gap: 38px;
+  grid-template-columns: 210px minmax(400px, 460px) 360px;
+  gap: 28px;
   min-height: 100%;
-  padding: 31px 20px 34px 108px;
+  padding: 31px 20px 34px 62px;
 }
 
 .taskColumn {
@@ -368,6 +368,27 @@ p {
   width: 100px;
   height: 50px;
   margin: 0 auto;
+  border-color: #2f91c7;
+  background: linear-gradient(#187fbd, #096fa8);
+  color: #f7fbff;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.linkStart:hover:not(:disabled) {
+  border-color: #4dbbff;
+  color: #fff;
+}
+
+.linkStart.stopStart {
+  border-color: #ba4545;
+  background: linear-gradient(#a83838, #842727);
+  color: #fff3f3;
+}
+
+.linkStart.stopStart:hover:not(:disabled) {
+  border-color: #ff7777;
+  color: #fff;
 }
 
 .ghost {
@@ -512,15 +533,16 @@ input[type="checkbox"] {
 }
 
 .eventColumn {
-  display: none;
+  display: grid;
   align-content: start;
   gap: 12px;
+  width: 360px;
 }
 
 .miniStatus {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .miniStatus div,
@@ -529,7 +551,7 @@ input[type="checkbox"] {
   border: 1px solid var(--line-soft);
   border-radius: 5px;
   background: var(--panel);
-  padding: 10px;
+  padding: 9px;
 }
 
 .miniStatus span,
@@ -540,7 +562,10 @@ input[type="checkbox"] {
 .miniStatus strong {
   display: block;
   margin-top: 4px;
-  font-size: 14px;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .panelHead {
@@ -555,24 +580,93 @@ input[type="checkbox"] {
   gap: 7px;
 }
 
+.logList {
+  max-height: 640px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
 .logItem {
-  border-left: 2px solid var(--blue);
-  background: var(--panel-2);
-  padding: 7px 8px;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+  border: 1px solid #303238;
+  border-left: 3px solid var(--blue);
+  border-radius: 4px;
+  background: #202124;
+  padding: 7px 8px 8px 6px;
 }
 
 .logItem.error {
   border-left-color: var(--danger);
+  background: #2a2020;
+  box-shadow: inset 0 0 0 1px rgba(209, 77, 77, 0.18);
 }
 
-.logItem strong {
+.logItem.warning {
+  border-left-color: #c9903a;
+}
+
+.logTime {
+  color: #c8c8c8;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.logBody {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.logMessage {
+  overflow-wrap: anywhere;
   font-weight: 400;
+  line-height: 1.35;
 }
 
-.logItem time {
-  display: block;
-  margin-top: 3px;
+.logType {
   color: var(--muted);
+  font-size: 11px;
+}
+
+.logDetails {
+  display: grid;
+  gap: 2px;
+  margin: 3px 0 0;
+}
+
+.logDetails div {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+}
+
+.logDetails dt,
+.logDetails dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logDetails dt {
+  color: #7f8994;
+}
+
+.logDetails dd {
+  color: #d4d4d4;
+}
+
+.logEmpty {
+  border: 1px dashed var(--line-soft);
+  border-radius: 4px;
+  padding: 14px 8px;
+  color: var(--muted);
+  text-align: center;
 }
 
 .placeholderPanel {
@@ -2144,5 +2238,6 @@ input[type="checkbox"] {
 
   .eventColumn {
     grid-column: 1 / -1;
+    width: auto;
   }
 }

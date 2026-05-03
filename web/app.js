@@ -14,13 +14,18 @@ const state = {
   options: null,
   capabilities: null,
   saveTimer: null,
+  runnerState: "Idle",
   logs: []
 };
 
 const $ = (id) => document.getElementById(id);
 let basementWired = false;
 let draggedTaskIndex = null;
+let runRequestPending = false;
+let stopRequestPending = false;
 const wiredFeatureIds = new Set();
+const BUSY_RUNNER_STATES = new Set(["Connecting", "AppendingTasks", "Running", "Stopping"]);
+const VISIBLE_LOG_DETAILS = ["what", "taskchain", "subtask", "task_id", "type", "maa_id", "message"];
 
 const FEATURE_CONTEXT = {
   state,
@@ -150,6 +155,7 @@ async function refreshStatus() {
     api("/api/adb/devices"),
     api("/api/redroid/status")
   ]);
+  state.runnerState = status.state || "Idle";
   setText("runnerState", status.state);
   setText("sideRunnerState", status.state);
   setText("taskProgress", `${status.appended_tasks} / ${status.total_tasks}`);
@@ -158,6 +164,7 @@ async function refreshStatus() {
   setText("toolsAdbStatus", adb.available ? "可用" : "未配置");
   setText("redroidStatus", redroid.available ? "可用" : "未配置");
   setText("toolsRedroidStatus", redroid.available ? "可用" : "未配置");
+  syncRunnerControls();
 }
 
 function renderAll() {
@@ -313,30 +320,121 @@ function scheduleSave() {
 }
 
 async function runProfile() {
-  await saveProfile();
-  await api(`/api/profiles/${encodeURIComponent(state.profile.name)}/run`, { method: "POST" });
-  await refreshStatus();
+  if (isRunnerBusy() || runRequestPending || !state.profile) return;
+  runRequestPending = true;
+  syncRunnerControls();
+  try {
+    await saveProfile();
+    await api(`/api/profiles/${encodeURIComponent(state.profile.name)}/run`, { method: "POST" });
+    await refreshStatus();
+  } finally {
+    runRequestPending = false;
+    syncRunnerControls();
+  }
 }
 
 async function stopRun() {
-  await api("/api/stop", { method: "POST" });
-  await refreshStatus();
+  if (!isRunnerBusy() || stopRequestPending) return;
+  stopRequestPending = true;
+  syncRunnerControls();
+  try {
+    await api("/api/stop", { method: "POST" });
+    await refreshStatus();
+  } finally {
+    stopRequestPending = false;
+    syncRunnerControls();
+  }
 }
 
-function addLocalLog(level, type, message) {
-  state.logs.unshift({ ts: new Date().toISOString(), level, type, message });
+function isRunnerBusy(value = state.runnerState) {
+  return BUSY_RUNNER_STATES.has(value);
+}
+
+function syncRunnerControls() {
+  const runButton = $("runButton");
+  const stopButton = $("stopButton");
+  const busy = isRunnerBusy();
+  if (runButton) {
+    runButton.classList.toggle("stopStart", busy);
+    runButton.disabled = runRequestPending || stopRequestPending || state.runnerState === "Stopping";
+    runButton.textContent = busy ? "停止" : "Link Start!";
+  }
+  if (stopButton) {
+    stopButton.classList.add("ghost");
+    stopButton.disabled = true;
+  }
+}
+
+function addLocalLog(level, type, message, detail = {}) {
+  addLogItem({ ts: new Date().toISOString(), level, type, message, detail });
+}
+
+function addLogItem(item) {
+  state.logs.unshift(normalizeLogItem(item));
   state.logs = state.logs.slice(0, 100);
   renderLogs();
 }
 
 function renderLogs() {
-  $("logList").innerHTML = state.logs.map((item) => {
-    const time = new Date(item.ts).toLocaleString();
+  const list = $("logList");
+  if (!list) return;
+  if (!state.logs.length) {
+    list.innerHTML = `<div class="logEmpty">等待事件</div>`;
+    return;
+  }
+  list.innerHTML = state.logs.map((item) => {
+    const details = renderLogDetails(item.detail);
     return `<div class="logItem ${escapeHtml(item.level)}">
-      <strong>${escapeHtml(item.message)}</strong>
-      <time>${escapeHtml(item.type)} · ${escapeHtml(time)}</time>
+      <time class="logTime">${escapeHtml(formatLogTime(item.ts))}</time>
+      <div class="logBody">
+        <strong class="logMessage">${escapeHtml(item.message)}</strong>
+        <span class="logType">${escapeHtml(item.type)}</span>
+        ${details}
+      </div>
     </div>`;
   }).join("");
+}
+
+function normalizeLogItem(item = {}) {
+  const detail = item.detail && typeof item.detail === "object" && !Array.isArray(item.detail) ? item.detail : {};
+  const level = ["debug", "info", "warning", "error"].includes(item.level) ? item.level : "info";
+  return {
+    ts: item.ts || new Date().toISOString(),
+    level,
+    type: item.type || "ui.event",
+    message: item.message || item.type || "事件",
+    detail
+  };
+}
+
+function formatLogTime(value) {
+  const time = new Date(value);
+  if (Number.isNaN(time.getTime())) return "--:--:--";
+  return time.toLocaleTimeString("zh-CN", { hour12: false });
+}
+
+function renderLogDetails(detail) {
+  const entries = logDetailEntries(detail);
+  if (!entries.length) return "";
+  return `<dl class="logDetails">${entries.map(([key, value]) => `
+    <div><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd></div>
+  `).join("")}</dl>`;
+}
+
+function logDetailEntries(detail) {
+  const sources = [detail];
+  if (detail.details && typeof detail.details === "object" && !Array.isArray(detail.details)) sources.push(detail.details);
+  const entries = [];
+  VISIBLE_LOG_DETAILS.forEach((key) => {
+    const value = sources.map((source) => source[key]).find((candidate) => candidate !== undefined && candidate !== null && candidate !== "");
+    if (value !== undefined) entries.push([key, stringifyLogDetail(value)]);
+  });
+  return entries.slice(0, 4);
+}
+
+function stringifyLogDetail(value) {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
 }
 
 function wireEvents() {
@@ -360,8 +458,10 @@ function wireBasementView() {
   addListener("#taskList", "drop", onTaskDrop);
   addListener("#taskList", "dragend", onTaskDragEnd);
   addListener("#saveButton", "click", () => runFeatureAction("basement", "save")?.catch(showError));
-  addListener("#runButton", "click", () => runFeatureAction("basement", "run")?.catch(showError));
-  addListener("#stopButton", "click", () => runFeatureAction("basement", "stop")?.catch(showError));
+  addListener("#runButton", "click", () => {
+    (isRunnerBusy() ? stopRun() : runProfile()).catch(showError);
+  });
+  addListener("#stopButton", "click", () => stopRun().catch(showError));
   addListener("#addTaskButton", "click", onAddTaskButtonClick);
   addListener("#deleteTaskButton", "click", () => runFeatureAction("basement", "clearTasks"));
   addListener("#moveUpButton", "click", () => runFeatureAction("basement", "selectAllTasks"));
@@ -870,16 +970,20 @@ function connectEvents() {
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   const socket = new WebSocket(`${protocol}//${location.host}/api/events`);
   socket.onmessage = (message) => {
-    state.logs.unshift(JSON.parse(message.data));
-    state.logs = state.logs.slice(0, 100);
-    renderLogs();
+    try {
+      addLogItem(JSON.parse(message.data));
+    } catch (error) {
+      addLocalLog("error", "ui.websocket", "事件解析失败", { message: error.message || String(error) });
+    }
     refreshStatus().catch(showError);
   };
   socket.onclose = () => setTimeout(connectEvents, 2000);
 }
 
 function showError(error) {
-  addLocalLog("error", "ui.error", error.message || String(error));
+  addLocalLog("error", "ui.error", error.message || String(error), {
+    what: error.name || "Error"
+  });
 }
 
 function setText(id, value) {
@@ -894,6 +998,7 @@ async function boot() {
   await loadProfiles();
   await refreshStatus();
   renderAll();
+  renderLogs();
 }
 
 patchSettingsInternalScroll();
