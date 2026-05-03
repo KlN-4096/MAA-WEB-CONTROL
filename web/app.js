@@ -525,8 +525,18 @@ function addTaskTypeOptions() {
     .filter((type) => typeof taskDefinition !== "function" || taskDefinition(type).enabled !== false)
     .map((type) => ({
       id: type,
-      title: typeof taskDefinition === "function" ? taskDefinition(type).title : type
+      title: taskMenuTitle(type)
     }));
+}
+
+function taskMenuTitle(type) {
+  const localizedTitle = typeof TASK_NAMES !== "undefined" && TASK_NAMES ? TASK_NAMES[type] : "";
+  if (typeof localizedTitle === "string" && localizedTitle) return localizedTitle;
+  if (typeof taskDefinition === "function") {
+    const definition = taskDefinition(type);
+    if (typeof definition?.title === "string" && definition.title) return definition.title;
+  }
+  return type;
 }
 
 function toggleTaskTypeMenu(anchor) {
