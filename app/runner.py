@@ -96,10 +96,9 @@ class MaaRunnerService:
             raise RuntimeError("MaaCore start failed.")
         self._status.state = "Completed"
         self._status.current_task = None
-        self._events.publish(EventRecord.now("runner.completed", "Dry-run completed."))
+        self._events.publish(EventRecord.now("runner.completed", "Run completed."))
 
     def _fail(self, message: str) -> None:
         self._status.state = "Failed"
         self._status.last_error = message
         self._events.publish(EventRecord.now("runner.failed", message, level="error"))
-

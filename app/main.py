@@ -8,7 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from .api import create_api_router, events_socket
 from .default_profiles import build_default_profiles
 from .events import EventBus
-from .runner import DryRunMaaAdapter, MaaRunnerService
+from .maa_adapter import create_maa_adapter
+from .runner import MaaRunnerService
 from .storage import ProfileStore
 
 
@@ -19,7 +20,7 @@ WEB_DIR = PROJECT_ROOT / "web"
 event_bus = EventBus()
 profile_store = ProfileStore(PROFILE_DIR)
 profile_store.ensure_defaults(build_default_profiles())
-runner = MaaRunnerService(DryRunMaaAdapter(), event_bus)
+runner = MaaRunnerService(create_maa_adapter(PROJECT_ROOT, event_bus), event_bus)
 
 app = FastAPI(title="MAA Web Control", version="0.1.0")
 app.include_router(create_api_router(profile_store, runner, event_bus))
