@@ -44,7 +44,11 @@ const SETTINGS_PERSISTED_FIELDS = [
   "blockSleepScreenOn",
   "enablePenguin",
   "connectConfig",
+  "adbAddress",
+  "adbPath",
+  "touchMode",
   "autoDetectConnection",
+  "detectEveryTime",
   "ldExtrasEnabled",
   "ldManualIndex",
   "mumuExtrasEnabled",
@@ -56,6 +60,7 @@ const SETTINGS_PERSISTED_FIELDS = [
   "proxyType",
   "achievementPopupDisabled",
   "achievementPopupAutoClose",
+  "logThumbnailMax",
   "timers"
 ];
 const SETTINGS_AUTO_SCROLL_SUPPRESS_MS = 120;
@@ -72,13 +77,18 @@ const SETTINGS_STATE = {
   blockSleepScreenOn: true,
   enablePenguin: true,
   connectConfig: "LDPlayer",
+  adbAddress: "127.0.0.1:5555",
+  adbPath: "adb",
+  touchMode: "Minitouch（默认）",
   autoDetectConnection: false,
+  detectEveryTime: true,
   ldExtrasEnabled: true,
   ldManualIndex: false,
   mumuExtrasEnabled: true,
   mumuBridge: false,
   useTray: true,
   useCardLog: true,
+  logThumbnailMax: 100,
   updateSource: "Overseas",
   forceGithub: true,
   proxyType: "",
@@ -125,6 +135,7 @@ function restoreSettingsState() {
     "blockSleepScreenOn",
     "enablePenguin",
     "autoDetectConnection",
+    "detectEveryTime",
     "ldExtrasEnabled",
     "ldManualIndex",
     "mumuExtrasEnabled",
@@ -135,7 +146,8 @@ function restoreSettingsState() {
     "achievementPopupDisabled",
     "achievementPopupAutoClose"
   ].forEach((field) => MaaStorage.copyBoolean(parsed, restored, field));
-  ["clientType", "connectConfig", "updateSource", "proxyType"].forEach((field) => MaaStorage.copyString(parsed, restored, field));
+  ["clientType", "connectConfig", "adbAddress", "adbPath", "touchMode", "updateSource", "proxyType"].forEach((field) => MaaStorage.copyString(parsed, restored, field));
+  if (parsed?.logThumbnailMax !== undefined) restored.logThumbnailMax = clampNumber(parsed.logThumbnailMax, 1, 9999, SETTINGS_STATE.logThumbnailMax);
   if (Array.isArray(parsed.timers)) restored.timers = restoreTimers(parsed.timers);
   return restored;
 }
@@ -171,12 +183,14 @@ function renderSettingsView() {
   const root = $("settingsViewRoot");
   if (!root) return;
   syncSettingsConfigs();
+  syncSettingsFromProfile();
   root.innerHTML = `
     <aside class="settingsSideNav">${SETTINGS_SECTIONS.map(settingsNavButton).join("")}</aside>
     <section class="settingsContent">
       ${SETTINGS_SECTIONS.map((section) => settingsSection(section, section.render())).join("")}
     </section>
   `;
+  syncSettingsEditingLock();
   if (typeof state !== "undefined" && state.currentView === "settings") {
     requestAnimationFrame(() => scrollSettingsSection(SETTINGS_STATE.selected, "auto"));
   }
@@ -325,13 +339,14 @@ function renderConnectionSection() {
   const isMumu = SETTINGS_STATE.connectConfig === "MuMuEmulator12";
   return settingsColumn(`
     ${checkLine("自动检测连接", false, "自动寻找可用模拟器连接。", "autoDetectConnection")}
+    ${checkLine("每次重新检测", true, "端口经常变化时再启用。", "detectEveryTime")}
     ${fieldRow("连接配置", selectBox([
       { label: "雷电模拟器", value: "LDPlayer" },
       { label: "MuMu 模拟器", value: "MuMuEmulator12" },
       { label: "通用", value: "General" }
     ], SETTINGS_STATE.connectConfig, "connectConfig"), "", "settingsControlXL")}
-    ${fieldRow("连接地址", selectBox(["emulator-5554", "127.0.0.1:5555"], 0, "", "settingsControlXL", disabledAuto), "历史连接地址")}
-    ${fieldRow("ADB 路径", inputButton("D:\\\\APPS\\\\AppGroup_2_china\\\\LeidianMoNoQi\\\\leidi", "选择", "settingsControlXL", disabledAuto))}
+    ${fieldRow("连接地址", textBox(SETTINGS_STATE.adbAddress, "settingsControlXL", "adbAddress", disabledAuto), "写入当前 profile.adb.address")}
+    ${fieldRow("ADB 路径", textBox(SETTINGS_STATE.adbPath, "settingsControlXL", "adbPath", disabledAuto))}
     ${isLd ? checkLine("启用 LD 截图增强模式", true, "", "ldExtrasEnabled") : ""}
     ${isLd ? fieldRow("LD 安装路径", textBox("D:\\\\APPS\\\\AppGroup_2_china\\\\LeidianMoNoQi\\\\Leidian\\\\LDPlayer", "settingsControlXXL")) : ""}
     ${isLd ? checkLine("手动填写「实例编号」", false, "", "ldManualIndex") : ""}
@@ -345,7 +360,7 @@ function renderConnectionSection() {
     ${checkLine("ADB 连接失败时尝试启动模拟器", true, "连接失败后自动启动模拟器。")}
     ${checkLine("连接失败后尝试重启 ADB Server", true)}
     ${checkLine("连接失败后尝试关闭并重启 ADB 进程", true)}
-    ${fieldRow("触控模式", `${selectBox(["Minitouch（默认）", "MaaTouch", "ADB"], 0)}<button class="settingsButtonSmall" type="button">强制替换 ADB</button>`)}
+    ${fieldRow("触控模式", selectBox(["Minitouch（默认）", "MaaTouch（实验功能）", "ADB Input（不推荐使用）", "MaaFramework（实验功能）"], SETTINGS_STATE.touchMode, "touchMode"))}
     <div class="settingsInlinePair">${checkLine("退出时释放 ADB", true)}${checkLine("使用 ADB Lite（实验性功能）")}</div>
   `);
 }
@@ -397,7 +412,7 @@ function renderUiSection() {
         ${checkLine("反转主任务右键单击效果", false, "切换主任务右键行为。")}
         ${checkLine("使用软件渲染", false, "用于规避部分图形模块异常。")}
         ${checkLine("使用卡片样式日志", true, "", "useCardLog")}
-        ${SETTINGS_STATE.useCardLog ? fieldRow("日志缩略图最大数量", numberBox("20", "settingsControlL")) : ""}
+        ${SETTINGS_STATE.useCardLog ? fieldRow("日志缩略图最大数量", numberBox(String(SETTINGS_STATE.logThumbnailMax), "settingsControlL", "logThumbnailMax")) : ""}
         ${fieldRow("日期格式字符串", selectBox(["HH:mm:ss", "HH:mm", "yyyy-MM-dd HH:mm:ss"], 0))}
       </div>
       <div class="settingsColumn">
@@ -608,6 +623,9 @@ function onSettingsClick(event) {
     runSettingsAction("toggleSection", { key: toggle.dataset.settingsToggle });
     return;
   }
+  if (isSettingsEditingLocked() && (event.target.closest("[data-settings-add-config]") || event.target.closest("[data-settings-delete-config]"))) {
+    return;
+  }
   if (event.target.closest("[data-settings-add-config]")) {
     runSettingsAction("addConfig");
     return;
@@ -618,6 +636,10 @@ function onSettingsClick(event) {
 }
 
 function onSettingsChange(event) {
+  if (isSettingsEditingLocked() && isSettingsWriteTarget(event.target)) {
+    syncSettingsEditingLock();
+    return;
+  }
   if (event.target.matches("[data-settings-current-config]")) {
     SETTINGS_STATE.currentConfig = event.target.value;
     persistSettingsState();
@@ -627,6 +649,7 @@ function onSettingsChange(event) {
   if (flag) {
     SETTINGS_STATE[flag.dataset.settingsFlag] = flag.checked;
     persistSettingsState();
+    saveSettingsProfile();
     renderSettingsView();
     return;
   }
@@ -638,6 +661,10 @@ function onSettingsChange(event) {
 }
 
 function onSettingsInput(event) {
+  if (isSettingsEditingLocked() && isSettingsWriteTarget(event.target)) {
+    syncSettingsEditingLock();
+    return;
+  }
   if (event.target.matches("[data-settings-new-config]")) {
     SETTINGS_STATE.newConfigName = event.target.value;
     return;
@@ -680,7 +707,101 @@ function syncSettingsConfigs() {
   SETTINGS_STATE.timers.forEach((timer) => { timer.config = SETTINGS_STATE.currentConfig; });
 }
 
+function isSettingsEditingLocked() {
+  return typeof isProfileEditingLocked === "function"
+    ? isProfileEditingLocked()
+    : typeof isRunnerBusy === "function" && isRunnerBusy();
+}
+
+function isSettingsWriteTarget(target) {
+  return Boolean(target.closest(
+    "[data-settings-field], [data-settings-flag], [data-timer-enabled], [data-timer-hour], [data-timer-minute], [data-timer-config], [data-settings-current-config], [data-settings-new-config], [data-settings-add-config], [data-settings-delete-config]"
+  ));
+}
+
+function syncSettingsEditingLock() {
+  const root = $("settingsViewRoot");
+  if (!root) return;
+  const locked = isSettingsEditingLocked();
+  root.classList.toggle("settingsLocked", locked);
+  root.querySelectorAll(
+    "[data-settings-field], [data-settings-flag], [data-timer-enabled], [data-timer-hour], [data-timer-minute], [data-timer-config], [data-settings-current-config], [data-settings-new-config], [data-settings-add-config], [data-settings-delete-config]"
+  ).forEach((control) => {
+    setSettingsLockDisabled(control, locked);
+  });
+}
+
+function setSettingsLockDisabled(element, locked) {
+  if (!element) return;
+  const key = "lockDisabled";
+  if (locked) {
+    if (!(key in element.dataset)) {
+      element.dataset[key] = element.disabled ? "1" : "0";
+    }
+    element.disabled = true;
+    return;
+  }
+  if (element.dataset[key] === "1") {
+    element.disabled = true;
+  } else if (element.dataset[key] === "0") {
+    element.disabled = false;
+  }
+  delete element.dataset[key];
+}
+
+function syncSettingsFromProfile() {
+  const profile = typeof state !== "undefined" ? state.profile : null;
+  if (!profile) return;
+  const adb = profile.adb || {};
+  SETTINGS_STATE.clientType = adb.client_type || SETTINGS_STATE.clientType;
+  SETTINGS_STATE.adbAddress = adb.address || SETTINGS_STATE.adbAddress;
+  SETTINGS_STATE.adbPath = adb.adb_path || SETTINGS_STATE.adbPath;
+  SETTINGS_STATE.connectConfig = profileConnectPreset(adb.connect_config) || SETTINGS_STATE.connectConfig;
+  const startup = firstTaskParams("StartUp");
+  if (startup) {
+    SETTINGS_STATE.autoDetectConnection = startup.auto_detect ?? SETTINGS_STATE.autoDetectConnection;
+    SETTINGS_STATE.detectEveryTime = startup.detect_every_time ?? SETTINGS_STATE.detectEveryTime;
+    SETTINGS_STATE.touchMode = startup.touch_mode || SETTINGS_STATE.touchMode;
+  }
+}
+
+function profileConnectPreset(connectConfig) {
+  if (typeof connectConfig === "string") return connectConfig;
+  if (!connectConfig || typeof connectConfig !== "object" || Array.isArray(connectConfig)) return "";
+  return connectConfig.preset || connectConfig.name || connectConfig.config || "";
+}
+
+function firstTaskParams(type) {
+  return state.profile?.tasks?.find((task) => task.type === type)?.params || null;
+}
+
+function applySettingsToProfile() {
+  if (typeof state === "undefined" || !state.profile || isSettingsEditingLocked()) return;
+  state.profile.adb = state.profile.adb || {};
+  state.profile.adb.client_type = SETTINGS_STATE.clientType;
+  state.profile.adb.address = SETTINGS_STATE.adbAddress;
+  state.profile.adb.adb_path = SETTINGS_STATE.adbPath;
+  state.profile.adb.connect_config = { preset: SETTINGS_STATE.connectConfig };
+  const startup = firstTaskParams("StartUp");
+  if (startup) {
+    startup.client_type = SETTINGS_STATE.clientType;
+    startup.connection = SETTINGS_STATE.connectConfig;
+    startup.auto_detect = SETTINGS_STATE.autoDetectConnection;
+    startup.detect_every_time = SETTINGS_STATE.detectEveryTime;
+    startup.touch_mode = SETTINGS_STATE.touchMode;
+  }
+}
+
+function saveSettingsProfile() {
+  if (isSettingsEditingLocked()) return;
+  applySettingsToProfile();
+  if (typeof persistProfile === "function") {
+    persistProfile(false).catch(showError);
+  }
+}
+
 function addLocalConfig() {
+  if (isSettingsEditingLocked()) return;
   const name = SETTINGS_STATE.newConfigName.trim() || new Date().toLocaleString();
   if (!SETTINGS_STATE.configs.includes(name)) {
     SETTINGS_STATE.configs = [...SETTINGS_STATE.configs, name];
@@ -693,6 +814,7 @@ function addLocalConfig() {
 }
 
 function deleteLocalConfig() {
+  if (isSettingsEditingLocked()) return;
   if (SETTINGS_STATE.configs.length <= 1) return;
   SETTINGS_STATE.configs = SETTINGS_STATE.configs.filter((name) => name !== SETTINGS_STATE.currentConfig);
   SETTINGS_STATE.configsDirty = true;
@@ -714,8 +836,14 @@ function updateTimerField(target) {
 function updateSettingsField(target) {
   const field = target.dataset.settingsField;
   if (!field) return false;
-  SETTINGS_STATE[field] = target.type === "checkbox" ? target.checked : target.value;
+  if (isSettingsEditingLocked()) return true;
+  SETTINGS_STATE[field] = target.type === "checkbox"
+    ? target.checked
+    : field === "logThumbnailMax"
+      ? clampNumber(target.value, 1, 9999, SETTINGS_STATE.logThumbnailMax)
+      : target.value;
   persistSettingsState();
+  saveSettingsProfile();
   if (SETTINGS_CONDITIONAL_FIELDS.has(field)) renderSettingsView();
   return true;
 }

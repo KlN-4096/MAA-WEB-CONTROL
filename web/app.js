@@ -3,7 +3,7 @@ const SELECTED_TASK_KEY = "maa-web.selectedTaskByProfile";
 const SETTING_MODE_KEY = "maa-web.settingMode";
 const DEFAULT_VIEW = "basement";
 const FALLBACK_PROFILE_KEY = "__default__";
-const ADD_TASK_TYPES = ["StartUp", "Fight", "Infrast", "Recruit", "Mall", "Award", "Roguelike", "Reclamation", "CloseDown"];
+const ADD_TASK_TYPES = ["StartUp", "Fight", "Infrast", "Recruit", "Mall", "Award", "Custom", "Roguelike", "Reclamation", "CloseDown"];
 
 const state = {
   profiles: [],
@@ -15,7 +15,8 @@ const state = {
   capabilities: null,
   saveTimer: null,
   runnerState: "Idle",
-  logs: []
+  logs: [],
+  logCards: []
 };
 
 const $ = (id) => document.getElementById(id);
@@ -23,6 +24,7 @@ let basementWired = false;
 let draggedTaskIndex = null;
 let runRequestPending = false;
 let stopRequestPending = false;
+let maaLogViewLoadPromise = null;
 const wiredFeatureIds = new Set();
 const BUSY_RUNNER_STATES = new Set(["Connecting", "AppendingTasks", "Running", "Stopping"]);
 const VISIBLE_LOG_DETAILS = ["what", "taskchain", "subtask", "task_id", "type", "maa_id", "message"];
@@ -142,6 +144,19 @@ async function loadOptions() {
   window.MaaFeatures?.call("copilot", "setOptions", state.options);
 }
 
+async function loadLogCards() {
+  try {
+    const logView = getMaaLogView();
+    if (!logView) return;
+    const result = await api("/api/logs/cards?run_id=current");
+    const cards = Array.isArray(result.cards) ? result.cards : [];
+    cards.forEach((card) => logView.upsertLogCard(state.logCards, card));
+  } catch (error) {
+    state.logCards = [];
+    addLocalLog("warning", "ui.logs", "卡片日志加载失败，已回退到事件列表。");
+  }
+}
+
 async function loadProfile(name) {
   state.profile = await api(`/api/profiles/${encodeURIComponent(name)}`);
   state.selectedTask = preferredTaskIndex(state.profile.tasks, restoreSelectedTask(state.profile));
@@ -160,11 +175,16 @@ async function refreshStatus() {
   setText("sideRunnerState", status.state);
   setText("taskProgress", `${status.appended_tasks} / ${status.total_tasks}`);
   setText("sideTaskProgress", `${status.appended_tasks} / ${status.total_tasks}`);
-  setText("adbStatus", adb.available ? "可用" : "未配置");
-  setText("toolsAdbStatus", adb.available ? "可用" : "未配置");
-  setText("redroidStatus", redroid.available ? "可用" : "未配置");
-  setText("toolsRedroidStatus", redroid.available ? "可用" : "未配置");
+  setText("adbStatus", statusMessage(adb, "未配置"));
+  setText("toolsAdbStatus", statusMessage(adb, "未配置"));
+  setText("redroidStatus", statusMessage(redroid, "未启用"));
+  setText("toolsRedroidStatus", statusMessage(redroid, "未启用"));
   syncRunnerControls();
+}
+
+function statusMessage(status, unavailableText) {
+  if (status?.message) return status.message;
+  return status?.available ? "可用" : unavailableText;
 }
 
 function renderAll() {
@@ -185,6 +205,7 @@ function renderBasementView() {
   renderProfiles();
   renderTasks();
   renderEditor();
+  syncRunnerControls();
 }
 
 function renderView() {
@@ -203,12 +224,15 @@ function renderView() {
 
 function renderProfiles() {
   if (!$("profileList")) return;
+  const locked = isProfileEditingLocked();
   $("profileList").innerHTML = state.profiles.map((name) => {
     const active = state.profile?.name === name ? " active" : "";
-    return `<button class="profileItem${active}" data-profile="${escapeHtml(name)}">
+    const lockedClass = locked ? " locked" : "";
+    return `<button class="profileItem${active}${lockedClass}" data-profile="${escapeHtml(name)}">
       <strong>${escapeHtml(name)}</strong>
     </button>`;
   }).join("");
+  syncProfileEditingControls();
 }
 
 function renderProfileForm() {
@@ -218,6 +242,7 @@ function renderProfileForm() {
   $("adbAddressInput").value = state.profile.adb?.address || "";
   $("clientTypeInput").value = state.profile.adb?.client_type || "";
   $("descriptionInput").value = state.profile.description || "";
+  syncProfileEditingControls();
 }
 
 function renderTasks() {
@@ -229,9 +254,12 @@ function renderTasks() {
 function taskListItem(task, index) {
   const active = index === state.selectedTask ? " active" : "";
   const disabled = task.enabled ? "" : " disabled";
+  const locked = isProfileEditingLocked();
+  const lockedClass = locked ? " locked" : "";
+  const draggable = locked ? "false" : "true";
   const title = task.name || task.id;
   const checked = task.enabled ? " checked" : "";
-  return `<div class="taskItem${active}${disabled}" data-task-index="${index}" draggable="true">
+  return `<div class="taskItem${active}${disabled}${lockedClass}" data-task-index="${index}" draggable="${draggable}">
     <input class="taskEnable" type="checkbox" data-task-enable="${index}"${checked} />
     <button class="taskNameButton" type="button" data-task-select="${index}">
       <strong>${escapeHtml(title)}</strong>
@@ -250,6 +278,7 @@ function renderEditor() {
   $("taskEditor").className = task ? "taskEditor" : "taskEditor empty";
   $("taskEditor").innerHTML = renderTaskEditor(task, escapeHtml, state.settingMode);
   renderSettingModeButtons();
+  syncProfileEditingControls();
 }
 
 function selectedTask() {
@@ -262,7 +291,7 @@ function preferredTaskIndex(tasks, index = state.selectedTask) {
 }
 
 function collectProfileForm() {
-  if (!$("profileNameInput")) return;
+  if (isProfileEditingLocked() || !$("profileNameInput")) return;
   state.profile.name = $("profileNameInput").value.trim() || "daily";
   state.profile.description = $("descriptionInput").value.trim();
   state.profile.adb = state.profile.adb || {};
@@ -272,7 +301,7 @@ function collectProfileForm() {
 
 function collectTaskForm() {
   const task = selectedTask();
-  if (!task || !$("taskIdInput")) return;
+  if (isProfileEditingLocked() || !task || !$("taskIdInput")) return;
   collectTaskEditor(task);
 }
 
@@ -282,6 +311,7 @@ function parseJsonField(id) {
 }
 
 function moveTask(offset) {
+  if (isProfileEditingLocked()) return;
   const tasks = state.profile?.tasks || [];
   const from = state.selectedTask;
   const to = from + offset;
@@ -294,6 +324,7 @@ function moveTask(offset) {
 }
 
 async function saveProfile() {
+  if (isProfileEditingLocked()) return state.profile;
   collectProfileForm();
   collectTaskForm();
   await persistProfile(true);
@@ -312,8 +343,10 @@ async function persistProfile(withFeedback) {
 }
 
 function scheduleSave() {
+  if (isProfileEditingLocked()) return;
   clearTimeout(state.saveTimer);
   state.saveTimer = setTimeout(() => {
+    if (isProfileEditingLocked()) return;
     collectTaskForm();
     persistProfile(false).catch(showError);
   }, 500);
@@ -350,6 +383,10 @@ function isRunnerBusy(value = state.runnerState) {
   return BUSY_RUNNER_STATES.has(value);
 }
 
+function isProfileEditingLocked(value = state.runnerState) {
+  return isRunnerBusy(value);
+}
+
 function syncRunnerControls() {
   const runButton = $("runButton");
   const stopButton = $("stopButton");
@@ -357,12 +394,73 @@ function syncRunnerControls() {
   if (runButton) {
     runButton.classList.toggle("stopStart", busy);
     runButton.disabled = runRequestPending || stopRequestPending || state.runnerState === "Stopping";
-    runButton.textContent = busy ? "停止" : "Link Start!";
+    runButton.textContent = state.runnerState === "Stopping" ? "停止中" : (busy ? "停止" : "Link Start!");
   }
   if (stopButton) {
     stopButton.classList.add("ghost");
     stopButton.disabled = true;
   }
+  syncProfileEditingControls();
+  if (typeof syncSettingsEditingLock === "function") syncSettingsEditingLock();
+}
+
+function syncProfileEditingControls() {
+  const locked = isProfileEditingLocked();
+  setDisabledByIds([
+    "saveButton",
+    "addTaskButton",
+    "deleteTaskButton",
+    "moveUpButton",
+    "profileNameInput",
+    "descriptionInput",
+    "adbAddressInput",
+    "clientTypeInput",
+    "newProfileButton"
+  ], locked);
+  document.querySelectorAll("#profileList .profileItem").forEach((button) => {
+    setLockDisabled(button, locked);
+  });
+  document.querySelectorAll("#taskList [data-task-index]").forEach((item) => {
+    item.classList.toggle("locked", locked);
+    item.draggable = !locked;
+  });
+  document.querySelectorAll("[data-task-enable]").forEach((checkbox) => {
+    setLockDisabled(checkbox, locked);
+  });
+  const editor = $("taskEditor");
+  if (editor) {
+    editor.classList.toggle("locked", locked);
+    editor.querySelectorAll("input, select, textarea, button").forEach((control) => {
+      setLockDisabled(control, locked);
+    });
+  }
+  if (locked) closeTaskMenus();
+  renderSettingModeButtons();
+}
+
+function setDisabledByIds(ids, disabled) {
+  ids.forEach((id) => {
+    const element = $(id);
+    if (element) setLockDisabled(element, disabled);
+  });
+}
+
+function setLockDisabled(element, locked) {
+  if (!element) return;
+  const key = "lockDisabled";
+  if (locked) {
+    if (!(key in element.dataset)) {
+      element.dataset[key] = element.disabled ? "1" : "0";
+    }
+    element.disabled = true;
+    return;
+  }
+  if (element.dataset[key] === "1") {
+    element.disabled = true;
+  } else if (element.dataset[key] === "0") {
+    element.disabled = false;
+  }
+  delete element.dataset[key];
 }
 
 function addLocalLog(level, type, message, detail = {}) {
@@ -370,19 +468,79 @@ function addLocalLog(level, type, message, detail = {}) {
 }
 
 function addLogItem(item) {
-  state.logs.unshift(normalizeLogItem(item));
-  state.logs = state.logs.slice(0, 100);
+  const event = normalizeLogItem(item);
+  if (handleMaaLogEvent(event)) return;
+  state.logs.push(event);
+  state.logs = state.logs.slice(-100);
   renderLogs();
 }
 
 function renderLogs() {
   const list = $("logList");
   if (!list) return;
-  if (!state.logs.length) {
+  const logView = getMaaLogView();
+  if (shouldUseCardLog() && logView && state.logCards.length) {
+    list.innerHTML = logView.renderLogCards(state.logCards);
+    scrollLogListToBottom();
+    return;
+  }
+  if (shouldUseCardLog() && !state.logs.length) {
     list.innerHTML = `<div class="logEmpty">等待事件</div>`;
     return;
   }
-  list.innerHTML = state.logs.map((item) => {
+  list.innerHTML = logView ? logView.renderLegacyLogItems(state.logs) : renderLegacyLogItemsFallback(state.logs);
+  scrollLogListToBottom();
+}
+
+function handleMaaLogEvent(event) {
+  if (!event.type?.startsWith("maa.log.")) return false;
+  const detail = event.detail || {};
+  if (event.type === "maa.log.clear") {
+    state.logCards = [];
+    state.logs = [];
+    renderLogs();
+    return true;
+  }
+  const logView = getMaaLogView();
+  if (!logView) return false;
+  if (detail.card) {
+    logView.upsertLogCard(state.logCards, detail.card);
+    renderLogs();
+    return true;
+  }
+  if (event.type === "maa.log.run.completed") {
+    renderLogs();
+    return true;
+  }
+  return true;
+}
+
+function shouldUseCardLog() {
+  return typeof SETTINGS_STATE === "undefined" || SETTINGS_STATE.useCardLog !== false;
+}
+
+function getMaaLogView() {
+  const view = window.MaaLogView;
+  return view && typeof view.renderLogCards === "function" && typeof view.upsertLogCard === "function" ? view : null;
+}
+
+async function ensureMaaLogView() {
+  if (getMaaLogView()) return;
+  if (!maaLogViewLoadPromise) {
+    maaLogViewLoadPromise = new Promise((resolve) => {
+      const script = document.createElement("script");
+      script.src = `/logView.js?v=${Date.now()}`;
+      script.onload = () => resolve();
+      script.onerror = () => resolve();
+      document.body.appendChild(script);
+    });
+  }
+  await maaLogViewLoadPromise;
+}
+
+function renderLegacyLogItemsFallback(items = []) {
+  if (!items.length) return `<div class="logEmpty">等待事件</div>`;
+  return items.map((item) => {
     const details = renderLogDetails(item.detail);
     return `<div class="logItem ${escapeHtml(item.level)}">
       <time class="logTime">${escapeHtml(formatLogTime(item.ts))}</time>
@@ -393,6 +551,12 @@ function renderLogs() {
       </div>
     </div>`;
   }).join("");
+}
+
+function scrollLogListToBottom() {
+  const list = $("logList");
+  if (!list) return;
+  requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
 }
 
 function normalizeLogItem(item = {}) {
@@ -494,6 +658,7 @@ function switchSettingMode(event) {
 
 function setSettingMode(mode) {
   if (mode !== "general" && mode !== "advanced") return;
+  if (isProfileEditingLocked()) return;
   collectTaskForm();
   state.settingMode = mode;
   persistSettingMode();
@@ -504,13 +669,15 @@ function setSettingMode(mode) {
 function renderSettingModeButtons() {
   const task = selectedTask();
   const supportsAdvanced = task ? taskSupportsAdvanced(task.type) : false;
+  const locked = isProfileEditingLocked();
   document.querySelectorAll("[data-setting-mode]").forEach((button) => {
     button.classList.toggle("active", button.dataset.settingMode === state.settingMode);
-    button.disabled = button.dataset.settingMode === "advanced" && !supportsAdvanced;
+    button.disabled = locked || (button.dataset.settingMode === "advanced" && !supportsAdvanced);
   });
 }
 
 function onProfileClick(event) {
+  if (isProfileEditingLocked()) return;
   const button = event.target.closest("[data-profile]");
   if (button) loadProfile(button.dataset.profile).catch(showError);
 }
@@ -523,7 +690,7 @@ function onTaskClick(event) {
 
 function selectTaskIndex(index) {
   if (!state.profile?.tasks?.[index]) return;
-  collectTaskForm();
+  if (!isProfileEditingLocked()) collectTaskForm();
   state.selectedTask = index;
   persistSelectedTask();
   renderTasks();
@@ -533,10 +700,16 @@ function selectTaskIndex(index) {
 function onTaskEnableChange(event) {
   const checkbox = event.target.closest("[data-task-enable]");
   if (!checkbox) return;
+  if (isProfileEditingLocked()) {
+    const task = state.profile?.tasks?.[Number(checkbox.dataset.taskEnable)];
+    checkbox.checked = Boolean(task?.enabled);
+    return;
+  }
   setTaskEnabled(Number(checkbox.dataset.taskEnable), checkbox.checked);
 }
 
 function setTaskEnabled(index, enabled) {
+  if (isProfileEditingLocked()) return;
   if (!state.profile?.tasks?.[index]) return;
   state.profile.tasks[index].enabled = Boolean(enabled);
   renderTasks();
@@ -545,6 +718,7 @@ function setTaskEnabled(index, enabled) {
 }
 
 function addTask(type) {
+  if (isProfileEditingLocked()) return;
   state.profile.tasks.push(defaultTask(type));
   state.selectedTask = state.profile.tasks.length - 1;
   persistSelectedTask();
@@ -554,6 +728,7 @@ function addTask(type) {
 }
 
 function deleteTask(index) {
+  if (isProfileEditingLocked()) return;
   const tasks = state.profile?.tasks || [];
   if (!tasks[index]) return;
   collectTaskForm();
@@ -566,6 +741,7 @@ function deleteTask(index) {
 }
 
 function renameTask(index) {
+  if (isProfileEditingLocked()) return;
   const task = state.profile?.tasks?.[index];
   if (!task) return;
   collectTaskForm();
@@ -588,6 +764,7 @@ function runTaskOnce(index) {
 }
 
 function reorderTask(from, target, insertAfter) {
+  if (isProfileEditingLocked()) return;
   const tasks = state.profile?.tasks || [];
   if (!tasks[from] || !tasks[target]) return;
   let to = insertAfter ? target + 1 : target;
@@ -617,6 +794,7 @@ function onAddTaskButtonClick(event) {
   event.preventDefault();
   event.stopPropagation();
   closeTaskContextMenu();
+  if (isProfileEditingLocked()) return;
   toggleTaskTypeMenu(event.currentTarget);
 }
 
@@ -661,6 +839,7 @@ function onTaskContextMenu(event) {
   const item = event.target.closest("[data-task-index]");
   if (!item) return;
   event.preventDefault();
+  if (isProfileEditingLocked()) return;
   closeTaskTypeMenu();
   showTaskContextMenu(Number(item.dataset.taskIndex), event.clientX, event.clientY);
 }
@@ -681,16 +860,26 @@ function showTaskContextMenu(index, x, y) {
 }
 
 function onDocumentClick(event) {
+  const thumbnail = event.target.closest("[data-log-thumbnail]");
+  if (thumbnail) {
+    openLogThumbnail(thumbnail.dataset.logThumbnail);
+    return;
+  }
+
   const addType = event.target.closest("[data-task-add-type]");
   if (addType) {
-    runFeatureAction("basement", "addTask", { type: addType.dataset.taskAddType });
+    if (!isProfileEditingLocked()) {
+      runFeatureAction("basement", "addTask", { type: addType.dataset.taskAddType });
+    }
     closeTaskTypeMenu();
     return;
   }
 
   const contextAction = event.target.closest("[data-task-context-action]");
   if (contextAction) {
-    runTaskContextAction(contextAction.dataset.taskContextAction);
+    if (!isProfileEditingLocked()) {
+      runTaskContextAction(contextAction.dataset.taskContextAction);
+    }
     closeTaskContextMenu();
     return;
   }
@@ -701,6 +890,7 @@ function onDocumentClick(event) {
 
 function onDocumentKeyDown(event) {
   if (event.key !== "Escape") return;
+  closeLogThumbnail();
   closeTaskMenus();
 }
 
@@ -736,6 +926,10 @@ function closeTaskContextMenu() {
 function onTaskDragStart(event) {
   const item = event.target.closest("[data-task-index]");
   if (!item) return;
+  if (isProfileEditingLocked()) {
+    event.preventDefault();
+    return;
+  }
   draggedTaskIndex = Number(item.dataset.taskIndex);
   item.classList.add("dragging");
   event.dataTransfer.effectAllowed = "move";
@@ -743,6 +937,7 @@ function onTaskDragStart(event) {
 }
 
 function onTaskDragOver(event) {
+  if (isProfileEditingLocked()) return;
   const item = event.target.closest("[data-task-index]");
   if (!item || draggedTaskIndex === null) return;
   event.preventDefault();
@@ -756,6 +951,7 @@ function onTaskDragLeave(event) {
 }
 
 function onTaskDrop(event) {
+  if (isProfileEditingLocked()) return;
   const item = event.target.closest("[data-task-index]");
   if (!item || draggedTaskIndex === null) return;
   event.preventDefault();
@@ -816,6 +1012,7 @@ function patchSettingsInternalScroll() {
 }
 
 function clearTasks() {
+  if (isProfileEditingLocked()) return;
   state.profile.tasks.forEach((task) => { task.enabled = false; });
   renderTasks();
   renderEditor();
@@ -823,6 +1020,7 @@ function clearTasks() {
 }
 
 function selectAllTasks() {
+  if (isProfileEditingLocked()) return;
   state.profile.tasks.forEach((task) => { task.enabled = true; });
   renderTasks();
   renderEditor();
@@ -831,10 +1029,32 @@ function selectAllTasks() {
 
 function clearLogs() {
   state.logs = [];
+  state.logCards = [];
   renderLogs();
+  return api("/api/logs/clear", { method: "POST" }).catch(showError);
+}
+
+function openLogThumbnail(thumbnailId) {
+  const card = state.logCards.find((entry) => entry.thumbnail_id === thumbnailId);
+  const url = card?.thumbnail_url;
+  if (!url) return;
+  closeLogThumbnail();
+  const overlay = document.createElement("div");
+  overlay.className = "maaLogPreview";
+  overlay.innerHTML = `<button type="button" class="maaLogPreviewClose" aria-label="关闭">×</button>
+    <img src="${escapeHtml(url)}" alt="" />`;
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay || event.target.closest(".maaLogPreviewClose")) closeLogThumbnail();
+  });
+  document.body.appendChild(overlay);
+}
+
+function closeLogThumbnail() {
+  document.querySelector(".maaLogPreview")?.remove();
 }
 
 function createProfile() {
+  if (isProfileEditingLocked()) return;
   state.profile = {
     name: `profile-${Date.now().toString().slice(-5)}`,
     description: "",
@@ -848,7 +1068,12 @@ function createProfile() {
 }
 
 function onTaskEditorChange(event) {
-  const rerenderFields = new Set(["paramRoguelikeTheme", "paramRoguelikeStrategy", "paramReclamationStrategy"]);
+  if (isProfileEditingLocked()) {
+    event.preventDefault();
+    renderEditor();
+    return;
+  }
+  const rerenderFields = new Set(["paramRoguelikeTheme", "paramRoguelikeStrategy", "paramReclamationStrategy", "paramInfrastMode"]);
   if (rerenderFields.has(event.target.id)) {
     collectTaskForm();
     renderTasks();
@@ -872,6 +1097,10 @@ function onTaskEditorChange(event) {
 }
 
 function onTaskEditorClick(event) {
+  if (isProfileEditingLocked()) {
+    event.preventDefault();
+    return;
+  }
   const stageButton = event.target.closest("[data-stage-action]");
   if (stageButton) {
     updateStagePlan(stageButton);
@@ -992,11 +1221,13 @@ function setText(id, value) {
 }
 
 async function boot() {
+  await ensureMaaLogView();
   await loadCapabilities();
   renderMainNav();
   await loadOptions();
   await loadProfiles();
   await refreshStatus();
+  await loadLogCards();
   renderAll();
   renderLogs();
 }

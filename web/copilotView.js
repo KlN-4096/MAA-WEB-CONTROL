@@ -88,6 +88,7 @@ normalizeCopilotState();
 
 let COPILOT_OPTIONS = null;
 let copilotWired = false;
+const copilotExpandedFolders = {};
 
 function restoreCopilotState() {
   const parsed = readCopilotStorage();
@@ -138,9 +139,11 @@ function setCopilotViewOptions(options) {
 function renderCopilotView() {
   const root = $("copilotViewRoot");
   if (!root) return;
+  const unavailable = copilotUnavailable();
   root.className = `copilotViewRoot ${copilotListVisible() ? "withList" : ""}`;
   root.innerHTML = `
     <section class="copilotMain">
+      ${unavailable ? `<p class="featureUnavailable">${escapeHtml(unavailable)}</p>` : ""}
       <div class="copilotTop">
         <div class="copilotTabs">${COPILOT_TABS.map(copilotTabButton).join("")}</div>
         ${renderCopilotPathRow()}
@@ -204,17 +207,24 @@ function renderFilePopup() {
 function renderFileItem(item, depth) {
   const folder = item.is_folder;
   const children = Array.isArray(item.children) ? item.children : [];
-  const label = `${folder ? "▸" : "·"} ${escapeHtml(item.name || "")}`;
-  const path = escapeHtml(item.relative_path || item.path || "");
+  const path = item.relative_path || item.path || "";
+  const escapedPath = escapeHtml(path);
+  const expanded = folder && copilotExpandedFolders[path];
+  const icon = folder ? (expanded ? "▾" : "▸") : "·";
+  const label = `${icon} ${escapeHtml(item.name || "")}`;
   return `
-    <div class="fileTreeItem ${folder ? "folder" : "file"}" style="--depth:${depth}" ${folder ? "" : `data-copilot-file="${path}"`}>
+    <div class="fileTreeItem ${folder ? "folder" : "file"}" style="--depth:${depth}" ${folder ? `data-copilot-folder="${escapedPath}"` : `data-copilot-file="${escapedPath}"`}>
       ${label}
     </div>
-    ${children.map((child) => renderFileItem(child, depth + 1)).join("")}
+    ${folder && expanded ? children.map((child) => renderFileItem(child, depth + 1)).join("") : ""}
   `;
 }
 
 function renderCopilotRunButton() {
+  const unavailable = copilotUnavailable();
+  if (unavailable) {
+    return `<button class="copilotStartButton" type="button" disabled title="${escapeHtml(unavailable)}">开始</button>`;
+  }
   if (COPILOT_STATE.idle) {
     return '<button class="copilotStartButton" type="button" data-copilot-action="start">开始</button>';
   }
@@ -335,6 +345,14 @@ async function onCopilotClick(event) {
     return;
   }
 
+  const folder = event.target.closest("[data-copilot-folder]");
+  if (folder) {
+    const path = folder.dataset.copilotFolder;
+    copilotExpandedFolders[path] = !copilotExpandedFolders[path];
+    renderCopilotView();
+    return;
+  }
+
   const file = event.target.closest("[data-copilot-file]");
   if (file) {
     COPILOT_STATE.filename = file.dataset.copilotFile;
@@ -393,6 +411,7 @@ function onCopilotInput(event) {
 }
 
 async function runCopilotAction(action, payload = {}) {
+  if (action === "start" && copilotUnavailable()) return;
   if (!COPILOT_STATE.idle && action !== "stop") return;
   const options = copilotPayload(action, payload);
   const alternate = Boolean(options.alternate);
@@ -403,8 +422,12 @@ async function runCopilotAction(action, payload = {}) {
   if (action === "start") {
     COPILOT_STATE.idle = false;
     COPILOT_STATE.filePopupOpen = false;
+    fireCopilotStart();
   }
-  if (action === "stop") COPILOT_STATE.idle = true;
+  if (action === "stop") {
+    COPILOT_STATE.idle = true;
+    fireCopilotStop();
+  }
   if (action === "importFiles") $("copilotFilePicker")?.click();
   if (action === "addTask") addCopilotTask(alternate);
   if (action === "clearTasks") clearCopilotTasks(alternate);
@@ -462,13 +485,23 @@ function selectCopilotTask(index, disableList) {
 
 async function pasteCopilotText() {
   if (!navigator.clipboard?.readText) return;
-  const text = await navigator.clipboard.readText();
-  if (text) COPILOT_STATE.filename = text.trim();
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) COPILOT_STATE.filename = text.trim();
+  } catch (error) {
+    console.warn("Clipboard access denied:", error.message);
+  }
 }
 
 function basenameWithoutExt(path) {
   const name = String(path || "").split(/[\\/]/).pop() || "";
   return name.replace(/\.json$/i, "");
+}
+
+function copilotUnavailable() {
+  const feature = typeof state !== "undefined" ? state.capabilities?.features?.copilot : null;
+  if (!feature || feature.available !== false) return "";
+  return feature.reason || "后端能力尚未接入。";
 }
 
 const COPILOT_ACTION_NAMES = [

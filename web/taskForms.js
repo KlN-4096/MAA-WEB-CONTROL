@@ -8,7 +8,7 @@ const TASK_NAMES = {
   Recruit: "自动公招",
   Infrast: "基建换班",
   Fight: "理智作战",
-  Custom: "剩余理智",
+  Custom: "自定义任务",
   Mall: "信用收支",
   Award: "领取奖励",
   Roguelike: "自动肉鸽",
@@ -139,7 +139,7 @@ function taskSupportsAdvanced(type) {
 
 function builtinDefaultParams(type) {
   if (type === "Fight") return { stage: "当前/上次", stage_plan: ["当前/上次"], medicine: 999, stone: 999, times: 5, series: 0, use_alternate_stage: false };
-  if (type === "Custom") return { stage: "当前/上次", stage_plan: ["当前/上次"], medicine: 0, stone: 0, times: 999, series: 0, use_alternate_stage: false };
+  if (type === "Custom") return { task_names: [] };
   if (type === "StartUp") return { client_type: "官服", start_game_enabled: true, connection: "雷电模拟器", touch_mode: "Minitouch（默认）" };
   if (type === "Recruit") return { auto_expedited: false, refresh: true, confirm_3: true, confirm_4: true, max_times: 99 };
   if (type === "Infrast") return { mode: "常规模式", drone: "贸易站-龙门币", mood: 30, facilities: allFacilities() };
@@ -174,7 +174,7 @@ function renderCommonFields(task, escapeHtml) {
 function renderGeneral(task, escapeHtml) {
   const p = task.params || {};
   if (task.type === "Fight") return renderFightGeneral(p, escapeHtml);
-  if (task.type === "Custom") return renderFightGeneral(p, escapeHtml);
+  if (task.type === "Custom") return renderCustomGeneral(p, escapeHtml);
   if (task.type === "StartUp") return renderStartUpGeneral(p, escapeHtml);
   if (task.type === "Recruit") return renderRecruitGeneral(p);
   if (task.type === "Infrast") return renderInfrastGeneral(p, escapeHtml);
@@ -188,7 +188,7 @@ function renderGeneral(task, escapeHtml) {
 function renderAdvanced(task, escapeHtml) {
   const p = task.params || {};
   if (task.type === "Fight") return renderFightAdvanced(p, escapeHtml);
-  if (task.type === "Custom") return renderFightAdvanced(p, escapeHtml);
+  if (task.type === "Custom") return renderJsonParams(p, escapeHtml);
   if (task.type === "Recruit") return renderRecruitAdvanced(p, escapeHtml);
   if (task.type === "Infrast") return renderInfrastAdvanced(p);
   if (task.type === "Mall") return renderMallAdvanced(p, escapeHtml);
@@ -298,8 +298,13 @@ function renderInfrastGeneral(p, escapeHtml = escapeHtmlFallback) {
 }
 
 function renderInfrastAdvanced(p) {
+  const customVisible = p.mode === "自定义基建配置" || Number(p.mode) === 10000;
+  const rotationVisible = p.mode === "队列轮换" || Number(p.mode) === 20000;
   return `
     <div class="maaParams wideForm">
+      ${customVisible ? '<span>自定义基建文件</span><input class="wideInput" id="paramInfrastFilename" value="' + escapeHtmlFallback(p.filename || p.custom_infrast_file || "") + '" />' : ""}
+      ${customVisible ? '<span>Plan Index</span><input id="paramInfrastPlanIndex" type="number" min="0" value="' + numberValue(p.plan_index, 0) + '" />' : ""}
+      ${rotationVisible ? '<span>轮换计划</span><input class="wideInput" id="paramInfrastRotation" value="' + escapeHtmlFallback(p.rotation || "") + '" />' : ""}
       ${checkRow("dorm_trust", "宿舍空余位置蹭信赖", p.dorm_trust)}
       ${checkRow("skip_entered", "不将已进驻的干员放入宿舍", p.skip_entered ?? true)}
       ${checkRow("stone_fragment", "源石碎片自动补货", p.stone_fragment ?? true)}
@@ -329,6 +334,8 @@ function renderMallAdvanced(p, escapeHtml) {
     <div class="maaParams wideForm">
       <span>优先购买 子串即可 分号分隔</span><input class="wideInput" id="paramBuyFirst" value="${escapeHtml((p.buy_first || []).join(";"))}" />
       <span>黑名单 子串即可 分号分隔</span><input class="wideInput" id="paramBlacklist" value="${escapeHtml((p.blacklist || []).join(";"))}" />
+      <span>信用战斗编队号</span><input id="paramMallFormation" type="number" min="0" value="${numberValue(p.formation_index, 0)}" />
+      ${checkRow("credit_fight_once", "信用战斗一日只执行一次", p.credit_fight_once)}
       ${checkRow("overflow_blacklist", "信用溢出时无视黑名单", p.overflow_blacklist)}
       ${checkRow("discount_only", "只购买打折的信用商品", p.discount_only)}
       ${checkRow("stop_if_low", "信用点低于 300 时停止购买商品", p.stop_if_low)}
@@ -345,6 +352,16 @@ function renderAwardGeneral(p) {
       ${checkRow("orundum", "领取幸运墙的每日合成玉奖励", p.orundum ?? true)}
       ${checkRow("limited_orundum", "领取限时开采许可的每日合成玉奖励", p.limited_orundum)}
       ${checkRow("monthly_card", "领取周年赠送月卡奖励", p.monthly_card)}
+    </div>
+  `;
+}
+
+function renderCustomGeneral(p, escapeHtml) {
+  const names = Array.isArray(p.task_names) ? p.task_names.join(";") : String(p.task_names || p.custom_tasks || "");
+  return `
+    <div class="maaParams wideForm">
+      <span>任务名列表</span><input class="wideInput" id="paramCustomTaskNames" value="${escapeHtml(names)}" placeholder="GachaOnce;MiniGame@PV" />
+      <p class="formNote">Custom 会按 MaaCore resource/tasks 中的 task_names 执行，不再映射为 Fight。</p>
     </div>
   `;
 }
@@ -427,7 +444,7 @@ function collectTaskEditor(task) {
 
 function collectParams(type) {
   if (type === "Fight") return collectFightParams();
-  if (type === "Custom") return collectFightParams();
+  if (type === "Custom") return collectCustomParams();
   if (type === "StartUp") return collectStartUpParams();
   if (type === "Recruit") return collectRecruitParams();
   if (type === "Infrast") return collectInfrastParams();
@@ -516,6 +533,9 @@ function collectInfrastParams() {
   addBool(params, "clue_exchange", "clue_exchange");
   addBool(params, "send_clue", "send_clue");
   addBool(params, "continue_training", "continue_training");
+  addValue(params, "filename", "paramInfrastFilename", "");
+  addNumber(params, "plan_index", "paramInfrastPlanIndex", 0);
+  addValue(params, "rotation", "paramInfrastRotation", "");
   return params;
 }
 
@@ -524,6 +544,8 @@ function collectMallParams() {
   addBool(params, "visit_friends", "visit_friends");
   addBool(params, "visit_once", "paramVisitOnce");
   addBool(params, "credit_fight", "credit_fight");
+  addBool(params, "credit_fight_once", "credit_fight_once");
+  addNumber(params, "formation_index", "paramMallFormation", 0);
   addBool(params, "shopping", "shopping");
   addList(params, "buy_first", "paramBuyFirst");
   addList(params, "blacklist", "paramBlacklist");
@@ -541,6 +563,12 @@ function collectAwardParams() {
   addBool(params, "orundum", "orundum");
   addBool(params, "limited_orundum", "limited_orundum");
   addBool(params, "monthly_card", "monthly_card");
+  return params;
+}
+
+function collectCustomParams() {
+  const params = {};
+  addList(params, "task_names", "paramCustomTaskNames");
   return params;
 }
 

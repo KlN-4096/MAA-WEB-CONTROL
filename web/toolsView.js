@@ -92,6 +92,7 @@ TOOLS_STATE.miniRunning = false;
 TOOLS_STATE.miniDropdownOpen = false;
 
 let toolsWired = false;
+let peepSocket = null;
 
 function restoreToolsState() {
   const parsed = readToolsStorage();
@@ -129,8 +130,10 @@ function persistToolsState() {
 function renderToolsView() {
   const root = $("toolsViewRoot");
   if (!root) return;
+  const unavailable = toolsUnavailable();
   root.innerHTML = `
     <section class="toolsPanel">
+      ${unavailable ? `<p class="featureUnavailable">${escapeHtml(unavailable)}</p>` : ""}
       <div class="toolsTabs">${TOOL_TABS.map(toolTabButton).join("")}</div>
       <div class="toolsContent">${renderToolTab()}</div>
     </section>
@@ -175,7 +178,7 @@ function renderRecruitTool() {
           </label>
         </div>
         <div class="recruitLevels">${[3, 4, 5, 6].map(renderRecruitLevel).join("")}</div>
-        <button class="toolBigButton" type="button" data-tools-action="startRecruit">开始识别</button>
+        <button class="toolBigButton" type="button" data-tools-action="startRecruit"${unavailableAttr("tools")}>开始识别</button>
       </div>
     </div>
   `;
@@ -203,8 +206,8 @@ function renderOperBoxTool() {
       <p class="toolsInfo centered">${escapeHtml(TOOLS_STATE.operInfo)}</p>
       ${renderOperTabs()}
       <div class="toolButtonRow">
-        <button class="toolBigButton" type="button" data-tools-action="copyOper">复制到剪切板</button>
-        <button class="toolBigButton" type="button" data-tools-action="startOper">开始识别</button>
+        <button class="toolBigButton" type="button" data-tools-action="copyOper"${unavailableAttr("tools")}>复制到剪切板</button>
+        <button class="toolBigButton" type="button" data-tools-action="startOper"${unavailableAttr("tools")}>开始识别</button>
       </div>
     </div>
   `;
@@ -223,9 +226,9 @@ function renderDepotTool() {
       <p class="toolsInfo centered">${escapeHtml(TOOLS_STATE.depotInfo)}</p>
       <div class="cardGrid depotGrid emptyResultPanel" aria-label="仓库识别结果"></div>
       <div class="toolButtonRow wide">
-        <button class="toolBigButton" type="button" data-tools-action="exportArkplanner">导出至企鹅物流刷图规划</button>
-        <button class="toolBigButton" type="button" data-tools-action="exportLolicon">导出至明日方舟工具箱</button>
-        <button class="toolBigButton" type="button" data-tools-action="startDepot">开始识别</button>
+        <button class="toolBigButton" type="button" data-tools-action="exportArkplanner"${unavailableAttr("tools")}>导出至企鹅物流刷图规划</button>
+        <button class="toolBigButton" type="button" data-tools-action="exportLolicon"${unavailableAttr("tools")}>导出至明日方舟工具箱</button>
+        <button class="toolBigButton" type="button" data-tools-action="startDepot"${unavailableAttr("tools")}>开始识别</button>
       </div>
     </div>
   `;
@@ -246,9 +249,9 @@ function renderGachaTool() {
       <p class="toolsInfo centered">${escapeHtml(TOOLS_STATE.gachaInfo)}</p>
       <div class="peepScreen">${fpsBadge()}</div>
       <div class="toolButtonRow">
-        <button class="toolBigButton" type="button" data-tools-action="gachaOnce">寻访一次</button>
-        <button class="toolBigButton" type="button" data-tools-action="gachaTen">寻访十次</button>
-        <button class="toolBigButton" type="button" data-tools-action="togglePeep">Peep!</button>
+        <button class="toolBigButton" type="button" data-tools-action="gachaOnce"${unavailableAttr("tools")}>寻访一次</button>
+        <button class="toolBigButton" type="button" data-tools-action="gachaTen"${unavailableAttr("tools")}>寻访十次</button>
+        <button class="toolBigButton" type="button" data-tools-action="togglePeep"${unavailableAttr("tools")}>Peep!</button>
       </div>
     </div>
   `;
@@ -259,7 +262,7 @@ function renderPeepTool() {
     <div class="peepTool">
       <div class="peepStage">${TOOLS_STATE.peeping ? `<div class="peepScreen active"><div class="deviceFrame">${fpsBadge()}</div></div>` : `<p>${escapeHtml(TOOL_TEXT.peepTip)}</p>`}</div>
       <div class="peepControls">
-        <button class="toolBigButton" type="button" data-tools-action="togglePeep">${TOOLS_STATE.peeping ? "Stop!" : "Peep!"}</button>
+        <button class="toolBigButton" type="button" data-tools-action="togglePeep"${unavailableAttr("tools")}>${TOOLS_STATE.peeping ? "Stop!" : "Peep!"}</button>
         <label class="fpsControl"><span>目标帧率</span><input type="number" min="1" max="600" value="${TOOLS_STATE.fps}" data-tools-field="fps" /></label>
       </div>
     </div>
@@ -279,7 +282,7 @@ function renderMiniGameTool() {
       </div>
       ${TOOLS_STATE.miniGame === "MiniGame@SecretFront" ? renderSecretFrontOptions() : ""}
       <p class="miniTip">${escapeHtml(selected?.tip || TOOL_TEXT.miniEmptyTip)}</p>
-      <button class="miniStart" type="button" data-tools-action="startMini">${TOOLS_STATE.miniRunning ? "Stop!" : "Link Start!"}</button>
+      <button class="miniStart" type="button" data-tools-action="startMini"${unavailableAttr("tools")}>${TOOLS_STATE.miniRunning ? "Stop!" : "Link Start!"}</button>
     </div>
   `;
 }
@@ -370,6 +373,7 @@ function runToolsAction(action, payload = {}) {
 }
 
 function runToolAction(action) {
+  if (toolActionRequiresBackend(action) && toolsUnavailable()) return;
   if (action === "startRecruit") TOOLS_STATE.recruitInfo = "正在识别……";
   if (action === "startOper") TOOLS_STATE.operInfo = "正在识别……";
   if (action === "startDepot") TOOLS_STATE.depotInfo = "正在识别……";
@@ -377,10 +381,37 @@ function runToolAction(action) {
   if (action === "exportArkplanner" || action === "exportLolicon") TOOLS_STATE.depotInfo = "已复制到剪切板";
   if (action === "agreeGacha") TOOLS_STATE.gachaDisclaimer = false;
   if (action === "gachaOnce" || action === "gachaTen") TOOLS_STATE.gachaInfo = GACHA_TIPS[Math.floor(Math.random() * GACHA_TIPS.length)];
-  if (action === "togglePeep") TOOLS_STATE.peeping = !TOOLS_STATE.peeping;
-  if (action === "startMini") TOOLS_STATE.miniRunning = !TOOLS_STATE.miniRunning;
+  if (action === "togglePeep") { TOOLS_STATE.peeping = !TOOLS_STATE.peeping; managePeepConnection(); }
+  if (action === "startMini") { TOOLS_STATE.miniRunning = !TOOLS_STATE.miniRunning; manageMiniGameTask(); }
   if (action === "toggleMiniDropdown") TOOLS_STATE.miniDropdownOpen = !TOOLS_STATE.miniDropdownOpen;
   if (action === "agreeGacha") persistToolsState();
+  fireToolBackend(action);
+}
+
+function toolActionRequiresBackend(action) {
+  return [
+    "startRecruit",
+    "copyOper",
+    "startOper",
+    "exportArkplanner",
+    "exportLolicon",
+    "startDepot",
+    "gachaOnce",
+    "gachaTen",
+    "togglePeep",
+    "startMini"
+  ].includes(action);
+}
+
+function unavailableAttr(id) {
+  const reason = toolsUnavailable(id);
+  return reason ? ` disabled title="${escapeHtml(reason)}"` : "";
+}
+
+function toolsUnavailable(id = "tools") {
+  const feature = typeof state !== "undefined" ? state.capabilities?.features?.[id] : null;
+  if (!feature || feature.available !== false) return "";
+  return feature.reason || "后端能力尚未接入。";
 }
 
 function updateRecruitTime(token, value) {
@@ -424,6 +455,122 @@ function clampInt(value, min, max) {
   const parsed = Number.parseInt(value, 10);
   if (Number.isNaN(parsed)) return min;
   return Math.min(max, Math.max(min, parsed));
+}
+
+const TOOL_BACKEND_MAP = {
+  startRecruit: "recruit_calc",
+  startOper: "operbox",
+  startDepot: "depot",
+  gachaOnce: "gacha_once",
+  gachaTen: "gacha_ten",
+};
+
+function fireToolBackend(action) {
+  const toolName = TOOL_BACKEND_MAP[action];
+  if (!toolName || typeof api !== "function") return;
+  api("/api/tools/run", {
+    method: "POST",
+    body: JSON.stringify({ tool: toolName, params: {} })
+  }).then((result) => {
+    if (result.ok) {
+      if (action === "startRecruit") TOOLS_STATE.recruitInfo = "识别请求已发送，等待结果……";
+      if (action === "startOper") TOOLS_STATE.operInfo = "识别请求已发送，等待结果……";
+      if (action === "startDepot") TOOLS_STATE.depotInfo = "识别请求已发送，等待结果……";
+    } else {
+      const msg = result.message || "请求失败";
+      if (action === "startRecruit") TOOLS_STATE.recruitInfo = msg;
+      if (action === "startOper") TOOLS_STATE.operInfo = msg;
+      if (action === "startDepot") TOOLS_STATE.depotInfo = msg;
+    }
+    renderToolsView();
+  }).catch((error) => {
+    const msg = error.message || "请求失败";
+    if (action === "startRecruit") TOOLS_STATE.recruitInfo = msg;
+    if (action === "startOper") TOOLS_STATE.operInfo = msg;
+    if (action === "startDepot") TOOLS_STATE.depotInfo = msg;
+    renderToolsView();
+  });
+}
+
+function managePeepConnection() {
+  if (TOOLS_STATE.peeping) {
+    startPeepSocket();
+  } else {
+    closePeepSocket();
+  }
+}
+
+function startPeepSocket() {
+  if (peepSocket) return;
+  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  peepSocket = new WebSocket(`${protocol}//${location.host}/api/peep`);
+  peepSocket.onopen = () => sendPeepRequest();
+  peepSocket.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.ok && data.data) updatePeepFrame(data.data);
+    } catch (e) { /* ignore parse errors */ }
+    if (TOOLS_STATE.peeping && peepSocket?.readyState === WebSocket.OPEN) {
+      sendPeepRequest();
+    }
+  };
+  peepSocket.onclose = () => {
+    peepSocket = null;
+    if (TOOLS_STATE.peeping) {
+      TOOLS_STATE.peeping = false;
+      renderToolsView();
+    }
+  };
+  peepSocket.onerror = () => {
+    closePeepSocket();
+    TOOLS_STATE.peeping = false;
+    renderToolsView();
+  };
+}
+
+function sendPeepRequest() {
+  if (peepSocket?.readyState === WebSocket.OPEN) {
+    peepSocket.send(JSON.stringify({ fps: TOOLS_STATE.fps }));
+  }
+}
+
+function closePeepSocket() {
+  if (peepSocket) {
+    peepSocket.close();
+    peepSocket = null;
+  }
+}
+
+function updatePeepFrame(base64Data) {
+  const screen = document.querySelector(".peepScreen");
+  if (!screen) return;
+  let img = screen.querySelector("img");
+  if (!img) {
+    img = document.createElement("img");
+    img.className = "peepFrame";
+    screen.appendChild(img);
+  }
+  img.src = "data:image/png;base64," + base64Data;
+}
+
+function manageMiniGameTask() {
+  if (!TOOLS_STATE.miniRunning) {
+    if (typeof api === "function") api("/api/stop", { method: "POST" }).catch(() => {});
+    return;
+  }
+  if (typeof api !== "function") return;
+  const params = { task_names: [TOOLS_STATE.miniGame] };
+  if (TOOLS_STATE.miniGame === "MiniGame@SecretFront") {
+    if (TOOLS_STATE.secretEnding) params.secret_ending = TOOLS_STATE.secretEnding;
+    if (TOOLS_STATE.secretEvent) params.secret_event = TOOLS_STATE.secretEvent;
+  }
+  api("/api/tools/run", {
+    method: "POST",
+    body: JSON.stringify({ tool: "custom", params })
+  }).catch(() => {
+    TOOLS_STATE.miniRunning = false;
+    renderToolsView();
+  });
 }
 
 const TOOL_ACTION_NAMES = [

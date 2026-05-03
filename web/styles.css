@@ -238,6 +238,16 @@ p {
   opacity: 0.55;
 }
 
+.taskItem.locked {
+  opacity: 0.72;
+}
+
+.taskItem.locked .taskEnable,
+.taskItem.locked .taskConfigButton,
+.profileItem.locked {
+  cursor: not-allowed;
+}
+
 .taskEnable {
   width: 15px;
   height: 15px;
@@ -414,6 +424,10 @@ p {
   color: var(--muted);
 }
 
+.taskEditor.locked {
+  opacity: 0.82;
+}
+
 .formGrid,
 .maaParams {
   display: grid;
@@ -518,6 +532,10 @@ input[type="checkbox"] {
   opacity: 0.55;
 }
 
+.settingsLocked .settingsContent {
+  opacity: 0.88;
+}
+
 .tipsBlock {
   position: absolute;
   left: 176px;
@@ -562,10 +580,10 @@ input[type="checkbox"] {
 .miniStatus strong {
   display: block;
   margin-top: 4px;
-  overflow: hidden;
   font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .panelHead {
@@ -584,6 +602,146 @@ input[type="checkbox"] {
   max-height: 640px;
   overflow: auto;
   padding-right: 2px;
+}
+
+.maaLogCard {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+  border: 1px solid #303238;
+  border-radius: 4px;
+  background: #202124;
+  padding: 7px 8px 8px 6px;
+}
+
+.maaLogTimeColumn {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+}
+
+.maaLogTime,
+.maaLogEndTime {
+  color: #c8c8c8;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.maaLogThumbnail {
+  display: grid;
+  width: 100%;
+  min-height: 40px;
+  padding: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  overflow: hidden;
+  background: #101114;
+}
+
+.maaLogThumbnail img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.maaLogContent {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.maaLogItem {
+  border-left: 3px solid var(--line-soft);
+  padding-left: 8px;
+}
+
+.maaLogItemBody {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.maaLogItemLine {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
+.maaLogTooltipButton {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.maaLogItem.TraceLogBrush,
+.maaLogItem.MessageLogBrush {
+  border-left-color: #7f858f;
+  color: #d7dbe2;
+}
+
+.maaLogItem.InfoLogBrush,
+.maaLogItem.LdSpecialScreenshot,
+.maaLogItem.MuMuSpecialScreenshot {
+  border-left-color: #31a8ff;
+  color: #8ad8ff;
+}
+
+.maaLogItem.SuccessLogBrush,
+.maaLogItem.RareOperatorLogBrush {
+  border-left-color: #44b87b;
+  color: #c3f0dc;
+}
+
+.maaLogItem.RareOperatorLogBrush,
+.maaLogItem .maaLogItemLine strong {
+  font-weight: 700;
+}
+
+.maaLogItem.WarningLogBrush {
+  border-left-color: #c9903a;
+  color: #f1d29d;
+}
+
+.maaLogItem.ErrorLogBrush {
+  border-left-color: var(--danger);
+  color: #ffb5b5;
+}
+
+.maaLogPreview {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 8, 10, 0.75);
+}
+
+.maaLogPreview img {
+  max-width: min(84vw, 980px);
+  max-height: min(84vh, 720px);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  background: #101114;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.maaLogPreviewClose {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 16px;
 }
 
 .logItem {
@@ -659,6 +817,18 @@ input[type="checkbox"] {
 
 .logDetails dd {
   color: #d4d4d4;
+}
+
+.featureUnavailable,
+.formNote {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid #3d4650;
+  border-radius: 6px;
+  color: #c7ced6;
+  background: #20252b;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .logEmpty {
@@ -2141,12 +2311,13 @@ input[type="checkbox"] {
 
 .timeRow {
   display: grid;
-  grid-template-columns: 1fr 16px 1fr;
+  grid-template-columns: 50px 16px 50px;
   align-items: center;
   width: 120px;
 }
 
-.timeRow input {
+.timeRow input,
+.wideForm .timeRow input[type="number"] {
   width: 50px;
 }
 
