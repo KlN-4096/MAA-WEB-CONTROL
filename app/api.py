@@ -197,6 +197,9 @@ def create_api_router(
                     "message": "截图成功",
                     "size": len(image_data),
                 }
+            image_error = getattr(adapter, "last_image_error", None)
+            if image_error:
+                return {"ok": False, "message": f"截图失败: {image_error}"}
             return {"ok": False, "message": "截图返回空数据，请检查连接"}
         except Exception as exc:
             return {"ok": False, "message": f"截图失败: {exc}"}
@@ -477,30 +480,48 @@ async def _cancel_tasks(*tasks: asyncio.Task[Any]) -> None:
 
 
 async def peep_socket(websocket: WebSocket, runner: MaaRunnerService) -> None:
-    """WebSocket endpoint that streams screenshots as base64 frames."""
+    """WebSocket endpoint that streams screenshots as base64 frames.
+
+    Client may send {"fps": N} at any time to adjust the capture rate (1–30).
+    The stream runs continuously; the client does not need to send a message
+    per frame — only when it wants to change the fps.
+    """
     await websocket.accept()
+    fps = 2
+
+    async def _receive_fps_updates() -> None:
+        nonlocal fps
+        while True:
+            try:
+                msg = await websocket.receive_json()
+                new_fps = msg.get("fps")
+                if new_fps is not None:
+                    fps = max(1, min(30, int(new_fps)))
+            except Exception:
+                break
+
+    receive_task = asyncio.create_task(_receive_fps_updates())
     try:
         while True:
-            msg = await websocket.receive_json()
-            fps = max(1, min(30, int(msg.get("fps", 2))))
             interval = 1.0 / fps
-
             adapter = runner.adapter
             get_image = getattr(adapter, "get_image", None)
-            if not callable(get_image):
-                await websocket.send_json({"ok": False, "message": "截图接口不可用"})
-                continue
-
-            image_data = await get_image()
-            if image_data:
-                await websocket.send_json({
-                    "ok": True,
-                    "data": base64.b64encode(image_data).decode("ascii"),
-                    "size": len(image_data),
-                })
+            if callable(get_image):
+                image_data = await get_image()
+                if image_data:
+                    await websocket.send_json({
+                        "ok": True,
+                        "data": base64.b64encode(image_data).decode("ascii"),
+                        "size": len(image_data),
+                    })
+                else:
+                    await websocket.send_json({"ok": False, "message": "截图返回空数据"})
             else:
-                await websocket.send_json({"ok": False, "message": "截图返回空数据"})
-
+                await websocket.send_json({"ok": False, "message": "截图接口不可用"})
             await asyncio.sleep(interval)
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, asyncio.CancelledError):
         pass
+    finally:
+        if not receive_task.done():
+            receive_task.cancel()
+        await asyncio.gather(receive_task, return_exceptions=True)
