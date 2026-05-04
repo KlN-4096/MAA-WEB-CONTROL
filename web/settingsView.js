@@ -1,16 +1,15 @@
 const SETTINGS_SECTIONS = [
   { key: "config", title: "切换配置", render: renderConfigSection },
   { key: "timer", title: "定时执行", render: renderTimerSection },
-  { key: "performance", title: "性能设置", render: renderPerformanceSection },
   { key: "game", title: "运行设置", render: renderGameSection },
+  { key: "performance", title: "性能设置", render: renderPerformanceSection },
   { key: "connection", title: "连接设置", render: renderConnectionSection },
+  { key: "maacore", title: "MAA 核心", render: renderMaaCoreSection },
   { key: "startup", title: "启动设置", render: renderStartupSection },
-  { key: "remote", title: "远程控制", render: renderRemoteSection },
   { key: "ui", title: "界面设置", render: renderUiSection },
   { key: "background", title: "背景设置", render: renderBackgroundSection },
+  { key: "remote", title: "远程控制", render: renderRemoteSection },
   { key: "notification", title: "外部通知", render: renderNotificationSection },
-  { key: "hotkey", title: "热键设置", render: renderHotkeySection },
-  { key: "achievement", title: "成就设置", render: renderAchievementSection },
   { key: "update", title: "更新设置", render: renderUpdateSection },
   { key: "issue", title: "问题反馈", render: renderIssueSection },
   { key: "about", title: "关于我们", render: renderAboutSection }
@@ -20,18 +19,11 @@ const SETTINGS_STORAGE_KEY = "maa-web.settingsState";
 const SETTINGS_CONDITIONAL_FIELDS = new Set([
   "forceStart",
   "customConfig",
-  "clientType",
-  "blockSleep",
-  "enablePenguin",
   "autoDetectConnection",
   "connectConfig",
-  "ldManualIndex",
-  "mumuBridge",
-  "useTray",
   "useCardLog",
-  "updateSource",
   "proxyType",
-  "achievementPopupDisabled"
+  "maaAdapterType"
 ]);
 const SETTINGS_PERSISTED_FIELDS = [
   "selected",
@@ -61,6 +53,8 @@ const SETTINGS_PERSISTED_FIELDS = [
   "achievementPopupDisabled",
   "achievementPopupAutoClose",
   "logThumbnailMax",
+  "maaAdapterType",
+  "maaCoreDir",
   "timers"
 ];
 const SETTINGS_AUTO_SCROLL_SUPPRESS_MS = 120;
@@ -94,6 +88,11 @@ const SETTINGS_STATE = {
   proxyType: "",
   achievementPopupDisabled: true,
   achievementPopupAutoClose: true,
+  maaVersion: "—",
+  resourceVersion: "—",
+  maaAdapterType: "",
+  maaCoreDir: "",
+  maaActiveType: "dry-run",
   newConfigName: "",
   configs: [],
   currentConfig: "",
@@ -146,7 +145,7 @@ function restoreSettingsState() {
     "achievementPopupDisabled",
     "achievementPopupAutoClose"
   ].forEach((field) => MaaStorage.copyBoolean(parsed, restored, field));
-  ["clientType", "connectConfig", "adbAddress", "adbPath", "touchMode", "updateSource", "proxyType"].forEach((field) => MaaStorage.copyString(parsed, restored, field));
+  ["clientType", "connectConfig", "adbAddress", "adbPath", "touchMode", "updateSource", "proxyType", "maaAdapterType", "maaCoreDir"].forEach((field) => MaaStorage.copyString(parsed, restored, field));
   if (parsed?.logThumbnailMax !== undefined) restored.logThumbnailMax = clampNumber(parsed.logThumbnailMax, 1, 9999, SETTINGS_STATE.logThumbnailMax);
   if (Array.isArray(parsed.timers)) restored.timers = restoreTimers(parsed.timers);
   return restored;
@@ -298,7 +297,8 @@ function settingsTip(text = "") {
 
 function renderPerformanceSection() {
   return settingsColumn(`
-    ${fieldRow("使用 GPU 加速推理", selectBox(["系统默认 GPU (NVIDIA GeForce RTX)", "CPU", "DirectML", "CUDA"], 0), "使用 GPU 推理能够以极低的 GPU 占用显著降低 CPU 的负担")}
+    <p class="settingsGlobalTip">性能设置暂未接入 Web 版，以下选项仅供查看。</p>
+    ${fieldRow("使用 GPU 加速推理", selectBox(["系统默认 GPU", "CPU", "DirectML", "CUDA"], 0, "", "settingsControlL", " disabled"), "使用 GPU 推理能够以极低的 GPU 占用显著降低 CPU 的负担")}
   `);
 }
 
@@ -307,7 +307,7 @@ function renderGameSection() {
     ? '<p class="settingsLineText">海外服资源适配提示</p>'
     : "";
   const yostarTip = SETTINGS_STATE.clientType === "YoStarEN"
-    ? '<p class="settingsLineText">YoStarEN 需要使用 1920x1080 分辨率</p>'
+    ? '<p class="settingsLineText">YoStarEN 需要使用 1920x1080 分辨率。</p>'
     : "";
   return settingsColumn(`
     ${fieldRow("客户端类型", selectBox([
@@ -319,16 +319,17 @@ function renderGameSection() {
     ], SETTINGS_STATE.clientType, "clientType"))}
     ${yostarTip}
     ${overseasTip}
-    ${checkLine("划火柴模式（自动战斗相关）（不稳定，暂不推荐开启）")}
-    ${fieldRow("开始前脚本", textBox("Example: \"C:\\\\1.cmd\" -minimized", "settingsControlXL"))}
-    ${fieldRow("结束后脚本", textBox("Example: \"C:\\\\1.cmd\" -noWindow", "settingsControlXL"))}
-    <div class="settingsInlinePair">${checkLine("自动战斗时启用上述脚本")}${checkLine("手动暂停时启用上述脚本")}</div>
-    <div class="settingsInlinePair">${checkLine("运行任务时阻止休眠", true, "", "blockSleep")}${SETTINGS_STATE.blockSleep ? checkLine("阻止休眠时保持屏幕常亮", true, "", "blockSleepScreenOn") : ""}</div>
-    <div class="settingsInlinePair">${checkLine("上报企鹅物流", true, "", "enablePenguin")}${checkLine("上报一图流")}</div>
-    ${SETTINGS_STATE.enablePenguin ? fieldRow("企鹅物流 ID（仅数字部分）", textBox("614858333", "settingsControlL")) : ""}
+    <p class="settingsGlobalTip">以下选项暂未接入 Web 版：</p>
+    ${checkLine("划火柴模式（自动战斗相关）（不稳定，暂不推荐开启）", false, "", "", true)}
+    ${fieldRow("开始前脚本", textBox("Example: \"C:\\\\1.cmd\" -minimized", "settingsControlXL", "", " disabled"))}
+    ${fieldRow("结束后脚本", textBox("Example: \"C:\\\\1.cmd\" -noWindow", "settingsControlXL", "", " disabled"))}
+    <div class="settingsInlinePair">${checkLine("自动战斗时启用上述脚本", false, "", "", true)}${checkLine("手动暂停时启用上述脚本", false, "", "", true)}</div>
+    <div class="settingsInlinePair">${checkLine("运行任务时阻止休眠", true, "", "", true)}${checkLine("阻止休眠时保持屏幕常亮", true, "", "", true)}</div>
+    <div class="settingsInlinePair">${checkLine("上报企鹅物流", true, "", "", true)}${checkLine("上报一图流", false, "", "", true)}</div>
+    ${fieldRow("企鹅物流 ID（仅数字部分）", textBox("", "settingsControlL", "", " disabled"))}
     <div class="settingsInlinePair">
-      ${fieldRow("任务超时时间（分钟）", numberBox("60", "settingsControlS"))}
-      ${fieldRow("提醒间隔时间（分钟）", numberBox("30", "settingsControlS"))}
+      ${fieldRow("任务超时时间（分钟）", numberBox("60", "settingsControlS", "", " disabled"))}
+      ${fieldRow("提醒间隔时间（分钟）", numberBox("30", "settingsControlS", "", " disabled"))}
     </div>
   `);
 }
@@ -347,40 +348,57 @@ function renderConnectionSection() {
     ], SETTINGS_STATE.connectConfig, "connectConfig"), "", "settingsControlXL")}
     ${fieldRow("连接地址", textBox(SETTINGS_STATE.adbAddress, "settingsControlXL", "adbAddress", disabledAuto), "写入当前 profile.adb.address")}
     ${fieldRow("ADB 路径", textBox(SETTINGS_STATE.adbPath, "settingsControlXL", "adbPath", disabledAuto))}
-    ${isLd ? checkLine("启用 LD 截图增强模式", true, "", "ldExtrasEnabled") : ""}
-    ${isLd ? fieldRow("LD 安装路径", textBox("D:\\\\APPS\\\\AppGroup_2_china\\\\LeidianMoNoQi\\\\Leidian\\\\LDPlayer", "settingsControlXXL")) : ""}
-    ${isLd ? checkLine("手动填写「实例编号」", false, "", "ldManualIndex") : ""}
-    ${isLd && SETTINGS_STATE.ldManualIndex ? fieldRow("实例编号", numberBox("0", "settingsControlS")) : ""}
-    ${isMumu ? checkLine("启用 MuMu 截图增强模式", true, "", "mumuExtrasEnabled") : ""}
-    ${isMumu ? fieldRow("MuMu 安装路径", textBox("C:\\\\Program Files\\\\Netease\\\\MuMuPlayer-12.0", "settingsControlXXL")) : ""}
-    ${isMumu ? checkLine("MuMu 网络桥接模式", false, "", "mumuBridge") : ""}
-    ${isMumu && SETTINGS_STATE.mumuBridge ? fieldRow("MuMu 实例编号", numberBox("0", "settingsControlS")) : ""}
-    <button class="settingsButtonSmall" type="button">截图测试</button>
-    <p class="settingsLineText">截图耗时 min/avg/max(ms): -- / -- / -- (---)</p>
-    ${checkLine("ADB 连接失败时尝试启动模拟器", true, "连接失败后自动启动模拟器。")}
-    ${checkLine("连接失败后尝试重启 ADB Server", true)}
-    ${checkLine("连接失败后尝试关闭并重启 ADB 进程", true)}
+    ${isLd ? checkLine("启用 LD 截图增强模式", true, "", "ldExtrasEnabled", true) : ""}
+    ${isLd ? fieldRow("LD 安装路径", textBox("D:\\\\APPS\\\\LDPlayer", "settingsControlXXL", "", " disabled")) : ""}
+    ${isLd ? checkLine("手动填写「实例编号」", false, "", "ldManualIndex", true) : ""}
+    ${isLd && SETTINGS_STATE.ldManualIndex ? fieldRow("实例编号", numberBox("0", "settingsControlS", "", " disabled")) : ""}
+    ${isMumu ? checkLine("启用 MuMu 截图增强模式", true, "", "mumuExtrasEnabled", true) : ""}
+    ${isMumu ? fieldRow("MuMu 安装路径", textBox("C:\\\\Program Files\\\\Netease\\\\MuMuPlayer-12.0", "settingsControlXXL", "", " disabled")) : ""}
+    ${isMumu ? checkLine("MuMu 网络桥接模式", false, "", "mumuBridge", true) : ""}
+    ${isMumu && SETTINGS_STATE.mumuBridge ? fieldRow("MuMu 实例编号", numberBox("0", "settingsControlS", "", " disabled")) : ""}
     ${fieldRow("触控模式", selectBox(["Minitouch（默认）", "MaaTouch（实验功能）", "ADB Input（不推荐使用）", "MaaFramework（实验功能）"], SETTINGS_STATE.touchMode, "touchMode"))}
-    <div class="settingsInlinePair">${checkLine("退出时释放 ADB", true)}${checkLine("使用 ADB Lite（实验性功能）")}</div>
+    <div class="settingsInlinePair">${checkLine("退出时释放 ADB", true, "", "", true)}${checkLine("使用 ADB Lite（实验性功能）", false, "", "", true)}</div>
+    <p class="settingsGlobalTip">以下选项暂未接入 Web 版：</p>
+    ${checkLine("ADB 连接失败时尝试启动模拟器", true, "连接失败后自动启动模拟器。", "", true)}
+    ${checkLine("连接失败后尝试重启 ADB Server", true, "", "", true)}
+    ${checkLine("连接失败后尝试关闭并重启 ADB 进程", true, "", "", true)}
+    <button class="settingsButtonSmall" type="button" data-settings-action="screenshotTest">截图测试</button>
+    <p class="settingsLineText" id="screenshotTestResult">点击「截图测试」以验证当前 ADB 连接的截图能力。</p>
+  `);
+}
+
+function renderMaaCoreSection() {
+  const isOfficial = SETTINGS_STATE.maaAdapterType === "official";
+  return settingsColumn(`
+    <p class="settingsGlobalTip">配置 MAA 核心适配器。当前运行中：<strong>${escapeHtml(SETTINGS_STATE.maaActiveType)}</strong></p>
+    ${fieldRow("适配器类型", selectBox([
+      { label: "DryRun（模拟运行，不实际操作）", value: "" },
+      { label: "Official（使用本地 MaaCore DLL）", value: "official" }
+    ], SETTINGS_STATE.maaAdapterType, "maaAdapterType"))}
+    ${isOfficial ? fieldRow("MaaCore 目录", textBox(SETTINGS_STATE.maaCoreDir, "settingsControlXXL", "maaCoreDir"), "MAA 安装目录，包含 MaaCore.dll 的文件夹") : ""}
+    <div class="settingsInlinePair">
+      <button class="settingsButtonSmall" type="button" data-settings-action="applyAdapter">应用并切换</button>
+      <span id="maaAdapterStatus" class="settingsLineText"></span>
+    </div>
   `);
 }
 
 function renderStartupSection() {
   return settingsColumn(`
-    <p class="settingsGlobalTip">此选项页为全局配置</p>
+    <p class="settingsGlobalTip">此选项页为全局配置，以下选项暂未接入 Web 版。</p>
     <div class="settingsSplit">
       <div class="settingsColumn">
-        ${checkLine("开机自动启动 MAA", false, "需要系统权限时可能失败。")}
-        ${checkLine("启动 MAA 后直接最小化", true)}
+        ${checkLine("开机自动启动 MAA", false, "需要系统权限时可能失败。", "", true)}
+        ${checkLine("启动 MAA 后直接最小化", true, "", "", true)}
         <hr class="settingsDivider" />
-        ${checkLine("启动 MAA 后直接运行")}
-        ${checkLine("启动 MAA 后自动开启模拟器", true)}
-        ${checkLine("ADB 连接失败时尝试启动模拟器", true, "连接失败后自动启动模拟器。")}
+        ${checkLine("启动 MAA 后直接运行", false, "", "", true)}
+        ${checkLine("启动 MAA 后自动开启模拟器", true, "", "", true)}
+        ${checkLine("ADB 连接失败时尝试启动模拟器", true, "连接失败后自动启动模拟器。", "", true)}
       </div>
       <div class="settingsColumn">
-        ${fieldRow("模拟器路径", inputButton("D:\\\\APPS\\\\leidian\\\\LDPlayer9\\\\dnplayer", "选择"))}
-        ${fieldRow("附加命令", textBox("--instance Pie64"))}
-        ${fieldRow("等待模拟器启动时间（秒）", numberBox("30", "settingsControlS"))}
+        ${fieldRow("模拟器路径", inputButton("D:\\\\APPS\\\\leidian\\\\LDPlayer9\\\\dnplayer", "选择", "settingsControlL", " disabled"))}
+        ${fieldRow("附加命令", textBox("--instance Pie64", "settingsControlL", "", " disabled"))}
+        ${fieldRow("等待模拟器启动时间（秒）", numberBox("30", "settingsControlS", "", " disabled"))}
       </div>
     </div>
   `);
@@ -388,14 +406,14 @@ function renderStartupSection() {
 
 function renderRemoteSection() {
   return settingsColumn(`
+    <p class="settingsGlobalTip">远程控制功能暂未实现，以下选项仅供参考。</p>
     <p class="settingsLineText">注意：随意填入未知来源的地址可能会导致您的账户受到损失。</p>
-    ${fieldRow("获取任务端点", textBox("", "settingsControlXL"))}
-    ${fieldRow("汇报任务端点", textBox("", "settingsControlXL"))}
-    ${fieldRow("轮询间隔 (ms)", numberBox("1000", "settingsControlXL"))}
-    ${fieldRow("用户标识符", inputButton("", "测试连接", "settingsControlXL"))}
-    ${fieldRow("设备标识符（只读）", inputButton("", "重新生成", "settingsControlXL"))}
-    <p class="settingsLineText">了解如何开发相关功能，可以访问</p>
-    <a class="settingsLink" href="#" tabindex="-1">远程控制功能开发者文档</a>
+    ${fieldRow("获取任务端点", textBox("", "settingsControlXL", "", " disabled"))}
+    ${fieldRow("汇报任务端点", textBox("", "settingsControlXL", "", " disabled"))}
+    ${fieldRow("轮询间隔 (ms)", numberBox("1000", "settingsControlS", "", " disabled"))}
+    ${fieldRow("用户标识符", inputButton("", "测试连接", "settingsControlL", " disabled"))}
+    ${fieldRow("设备标识符（只读）", inputButton("", "重新生成", "settingsControlL", " disabled"))}
+    <a class="settingsLink" href="https://maa.plus/docs/开发文档/远程控制协议.html" target="_blank" rel="noreferrer">远程控制功能开发者文档</a>
   `);
 }
 
@@ -404,24 +422,23 @@ function renderUiSection() {
     <p class="settingsGlobalTip">此选项页为全局配置</p>
     <div class="settingsSplit">
       <div class="settingsColumn">
-        ${checkLine("显示托盘图标", true, "", "useTray")}
-        ${SETTINGS_STATE.useTray ? checkLine("最小化时隐藏至托盘") : ""}
-        ${checkLine("重要信息弹出系统通知", false, "重要事件弹出系统通知。")}
-        ${checkLine("隐藏关闭按钮")}
-        ${checkLine("窗口标题滚动")}
-        ${checkLine("反转主任务右键单击效果", false, "切换主任务右键行为。")}
-        ${checkLine("使用软件渲染", false, "用于规避部分图形模块异常。")}
-        ${checkLine("使用卡片样式日志", true, "", "useCardLog")}
+        ${checkLine("使用卡片样式日志", true, "以任务卡片形式展示运行日志（推荐）。", "useCardLog")}
         ${SETTINGS_STATE.useCardLog ? fieldRow("日志缩略图最大数量", numberBox(String(SETTINGS_STATE.logThumbnailMax), "settingsControlL", "logThumbnailMax")) : ""}
-        ${fieldRow("日期格式字符串", selectBox(["HH:mm:ss", "HH:mm", "yyyy-MM-dd HH:mm:ss"], 0))}
+        <p class="settingsGlobalTip">以下选项暂未接入 Web 版：</p>
+        ${checkLine("显示托盘图标", true, "", "", true)}
+        ${checkLine("最小化时隐藏至托盘", false, "", "", true)}
+        ${checkLine("重要信息弹出系统通知", false, "重要事件弹出系统通知。", "", true)}
+        ${checkLine("隐藏关闭按钮", false, "", "", true)}
+        ${checkLine("窗口标题滚动", false, "", "", true)}
+        ${checkLine("反转主任务右键单击效果", false, "切换主任务右键行为。", "", true)}
+        ${checkLine("使用软件渲染", false, "用于规避部分图形模块异常。", "", true)}
+        ${fieldRow("日期格式字符串", selectBox(["HH:mm:ss", "HH:mm", "yyyy-MM-dd HH:mm:ss"], 0, "", "settingsControlL", " disabled"))}
       </div>
       <div class="settingsColumn">
-        ${fieldRow("语言 / Language", selectBox(["简体中文", "English", "日本語"], 0))}
-        ${fieldRow("干员名称显示语言", selectBox(["跟随 MAA", "简体中文", "English"], 0))}
-        ${fieldRow("界面主题", selectBox(["与系统同步", "深色", "浅色"], 0))}
-        ${fieldRow("主界面可选择按钮功能", selectBox(["清空", "全选", "开始"], 0))}
-        ${fieldRow("标题栏显示内容", chipsBox(["配置名称", "连接配置", "连接地址", "客户端类型"]))}
-        <button class="settingsPrimaryButton" type="button">重看设置指引</button>
+        ${fieldRow("语言 / Language", selectBox(["简体中文", "English", "日本語"], 0, "", "settingsControlL", " disabled"))}
+        ${fieldRow("干员名称显示语言", selectBox(["跟随 MAA", "简体中文", "English"], 0, "", "settingsControlL", " disabled"))}
+        ${fieldRow("界面主题", selectBox(["与系统同步", "深色", "浅色"], 0, "", "settingsControlL", " disabled"))}
+        ${fieldRow("主界面可选择按钮功能", selectBox(["清空", "全选", "开始"], 0, "", "settingsControlL", " disabled"))}
       </div>
     </div>
   `);
@@ -429,76 +446,60 @@ function renderUiSection() {
 
 function renderBackgroundSection() {
   return settingsColumn(`
-    ${fieldRow("背景图片", inputButton("D:\\\\APPS\\\\MAA-v5.2.2-win-x64\\\\background\\\\background.png", "选择", "settingsControlXXL"))}
+    <p class="settingsGlobalTip">背景设置暂未实现，以下选项仅供参考。</p>
+    ${fieldRow("背景图片", inputButton("", "选择", "settingsControlL", " disabled"))}
     ${sliderRow("背景不透明度", 50)}
     ${sliderRow("背景模糊半径", 12)}
-    ${fieldRow("背景填充模式", selectBox(["拉伸填充", "适应", "平铺"], 0))}
+    ${fieldRow("背景填充模式", selectBox(["拉伸填充", "适应", "平铺"], 0, "", "settingsControlL", " disabled"))}
   `);
 }
 
 function renderNotificationSection() {
   return settingsColumn(`
-    ${fieldRow("启用的通知配置", `${selectBox(["", "Server酱", "Telegram", "Discord"], 0)}<button class="settingsButtonSmall" type="button" disabled>发送测试</button>`)}
+    <p class="settingsGlobalTip">外部通知功能暂未实现。</p>
+    ${fieldRow("通知渠道", `${selectBox(["（未实现）", "Server酱", "Telegram", "Discord"], 0, "", "settingsControlL", " disabled")}<button class="settingsButtonSmall" type="button" disabled>发送测试</button>`)}
   `);
 }
 
 function renderHotkeySection() {
-  return settingsColumn(`
-    <p class="settingsGlobalTip">此选项页为全局配置</p>
-    ${fieldRow("[热键] 显示/收起 MAA", textBox("Ctrl + Shift + Alt + M"), "键入 退格/Esc/Delete 清除当前热键")}
-    ${fieldRow("[热键] Link start/stop", textBox("Ctrl + Shift + Alt + L"), "键入 退格/Esc/Delete 清除当前热键")}
-  `);
+  return settingsColumn(`<p class="settingsGlobalTip">全局热键在浏览器中不可用。</p>`);
 }
 
 function renderAchievementSection() {
-  return settingsColumn(`
-    <p class="settingsLineText">成就等级： 25</p>
-    <button class="settingsButtonSmall" type="button">查看成就</button>
-    <div class="settingsInlinePair">
-      <button class="settingsButtonSmall" type="button">备份成就</button>
-      <button class="settingsButtonSmall" type="button">加载备份</button>
-    </div>
-    <div class="achievementMedal">♜</div>
-    ${checkLine("禁用成就提示气泡", true, "", "achievementPopupDisabled")}
-    ${SETTINGS_STATE.achievementPopupDisabled ? "" : checkLine("成就提示气泡自动关闭", true, "", "achievementPopupAutoClose")}
-  `);
+  return settingsColumn(`<p class="settingsGlobalTip">成就系统仅桌面版可用。</p>`);
 }
 
 function renderUpdateSection() {
   const isGithub = SETTINGS_STATE.updateSource === "Github";
   const isMirror = SETTINGS_STATE.updateSource === "MirrorChyan";
   return settingsColumn(`
-    <p class="settingsGlobalTip">此选项页为全局配置</p>
+    <p class="settingsGlobalTip">此选项页为全局配置。自动更新功能仅桌面版可用，Web 版由部署方维护更新。</p>
     <div class="settingsSplit settingsUpdateGrid">
       <div class="settingsColumn">
-        ${checkLine("启动时检查更新", true)}
-        ${checkLine("定时检查更新", true, "定期检查更新。")}
-        ${checkLine("自动下载更新包", true)}
-        ${checkLine("自动安装更新包", true)}
-        ${checkLine("显示 MAA.Updater 控制台输出")}
-        ${isGithub ? checkLine("强制使用 GitHub", true, "忽略代理源配置。", "forceGithub") : ""}
-        ${fieldRow("更新渠道", selectBox(["公测版", "稳定版", "内测版"], 0))}
+        ${checkLine("启动时检查更新", true, "", "", true)}
+        ${checkLine("定时检查更新", true, "定期检查更新。", "", true)}
+        ${checkLine("自动下载更新包", true, "", "", true)}
+        ${checkLine("自动安装更新包", true, "", "", true)}
+        ${checkLine("显示 MAA.Updater 控制台输出", false, "", "", true)}
+        ${isGithub ? checkLine("强制使用 GitHub", true, "忽略代理源配置。", "forceGithub", true) : ""}
+        ${fieldRow("更新渠道", selectBox(["公测版", "稳定版", "内测版"], 0, "", "settingsControlL", " disabled"))}
         ${fieldRow("更新源", selectBox([
           { label: "海外源", value: "Overseas" },
           { label: "GitHub", value: "Github" },
           { label: "Mirror酱", value: "MirrorChyan" }
-        ], SETTINGS_STATE.updateSource, "updateSource"))}
-        ${isMirror ? fieldRow("Mirror酱 CDK", inputButton("", "复制", "settingsControlL")) : ""}
-        ${isMirror ? '<a class="settingsLink" href="#" tabindex="-1">Mirror酱</a>' : ""}
+        ], SETTINGS_STATE.updateSource, "updateSource", "settingsControlL", " disabled"))}
+        ${isMirror ? fieldRow("Mirror酱 CDK", inputButton("", "复制", "settingsControlL", " disabled")) : ""}
+        ${fieldRow("HTTP Proxy", selectBox(["", "HTTP Proxy"], SETTINGS_STATE.proxyType, "proxyType"))}
+        ${SETTINGS_STATE.proxyType ? textBox("", "settingsControlL", "proxyAddress") : ""}
       </div>
       <div class="settingsColumn">
-        ${fieldRow("HTTP Proxy", selectBox(["", "HTTP Proxy"], SETTINGS_STATE.proxyType, "proxyType"))}
-        ${SETTINGS_STATE.proxyType ? textBox("192.168.31.45:7890", "settingsControlL") : ""}
-        ${badgeRow("软件版本", "v6.9.0")}
-        ${badgeRow("资源版本", "承诺")}
-        ${badgeRow("构建日期", "2026/5/2 12:30:07")}
-        ${badgeRow("资源日期", "2026/5/1 17:02:14")}
+        ${badgeRow("软件版本", SETTINGS_STATE.maaVersion)}
+        ${badgeRow("资源版本", SETTINGS_STATE.resourceVersion)}
         <div class="settingsInlinePair">
-          <button class="settingsButtonSmall" type="button">软件更新</button>
-          <button class="settingsButtonSmall" type="button">更新日志</button>
+          <button class="settingsButtonSmall" type="button" disabled>软件更新</button>
+          <button class="settingsButtonSmall" type="button" disabled>更新日志</button>
         </div>
-        <button class="settingsButtonSmall" type="button">资源更新</button>
-        <a class="settingsLink" href="#" tabindex="-1">资源仓库</a>
+        <button class="settingsButtonSmall" type="button" disabled>资源更新</button>
       </div>
     </div>
   `);
@@ -509,13 +510,13 @@ function renderIssueSection() {
     <p class="settingsLineText">请在确认您的问题不属于「常见问题」后，再进行「问题反馈」</p>
     <div class="settingsSplit settingsIssueGrid">
       <div class="settingsColumn">
-        <a class="settingsLink" href="#" tabindex="-1">常见问题</a>
-        <a class="settingsLink" href="#" tabindex="-1">问题反馈</a>
+        <a class="settingsLink" href="https://maa.plus/docs/用户手册/常见问题.html" target="_blank" rel="noreferrer">常见问题</a>
+        <a class="settingsLink" href="https://github.com/MaaAssistantArknights/MaaAssistantArknights/issues" target="_blank" rel="noreferrer">问题反馈 (GitHub Issues)</a>
       </div>
       <div class="settingsColumn">
-        <button class="settingsButtonSmall" type="button">生成日志压缩包</button>
-        <button class="settingsButtonSmall" type="button">打开日志文件夹</button>
-        <span class="settingsCheckLine"><button class="settingsButtonSmall" type="button">清空图片缓存</button>${settingsTip("清理调试截图缓存。")}</span>
+        <button class="settingsButtonSmall" type="button" disabled>生成日志压缩包</button>
+        <button class="settingsButtonSmall" type="button" disabled>打开日志文件夹</button>
+        <span class="settingsCheckLine"><button class="settingsButtonSmall" type="button" disabled>清空图片缓存</button>${settingsTip("清理调试截图缓存。")}</span>
       </div>
     </div>
   `);
@@ -525,16 +526,14 @@ function renderAboutSection() {
   return settingsColumn(`
     <div class="settingsSplit settingsAboutGrid">
       <div class="settingsColumn">
-        <a class="settingsLink" href="#" tabindex="-1">MAA 官网</a>
-        <a class="settingsLink" href="#" tabindex="-1">bilibili</a>
-        <a class="settingsLink" href="#" tabindex="-1">源码: GitHub</a>
-        <button class="settingsButtonSmall" type="button">查看公告</button>
+        <a class="settingsLink" href="https://maa.plus" target="_blank" rel="noreferrer">MAA 官网</a>
+        <a class="settingsLink" href="https://github.com/MaaAssistantArknights/MaaAssistantArknights" target="_blank" rel="noreferrer">源码: GitHub</a>
+        <a class="settingsLink" href="https://space.bilibili.com/3493274731940507" target="_blank" rel="noreferrer">bilibili</a>
       </div>
       <div class="settingsColumn">
-        <a class="settingsLink" href="#" tabindex="-1">QQ 群</a>
-        <a class="settingsLink" href="#" tabindex="-1">QQ 频道</a>
-        <a class="settingsLink" href="#" tabindex="-1">Telegram</a>
-        <a class="settingsLink" href="#" tabindex="-1">Discord</a>
+        <a class="settingsLink" href="https://discord.gg/23KMRefaXz" target="_blank" rel="noreferrer">Discord</a>
+        <a class="settingsLink" href="https://t.me/+Mgc2Zngr-hs3ZjU1" target="_blank" rel="noreferrer">Telegram</a>
+        <a class="settingsLink" href="https://ota.maa.plus/MaaAssistantArknights/MaaRelease/releases/tag/latest" target="_blank" rel="noreferrer">最新版本</a>
       </div>
     </div>
   `);
@@ -551,12 +550,13 @@ function fieldRow(label, control, tip = "") {
   </label>`;
 }
 
-function checkLine(label, checked = false, tip = "", key = "") {
+function checkLine(label, checked = false, tip = "", key = "", disabled = false) {
   const value = key ? SETTINGS_STATE[key] : checked;
   const attr = key ? ` data-settings-field="${key}"` : "";
+  const disabledAttr = disabled ? " disabled" : "";
   return `<span class="settingsCheckLine">
     <label class="settingsCheck">
-      <input type="checkbox"${attr}${value ? " checked" : ""} />
+      <input type="checkbox"${attr}${value ? " checked" : ""}${disabledAttr} />
       <span>${escapeHtml(label)}</span>
     </label>
     ${settingsTip(tip)}
@@ -632,6 +632,14 @@ function onSettingsClick(event) {
   }
   if (event.target.closest("[data-settings-delete-config]")) {
     runSettingsAction("deleteConfig");
+    return;
+  }
+  if (event.target.closest("[data-settings-action='screenshotTest']")) {
+    runSettingsScreenshotTest();
+    return;
+  }
+  if (event.target.closest("[data-settings-action='applyAdapter']")) {
+    applyAdapterConfig();
   }
 }
 
@@ -656,6 +664,7 @@ function onSettingsChange(event) {
   if (updateSettingsField(event.target)) return;
   if (updateTimerField(event.target)) {
     persistSettingsState();
+    syncTimersToScheduler();
     renderSettingsView();
   }
 }
@@ -904,6 +913,106 @@ function syncSettingsNavActive() {
   document.querySelectorAll("[data-settings-nav]").forEach((button) => {
     button.classList.toggle("active", Number(button.dataset.settingsNav) === SETTINGS_STATE.selected);
   });
+}
+
+function syncTimersToScheduler() {
+  if (typeof api !== "function") return;
+  const config = {
+    enabled: SETTINGS_STATE.timers.some((t) => t.enabled),
+    slots: SETTINGS_STATE.timers.map((t) => ({
+      enabled: t.enabled,
+      time: `${String(t.hour).padStart(2, "0")}:${String(t.minute).padStart(2, "0")}`,
+      profile_name: t.config || "",
+      force_start: Boolean(SETTINGS_STATE.forceStart)
+    }))
+  };
+  api("/api/scheduler", {
+    method: "PUT",
+    body: JSON.stringify(config)
+  }).catch(() => {});
+}
+
+async function loadSchedulerConfig() {
+  if (typeof api !== "function") return;
+  try {
+    const config = await api("/api/scheduler");
+    if (!config || !Array.isArray(config.slots)) return;
+    config.slots.forEach((slot, index) => {
+      if (index >= SETTINGS_STATE.timers.length) return;
+      const timer = SETTINGS_STATE.timers[index];
+      timer.enabled = Boolean(slot.enabled);
+      const [h, m] = (slot.time || "00:00").split(":");
+      timer.hour = Math.min(23, Math.max(0, parseInt(h, 10) || 0));
+      timer.minute = Math.min(59, Math.max(0, parseInt(m, 10) || 0));
+      timer.config = slot.profile_name || "";
+    });
+    if (config.slots.some((s) => s.force_start)) SETTINGS_STATE.forceStart = true;
+    persistSettingsState();
+  } catch (e) { /* ignore if scheduler not available */ }
+}
+
+async function loadVersionInfo() {
+  if (typeof api !== "function") return;
+  try {
+    const data = await api("/api/version");
+    if (data.maa_version) SETTINGS_STATE.maaVersion = data.maa_version;
+    if (data.resource_version) SETTINGS_STATE.resourceVersion = data.resource_version;
+    renderSettingsView();
+  } catch (e) { /* ignore */ }
+}
+
+async function loadAdapterConfig() {
+  if (typeof api !== "function") return;
+  try {
+    const data = await api("/api/adapter");
+    if (data.adapter !== undefined) SETTINGS_STATE.maaAdapterType = data.adapter;
+    if (data.core_dir !== undefined) SETTINGS_STATE.maaCoreDir = data.core_dir;
+    SETTINGS_STATE.maaActiveType = data.active_type || "dry-run";
+  } catch (e) { /* ignore */ }
+}
+
+async function applyAdapterConfig() {
+  if (typeof api !== "function") return;
+  const statusEl = document.getElementById("maaAdapterStatus");
+  if (statusEl) statusEl.textContent = "正在应用……";
+  try {
+    const result = await api("/api/adapter", {
+      method: "PUT",
+      body: JSON.stringify({
+        adapter: SETTINGS_STATE.maaAdapterType,
+        core_dir: SETTINGS_STATE.maaCoreDir,
+      })
+    });
+    if (result && result.detail) {
+      if (statusEl) statusEl.textContent = `失败：${result.detail}`;
+      return;
+    }
+    SETTINGS_STATE.maaActiveType = result.active_type || "dry-run";
+    const note = result.hot_swapped ? "已生效" : (result.note || "重启后生效");
+    if (statusEl) statusEl.textContent = `已保存（${note}），当前：${SETTINGS_STATE.maaActiveType}`;
+    persistSettingsState();
+    renderSettingsView();
+  } catch (e) {
+    if (statusEl) statusEl.textContent = `失败：${e.message}`;
+  }
+}
+
+async function runSettingsScreenshotTest() {
+  if (typeof api !== "function") return;
+  const resultEl = document.getElementById("screenshotTestResult");
+  if (resultEl) resultEl.textContent = "截图测试中……";
+  try {
+    const t0 = Date.now();
+    const result = await api("/api/adb/test-screenshot", { method: "POST" });
+    const elapsed = Date.now() - t0;
+    if (resultEl) {
+      resultEl.textContent = result.ok
+        ? `截图成功 (${elapsed} ms)${result.message ? " — " + result.message : ""}`
+        : `截图失败: ${result.message || "未知错误"}`;
+    }
+  } catch (error) {
+    if (resultEl) resultEl.textContent = `截图失败: ${error.message || "请求错误"}`;
+  }
 }
 
 const SETTINGS_ACTION_NAMES = ["selectSection", "toggleSection", "addConfig", "deleteConfig", "persist"];

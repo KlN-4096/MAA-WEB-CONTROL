@@ -158,7 +158,6 @@ function renderCopilotView() {
       <a class="copilotLink" href="https://prts.plus" target="_blank" rel="noreferrer">自动战斗作业分享</a>
     </section>
     <aside class="copilotInfo">
-      <button class="overlayButton" type="button" title="选择悬浮窗目标">⌘</button>
       <div class="copilotTips">${renderCopilotTips()}</div>
       <a class="copilotLink mapLink" href="https://map.ark-nights.com/areas" target="_blank" rel="noreferrer">自动战斗地图坐标</a>
     </aside>
@@ -502,6 +501,33 @@ function copilotUnavailable() {
   const feature = typeof state !== "undefined" ? state.capabilities?.features?.copilot : null;
   if (!feature || feature.available !== false) return "";
   return feature.reason || "后端能力尚未接入。";
+}
+
+function fireCopilotStart() {
+  if (typeof api !== "function") return;
+  const job = {
+    name: COPILOT_STATE.taskName || basenameWithoutExt(COPILOT_STATE.filename) || "copilot",
+    path: COPILOT_STATE.filename,
+    formation: COPILOT_STATE.useFormation ? (Number(COPILOT_STATE.formationIndex) || 1) : 0,
+    loop_times: COPILOT_STATE.loop ? Math.max(1, Number(COPILOT_STATE.loopTimes) || 1) : 1
+  };
+  api("/api/copilot/run", {
+    method: "POST",
+    body: JSON.stringify(job)
+  }).then((result) => {
+    if (!result.ok) {
+      COPILOT_STATE.idle = true;
+      renderCopilotView();
+    }
+  }).catch(() => {
+    COPILOT_STATE.idle = true;
+    renderCopilotView();
+  });
+}
+
+function fireCopilotStop() {
+  if (typeof api !== "function") return;
+  api("/api/copilot/stop", { method: "POST" }).catch(() => {});
 }
 
 const COPILOT_ACTION_NAMES = [
