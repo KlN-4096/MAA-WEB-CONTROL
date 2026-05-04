@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 import subprocess
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisconnect
@@ -13,6 +14,7 @@ from .events import EventBus
 from .logs import MaaLogService
 from .models import (
     AdbStatus,
+    AdapterConfig,
     AppendCall,
     CopilotJob,
     PostAction,
@@ -34,6 +36,7 @@ def create_api_router(
     events: EventBus,
     log_service: MaaLogService | None = None,
     scheduler: SchedulerService | None = None,
+    project_root: Path | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api")
     logs = log_service or runner.log_service
@@ -55,6 +58,53 @@ def create_api_router(
     @router.get("/capabilities")
     async def get_capabilities():
         return build_capabilities()
+
+    @router.get("/version")
+    async def get_version():
+        return await asyncio.to_thread(_get_maa_version, runner)
+
+    @router.get("/adapter")
+    async def get_adapter_config():
+        active_type = "official" if hasattr(runner.adapter, "_core_dir") else "dry-run"
+        saved: dict[str, Any] = {}
+        if project_root is not None:
+            config_file = project_root / "data" / "adapter.json"
+            if config_file.exists():
+                try:
+                    saved = json.loads(config_file.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+        return {
+            "active_type": active_type,
+            "adapter": saved.get("adapter", ""),
+            "core_dir": saved.get("core_dir", ""),
+        }
+
+    @router.put("/adapter")
+    async def update_adapter_config(config: AdapterConfig):
+        if project_root is None:
+            raise HTTPException(status_code=501, detail="Project root not configured")
+        if config.adapter in {"official", "real"} and not config.core_dir.strip():
+            raise HTTPException(status_code=400, detail="MAA_CORE_DIR 不能为空（adapter 为 official 时必须填写）")
+        config_file = project_root / "data" / "adapter.json"
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file.write_text(
+            json.dumps({"adapter": config.adapter, "core_dir": config.core_dir}, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        from .maa_adapter import create_maa_adapter as _create_adapter
+        try:
+            new_adapter = _create_adapter(
+                project_root,
+                runner.events,
+                env={"MAA_ADAPTER": config.adapter, "MAA_CORE_DIR": config.core_dir},
+                log_service=runner.log_service,
+            )
+            runner.set_adapter(new_adapter)
+            active = "official" if config.adapter in {"official", "real"} else "dry-run"
+            return {"ok": True, "active_type": active, "hot_swapped": True}
+        except RuntimeError as exc:
+            return {"ok": True, "active_type": "pending", "hot_swapped": False, "note": str(exc)}
 
     @router.get("/profiles/{name}")
     async def get_profile(name: str):
@@ -354,6 +404,40 @@ def _parse_adb_devices(output: str) -> list[tuple[str, str]]:
         if len(parts) >= 2:
             devices.append((parts[0], parts[1]))
     return devices
+
+
+def _get_maa_version(runner: "MaaRunnerService") -> dict:
+    maa_version = "—"
+    resource_version = "—"
+    adapter = runner.adapter
+    asst_cls = getattr(adapter, "_asst_cls", None)
+    if asst_cls is None:
+        resolve = getattr(adapter, "_resolve_asst_cls", None)
+        if callable(resolve):
+            try:
+                asst_cls = resolve()
+            except Exception:
+                pass
+    if asst_cls is not None:
+        get_ver = getattr(asst_cls, "get_version", None)
+        if callable(get_ver):
+            try:
+                maa_version = get_ver() or "—"
+            except Exception:
+                pass
+    core_dir = getattr(adapter, "_core_dir", None)
+    if core_dir is not None:
+        import json as _json
+        for candidate in ["resource/version.json", "cache/version.json", "version.json"]:
+            ver_path = core_dir / candidate
+            if ver_path.exists():
+                try:
+                    data = _json.loads(ver_path.read_text(encoding="utf-8"))
+                    resource_version = data.get("activity", {}).get("DateTime", None) or data.get("version", None) or "—"
+                except Exception:
+                    pass
+                break
+    return {"maa_version": maa_version, "resource_version": resource_version}
 
 
 async def events_socket(websocket: WebSocket, events: EventBus) -> None:

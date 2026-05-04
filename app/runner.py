@@ -71,6 +71,15 @@ class MaaRunnerService:
         return self._adapter
 
     @property
+    def events(self) -> EventBus:
+        return self._events
+
+    def set_adapter(self, adapter: MaaAdapter) -> None:
+        if self._task and not self._task.done():
+            raise RuntimeError("Cannot change adapter while a run is in progress.")
+        self._adapter = adapter
+
+    @property
     def post_action(self) -> PostAction:
         return self._post_action.model_copy()
 
@@ -99,8 +108,8 @@ class MaaRunnerService:
 
     async def _run_profile(self, profile: Profile) -> None:
         try:
-            await self._connect(profile)
             calls = profile_to_append_calls(profile)
+            await self._connect(profile)
             await self._append_tasks(calls)
             await self._start_and_finish()
         except RunStopped as exc:

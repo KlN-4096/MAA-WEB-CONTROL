@@ -349,6 +349,13 @@ class OfficialMaaAdapter:
             self._task_chain_status = None
         if not asst.start():
             return False
+        # AsstStart is asynchronous; wait until the C++ thread actually sets running=True
+        # before entering the completion poll, otherwise the loop exits immediately.
+        deadline = time.time() + 10.0
+        while not asst.running():
+            if time.time() > deadline:
+                break
+            time.sleep(0.1)
         while asst.running():
             time.sleep(self._poll_interval)
         return True
@@ -368,14 +375,28 @@ def create_maa_adapter(
 ) -> MaaAdapter:
     source_env = os.environ if env is None else env
     adapter_name = source_env.get("MAA_ADAPTER", "").strip().lower()
+    core_dir_str = source_env.get("MAA_CORE_DIR", "").strip()
+
+    # Fall back to persisted config file when using real environment
+    if env is None and (not adapter_name or not core_dir_str):
+        config_file = project_root / "data" / "adapter.json"
+        if config_file.exists():
+            try:
+                file_cfg = json.loads(config_file.read_text(encoding="utf-8"))
+                if not adapter_name:
+                    adapter_name = str(file_cfg.get("adapter", "")).strip().lower()
+                if not core_dir_str:
+                    core_dir_str = str(file_cfg.get("core_dir", "")).strip()
+            except Exception:
+                pass
+
     if adapter_name not in {"official", "real"}:
         return DryRunMaaAdapter()
 
-    core_dir = source_env.get("MAA_CORE_DIR", "").strip()
-    if not core_dir:
+    if not core_dir_str:
         raise RuntimeError("MAA_CORE_DIR is required when MAA_ADAPTER=official or real.")
 
-    core_path = Path(core_dir)
+    core_path = Path(core_dir_str)
     python_dir = _resolve_python_dir(source_env.get("MAA_PYTHON_DIR"), core_path)
     user_dir = _optional_path(source_env.get("MAA_USER_DIR"), project_root / "data" / "runtime" / "maa")
     return OfficialMaaAdapter(

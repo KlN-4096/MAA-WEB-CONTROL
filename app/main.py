@@ -38,7 +38,7 @@ async def _scheduler_run_callback(profile_name: str) -> None:
 scheduler = SchedulerService(event_bus, SCHEDULER_CONFIG, run_callback=_scheduler_run_callback)
 
 app = FastAPI(title="MAA Web Control", version="0.2.0")
-app.include_router(create_api_router(profile_store, runner, event_bus, log_service, scheduler))
+app.include_router(create_api_router(profile_store, runner, event_bus, log_service, scheduler, project_root=PROJECT_ROOT))
 
 
 @app.on_event("startup")

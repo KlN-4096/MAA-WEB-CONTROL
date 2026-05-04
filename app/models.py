@@ -125,3 +125,8 @@ class CopilotJob(BaseModel):
 class ToolRequest(BaseModel):
     tool: str
     params: dict[str, Any] = Field(default_factory=dict)
+
+
+class AdapterConfig(BaseModel):
+    adapter: str = ""
+    core_dir: str = ""
