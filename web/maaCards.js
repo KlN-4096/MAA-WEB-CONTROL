@@ -71,8 +71,13 @@ function renderLogCard(card) {
 }
 
 function renderLogItem(item) {
-  const levelClass = LOG_LEVEL_CLASS[item.raw?.level || item.level] || LOG_LEVEL_CLASS[item.color_key] || "";
-  return `<div class="maaLogItem ${logEscape(item.color_key)} ${levelClass}">
+  // color_key (e.g. "SuccessLogBrush") drives all visual styling via CSS.
+  // LOG_LEVEL_CLASS is only consulted for a raw numeric level embedded in the
+  // callback detail, which some adapters populate. The color_key itself is not
+  // a valid LOG_LEVEL_CLASS key, so that lookup was always undefined.
+  const rawLevel = item.raw?.level;
+  const levelClass = rawLevel ? (LOG_LEVEL_CLASS[rawLevel] || "") : "";
+  return `<div class="maaLogItem ${logEscape(item.color_key)}${levelClass ? ` ${levelClass}` : ""}">
     <div class="maaLogItemBody">
       <div class="maaLogItemLine">${renderLogContent(item.content)}</div>
       ${renderLogTooltipButton(item)}

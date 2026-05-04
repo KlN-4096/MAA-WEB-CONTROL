@@ -26,6 +26,7 @@ let runRequestPending = false;
 let stopRequestPending = false;
 let rawLogExpanded = false;
 let maaLogViewLoadPromise = null;
+let refreshStatusTimer = null;
 const wiredFeatureIds = new Set();
 const BUSY_RUNNER_STATES = new Set(["Connecting", "AppendingTasks", "Running", "Stopping"]);
 const VISIBLE_LOG_DETAILS = ["what", "taskchain", "subtask", "task_id", "type", "maa_id", "message"];
@@ -163,6 +164,14 @@ async function loadProfile(name) {
   state.selectedTask = preferredTaskIndex(state.profile.tasks, restoreSelectedTask(state.profile));
   persistSelectedTask();
   renderAll();
+}
+
+function scheduleRefreshStatus() {
+  if (refreshStatusTimer) return;
+  refreshStatusTimer = setTimeout(() => {
+    refreshStatusTimer = null;
+    refreshStatus().catch(showError);
+  }, 600);
 }
 
 async function refreshStatus() {
@@ -519,7 +528,8 @@ function toggleRawLog() {
 function handleMaaLogEvent(event) {
   if (event.type === "maa.log.clear") {
     state.logCards = [];
-    state.logs = [];
+    // Only strip MAA card log entries; keep runner/scheduler/ui DEV events
+    state.logs = state.logs.filter((e) => !e.type?.startsWith("maa.log."));
     renderLogs();
     if (rawLogExpanded) renderRawLogs();
     return;
@@ -902,6 +912,16 @@ function onDocumentClick(event) {
     return;
   }
 
+  const tooltipBtn = event.target.closest("[data-log-tooltip]");
+  if (tooltipBtn) {
+    toggleLogTooltipPopup(tooltipBtn);
+    return;
+  }
+
+  if (!event.target.closest(".maaLogTooltipPopup")) {
+    closeLogTooltipPopup();
+  }
+
   const addType = event.target.closest("[data-task-add-type]");
   if (addType) {
     if (!isProfileEditingLocked()) {
@@ -927,6 +947,7 @@ function onDocumentClick(event) {
 function onDocumentKeyDown(event) {
   if (event.key !== "Escape") return;
   closeLogThumbnail();
+  closeLogTooltipPopup();
   closeTaskMenus();
 }
 
@@ -1090,6 +1111,48 @@ function closeLogThumbnail() {
   document.querySelector(".maaLogPreview")?.remove();
 }
 
+function toggleLogTooltipPopup(btn) {
+  const existing = document.querySelector(".maaLogTooltipPopup");
+  if (existing && existing.dataset.anchorId === btn.dataset.logTooltip) {
+    existing.remove();
+    return;
+  }
+  closeLogTooltipPopup();
+  let data;
+  try { data = JSON.parse(btn.dataset.logTooltip); } catch { data = btn.dataset.logTooltip; }
+  const popup = document.createElement("div");
+  popup.className = "maaLogTooltipPopup";
+  popup.dataset.anchorId = btn.dataset.logTooltip;
+  popup.innerHTML = renderTooltipContent(data);
+  document.body.appendChild(popup);
+  const btnRect = btn.getBoundingClientRect();
+  const top = Math.min(btnRect.bottom + 6, window.innerHeight - popup.offsetHeight - 8);
+  const left = Math.min(btnRect.left, window.innerWidth - popup.offsetWidth - 8);
+  popup.style.top = `${Math.max(8, top)}px`;
+  popup.style.left = `${Math.max(8, left)}px`;
+}
+
+function closeLogTooltipPopup() {
+  document.querySelector(".maaLogTooltipPopup")?.remove();
+}
+
+function renderTooltipContent(data) {
+  if (!data || typeof data !== "object") return `<div class="tooltipRow">${escapeHtml(String(data))}</div>`;
+  const KIND_LABELS = {
+    stage_drops: "掉落统计", recruit_tags: "公招Tags", recruit_result: "公招结果",
+    facility: "设施", screenshot: "截图方式"
+  };
+  const kind = data.kind;
+  const title = KIND_LABELS[kind] || kind || "详情";
+  const rows = Object.entries(data)
+    .filter(([k]) => k !== "kind")
+    .map(([k, v]) => {
+      const val = Array.isArray(v) ? v.join(", ") : typeof v === "object" ? JSON.stringify(v) : String(v ?? "");
+      return `<div class="tooltipRow"><span class="tooltipKey">${escapeHtml(k)}</span><span class="tooltipVal">${escapeHtml(val)}</span></div>`;
+    }).join("");
+  return `<div class="tooltipTitle">${escapeHtml(title)}</div>${rows || "<div class=\"tooltipRow\">—</div>"}`;
+}
+
 function createProfile() {
   if (isProfileEditingLocked()) return;
   state.profile = {
@@ -1241,7 +1304,7 @@ function connectEvents() {
     } catch (error) {
       addLocalLog("error", "ui.websocket", "事件解析失败", { message: error.message || String(error) });
     }
-    refreshStatus().catch(showError);
+    scheduleRefreshStatus();
   };
   socket.onclose = () => setTimeout(connectEvents, 2000);
 }
