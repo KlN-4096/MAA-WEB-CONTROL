@@ -29,7 +29,7 @@
     {
       "id": "recruit",
       "type": "Recruit",
-      "enabled": false,
+      "enabled": true,
       "name": "自动公招",
       "params": {
         "auto_expedited": true,
@@ -51,7 +51,7 @@
     {
       "id": "infrast",
       "type": "Infrast",
-      "enabled": false,
+      "enabled": true,
       "name": "基建换班",
       "params": {
         "mode": "常规模式",
@@ -81,7 +81,7 @@
     {
       "id": "fight",
       "type": "Fight",
-      "enabled": false,
+      "enabled": true,
       "name": "理智作战",
       "params": {
         "use_medicine": false,
@@ -93,7 +93,7 @@
         "use_drops": false,
         "series": 0,
         "drop": "不选择",
-        "stage": "当前/上次",
+        "stage": "CE-6",
         "custom_annihilation": false,
         "dr_grandet": false,
         "use_expiring_medicine": true,
@@ -108,6 +108,7 @@
         "weekly_schedule": false,
         "auto_restart": true,
         "stage_plan": [
+          "CE-6",
           "当前/上次"
         ]
       },
@@ -115,7 +116,7 @@
     },
     {
       "id": "remaining-sanity",
-      "type": "Custom",
+      "type": "Fight",
       "enabled": false,
       "name": "剩余理智",
       "params": {
@@ -172,11 +173,11 @@
       "name": "领取奖励",
       "params": {
         "daily": true,
-        "mail": false,
-        "free_gacha": false,
+        "mail": true,
+        "free_gacha": true,
         "orundum": true,
-        "limited_orundum": false,
-        "monthly_card": false
+        "limited_orundum": true,
+        "monthly_card": true
       },
       "strategy": {}
     },

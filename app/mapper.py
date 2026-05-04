@@ -111,6 +111,15 @@ RECLAMATION_INCREMENT_MODE_VALUES = {
     "长按": 1,
 }
 
+_STAGE_CURRENT_ALIASES = frozenset({"当前/上次", "当前", "上次", "CurrentStage"})
+
+TOUCH_MODE_VALUES = {
+    "Minitouch（默认）": "minitouch",
+    "MaaTouch（实验功能）": "maatouch",
+    "ADB Input（不推荐使用）": "adb",
+    "MaaFramework（实验功能）": "maaframework",
+}
+
 
 class TaskMappingError(ValueError):
     """Raised when a web task cannot be translated to a MaaCore append call."""
@@ -171,10 +180,15 @@ def _normalize_common_fields(params: dict[str, Any]) -> None:
 
 def _map_startup(params: dict[str, Any]) -> None:
     _normalize_common_fields(params)
+    if "touch_mode" in params:
+        mode = str(params.get("touch_mode", ""))
+        params["touch_mode"] = TOUCH_MODE_VALUES.get(mode, mode)
 
 
 def _map_fight(params: dict[str, Any]) -> None:
     _normalize_stage_plan(params)
+    if "stage" in params:
+        params["stage"] = _normalize_stage_str(str(params.get("stage", "")))
     _map_fight_resources(params)
     _map_fight_reporting(params)
 
@@ -417,7 +431,7 @@ def _map_custom(params: dict[str, Any]) -> None:
     task_names = params.get("task_names", params.get("custom_tasks", []))
     params["task_names"] = _split_tags(task_names) if isinstance(task_names, str) else _normalize_string_list(task_names)
     if not params["task_names"]:
-        raise TaskMappingError("Custom task requires task_names. Provide a semicolon-separated list.")
+        raise TaskMappingError("Custom 任务未填写任务名（task_names），请在任务配置中填写至少一个任务名。")
 
 
 def _normalize_stage_plan(params: dict[str, Any]) -> None:
@@ -430,12 +444,12 @@ def _normalize_stage_plan(params: dict[str, Any]) -> None:
 
 
 def _select_stage_from_plan(stage_plan: list[Any], weekday: int | None = None) -> str:
-    candidates = [str(stage) for stage in stage_plan if stage]
+    candidates = [_normalize_stage_str(str(stage)) for stage in stage_plan if stage]
     if not candidates:
         return ""
     current_weekday = datetime.now().weekday() if weekday is None else weekday
     for stage in candidates:
-        if _is_stage_open(stage, current_weekday):
+        if not stage or _is_stage_open(stage, current_weekday):
             return stage
     return candidates[0]
 
@@ -443,6 +457,10 @@ def _select_stage_from_plan(stage_plan: list[Any], weekday: int | None = None) -
 def _is_stage_open(stage: str, weekday: int) -> bool:
     open_days = STAGE_OPEN_WEEKDAYS.get(stage)
     return open_days is None or weekday in open_days
+
+
+def _normalize_stage_str(stage: str) -> str:
+    return "" if stage in _STAGE_CURRENT_ALIASES else stage
 
 
 def _normalize_client_type(value: Any) -> str:

@@ -1,6 +1,6 @@
 const TASK_TYPES = [
   "StartUp", "Recruit", "Infrast", "Fight", "Custom", "Mall",
-  "Award", "Roguelike", "Reclamation", "CloseDown"
+  "Award", "Roguelike", "Reclamation", "CloseDown", "UserDataUpdate"
 ];
 
 const TASK_NAMES = {
@@ -13,10 +13,11 @@ const TASK_NAMES = {
   Award: "领取奖励",
   Roguelike: "自动肉鸽",
   Reclamation: "生息演算",
-  CloseDown: "关闭游戏"
+  CloseDown: "关闭游戏",
+  UserDataUpdate: "更新数据"
 };
 
-const NO_ADVANCED_TASKS = new Set(["StartUp", "Award", "CloseDown"]);
+const NO_ADVANCED_TASKS = new Set(["StartUp", "Award", "CloseDown", "UserDataUpdate"]);
 const STARTUP_CLIENT_TYPES = ["官服", "Bilibili服", "国际服 (YostarEN)", "日服 (YostarJP)", "韩服 (YostarKR)", "繁中服 (txwy)"];
 const CONNECTION_PRESETS = ["通用模式", "蓝叠模拟器", "MuMu 模拟器", "雷电模拟器", "应用宝模拟器", "Android 虚拟设备（AVD）", "夜神模拟器", "逍遥模拟器", "PC 端", "WSA 旧版本", "兼容模式", "第二分辨率", "通用模式（屏蔽异常输出）"];
 const TOUCH_MODES = ["Minitouch（默认）", "MaaTouch（实验功能）", "ADB Input（不推荐使用）", "MaaFramework（实验功能）"];
@@ -147,6 +148,7 @@ function builtinDefaultParams(type) {
   if (type === "Award") return { daily: true, orundum: true };
   if (type === "Roguelike") return { theme: "萨卡兹", difficulty: "MAX (18)", strategy: ROGUELIKE_STRATEGIES[0], squad: "指挥分队", roles: "稳扎稳打（重装、术师、狙击）", starts_count: 99999, investment_enabled: true, delay_abort: true };
   if (type === "Reclamation") return { theme: "沙洲遗闻", strategy: RECLAMATION_STRATEGIES[1], tool_to_craft: "荧光棒", increment_mode: "连点", max_craft_count: 16 };
+  if (type === "UserDataUpdate") return {};
   return {};
 }
 
@@ -182,6 +184,7 @@ function renderGeneral(task, escapeHtml) {
   if (task.type === "Award") return renderAwardGeneral(p);
   if (task.type === "Roguelike") return renderRoguelikeGeneral(p, escapeHtml);
   if (task.type === "Reclamation") return renderReclamationGeneral(p, escapeHtml);
+  if (task.type === "UserDataUpdate") return renderUserDataUpdateGeneral();
   return renderJsonParams(p, escapeHtml);
 }
 
@@ -358,10 +361,12 @@ function renderAwardGeneral(p) {
 
 function renderCustomGeneral(p, escapeHtml) {
   const names = Array.isArray(p.task_names) ? p.task_names.join(";") : String(p.task_names || p.custom_tasks || "");
+  const missing = !names.trim();
   return `
     <div class="maaParams wideForm">
-      <span>任务名列表</span><input class="wideInput" id="paramCustomTaskNames" value="${escapeHtml(names)}" placeholder="GachaOnce;MiniGame@PV" />
-      <p class="formNote">Custom 会按 MaaCore resource/tasks 中的 task_names 执行，不再映射为 Fight。</p>
+      <span>任务名列表${missing ? ' <span class="paramRequiredHint">（必填，否则运行时报错）</span>' : ""}</span>
+      <input class="wideInput${missing ? " paramRequired" : ""}" id="paramCustomTaskNames" value="${escapeHtml(names)}" placeholder="GachaOnce;MiniGame@PV" />
+      <p class="formNote">多个任务名以英文分号分隔，例：GachaOnce;GachaTenTimes。Custom 会直接按 task_names 执行 MaaCore 内置任务。</p>
     </div>
   `;
 }
@@ -430,6 +435,14 @@ function renderReclamationAdvanced(p, escapeHtml) {
   `;
 }
 
+function renderUserDataUpdateGeneral() {
+  return `
+    <div class="maaParams wideForm">
+      <p class="formNote">更新数据：触发 MAA 从服务器拉取最新用户数据（掉落统计、企鹅物流等）。无需配置参数。</p>
+    </div>
+  `;
+}
+
 function renderJsonParams(p, escapeHtml) {
   return `<label>参数 JSON<textarea id="taskParamsInput">${escapeHtml(formatJson(p))}</textarea></label>`;
 }
@@ -452,6 +465,7 @@ function collectParams(type) {
   if (type === "Award") return collectAwardParams();
   if (type === "Roguelike") return collectRoguelikeParams();
   if (type === "Reclamation") return collectReclamationParams();
+  if (type === "UserDataUpdate") return {};
   return $("taskParamsInput") ? parseJsonField("taskParamsInput") : {};
 }
 
