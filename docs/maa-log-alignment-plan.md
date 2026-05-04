@@ -495,7 +495,7 @@ Web 方案必须保持源码语义：
 新增或重构：
 
 ```text
-web/logView.js
+web/maaCards.js
   renderLogCards(cards)
   renderLogCard(card)
   renderLogItem(item)

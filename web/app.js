@@ -3,7 +3,7 @@ const SELECTED_TASK_KEY = "maa-web.selectedTaskByProfile";
 const SETTING_MODE_KEY = "maa-web.settingMode";
 const DEFAULT_VIEW = "basement";
 const FALLBACK_PROFILE_KEY = "__default__";
-const ADD_TASK_TYPES = ["StartUp", "Fight", "Infrast", "Recruit", "Mall", "Award", "Custom", "Roguelike", "Reclamation", "CloseDown"];
+const ADD_TASK_TYPES = ["StartUp", "Fight", "Infrast", "Recruit", "Mall", "Award", "Custom", "Roguelike", "Reclamation", "CloseDown", "UserDataUpdate"];
 
 const state = {
   profiles: [],
@@ -24,6 +24,7 @@ let basementWired = false;
 let draggedTaskIndex = null;
 let runRequestPending = false;
 let stopRequestPending = false;
+let rawLogExpanded = false;
 let maaLogViewLoadPromise = null;
 const wiredFeatureIds = new Set();
 const BUSY_RUNNER_STATES = new Set(["Connecting", "AppendingTasks", "Running", "Stopping"]);
@@ -469,50 +470,70 @@ function addLocalLog(level, type, message, detail = {}) {
 
 function addLogItem(item) {
   const event = normalizeLogItem(item);
-  if (handleMaaLogEvent(event)) return;
   state.logs.push(event);
-  state.logs = state.logs.slice(-100);
-  renderLogs();
+  state.logs = state.logs.slice(-1000);
+  if (rawLogExpanded) renderRawLogs();
+  if (event.type?.startsWith("maa.log.")) {
+    handleMaaLogEvent(event);
+  } else if (!shouldUseCardLog()) {
+    renderLogs();
+  }
 }
 
 function renderLogs() {
   const list = $("logList");
   if (!list) return;
   const logView = getMaaLogView();
-  if (shouldUseCardLog() && logView && state.logCards.length) {
-    list.innerHTML = logView.renderLogCards(state.logCards);
-    scrollLogListToBottom();
-    return;
-  }
-  if (shouldUseCardLog() && !state.logs.length) {
-    list.innerHTML = `<div class="logEmpty">等待事件</div>`;
+  if (shouldUseCardLog()) {
+    if (logView && state.logCards.length) {
+      list.innerHTML = logView.renderLogCards(state.logCards);
+      scrollLogListToBottom();
+    } else {
+      list.innerHTML = `<div class="logEmpty">等待事件</div>`;
+    }
     return;
   }
   list.innerHTML = logView ? logView.renderLegacyLogItems(state.logs) : renderLegacyLogItemsFallback(state.logs);
   scrollLogListToBottom();
 }
 
+function renderRawLogs() {
+  const list = $("rawLogList");
+  if (!list) return;
+  const logView = getMaaLogView();
+  list.innerHTML = logView
+    ? logView.renderLegacyLogItems(state.logs)
+    : renderLegacyLogItemsFallback(state.logs);
+  requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
+}
+
+function toggleRawLog() {
+  rawLogExpanded = !rawLogExpanded;
+  const list = $("rawLogList");
+  const btn = $("rawLogToggle");
+  if (list) list.hidden = !rawLogExpanded;
+  if (btn) btn.textContent = rawLogExpanded ? "收起" : "展开";
+  if (rawLogExpanded) renderRawLogs();
+}
+
 function handleMaaLogEvent(event) {
-  if (!event.type?.startsWith("maa.log.")) return false;
-  const detail = event.detail || {};
   if (event.type === "maa.log.clear") {
     state.logCards = [];
     state.logs = [];
     renderLogs();
-    return true;
+    if (rawLogExpanded) renderRawLogs();
+    return;
   }
   const logView = getMaaLogView();
-  if (!logView) return false;
-  if (detail.card) {
+  const detail = event.detail || {};
+  if (detail.card && logView) {
     logView.upsertLogCard(state.logCards, detail.card);
     renderLogs();
-    return true;
+    return;
   }
   if (event.type === "maa.log.run.completed") {
     renderLogs();
-    return true;
   }
-  return true;
 }
 
 function shouldUseCardLog() {
@@ -529,7 +550,7 @@ async function ensureMaaLogView() {
   if (!maaLogViewLoadPromise) {
     maaLogViewLoadPromise = new Promise((resolve) => {
       const script = document.createElement("script");
-      script.src = `/logView.js?v=${Date.now()}`;
+      script.src = `/maaCards.js?v=${Date.now()}`;
       script.onload = () => resolve();
       script.onerror = () => resolve();
       document.body.appendChild(script);
@@ -630,6 +651,7 @@ function wireBasementView() {
   addListener("#deleteTaskButton", "click", () => runFeatureAction("basement", "clearTasks"));
   addListener("#moveUpButton", "click", () => runFeatureAction("basement", "selectAllTasks"));
   addListener("#clearLogsButton", "click", () => runFeatureAction("basement", "clearLogs"));
+  addListener("#rawLogToggle", "click", toggleRawLog);
   addListener("#newProfileButton", "click", () => runFeatureAction("basement", "createProfile"));
   addListener("#taskEditor", "change", onTaskEditorChange);
   addListener("#taskEditor", "click", onTaskEditorClick);
@@ -756,11 +778,25 @@ function renameTask(index) {
   scheduleSave();
 }
 
-function runTaskOnce(index) {
+async function runTaskOnce(index) {
   const task = state.profile?.tasks?.[index];
   if (!task) return;
+  if (isRunnerBusy()) {
+    addLocalLog("warning", "task.once", "当前有任务在运行，请先停止");
+    return;
+  }
   const title = task.name || task.id;
   addLocalLog("info", "task.once", `单次运行：${title}`);
+  try {
+    const onceProfile = { ...state.profile, tasks: [{ ...task, enabled: true }] };
+    await api("/api/run", {
+      method: "POST",
+      body: JSON.stringify({ profile: onceProfile })
+    });
+    await refreshStatus();
+  } catch (error) {
+    showError(error);
+  }
 }
 
 function reorderTask(from, target, insertAfter) {
@@ -1031,6 +1067,7 @@ function clearLogs() {
   state.logs = [];
   state.logCards = [];
   renderLogs();
+  if (rawLogExpanded) renderRawLogs();
   return api("/api/logs/clear", { method: "POST" }).catch(showError);
 }
 
@@ -1228,6 +1265,9 @@ async function boot() {
   await loadProfiles();
   await refreshStatus();
   await loadLogCards();
+  if (typeof loadSchedulerConfig === "function") await loadSchedulerConfig();
+  if (typeof loadVersionInfo === "function") loadVersionInfo();
+  if (typeof loadAdapterConfig === "function") loadAdapterConfig();
   renderAll();
   renderLogs();
 }
