@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import platform
+import subprocess
 from datetime import datetime
 from typing import Protocol
 
@@ -188,17 +190,35 @@ class MaaRunnerService:
         try:
             if action.type == "exit_game":
                 await self._adapter.stop()
-            elif action.type in {"hibernate", "shutdown", "sleep"}:
-                self._logs.append(
-                    f"后置动作: {action.type} (需手动执行，Web 端不直接控制主机电源)",
-                    color_key="WarningLogBrush",
-                )
+            elif action.type == "shutdown":
+                await self._run_power_action("shutdown")
+            elif action.type == "sleep":
+                await self._run_power_action("sleep")
+            elif action.type == "hibernate":
+                await self._run_power_action("hibernate")
         except Exception as exc:
             self._events.publish(EventRecord.now(
                 "runner.post_action.error",
                 f"Post-action failed: {exc}",
                 level="error",
             ))
+
+    async def _run_power_action(self, action: str) -> None:
+        system = platform.system()
+        LINUX_COMMANDS = {
+            "shutdown": ["shutdown", "-h", "now"],
+            "sleep": ["systemctl", "suspend"],
+            "hibernate": ["systemctl", "hibernate"],
+        }
+        if system == "Linux" and action in LINUX_COMMANDS:
+            self._logs.append(f"后置动作: {action}…", color_key="WarningLogBrush")
+            await asyncio.to_thread(subprocess.Popen, LINUX_COMMANDS[action])
+        else:
+            # TODO: implement Windows/macOS power actions
+            self._logs.append(
+                f"后置动作: {action}（当前平台 {system} 暂不支持，请手动执行）",
+                color_key="WarningLogBrush",
+            )
 
 
 def _build_resource_log() -> str:
