@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 from uuid import uuid4
 
 from fastapi import HTTPException, Response
@@ -58,6 +58,15 @@ class MaaLogService:
         self._run_id = "current"
         self._max_thumbnails = max_thumbnails
         self._run_started_at: datetime | None = None
+        self._on_thumbnail_needed: Callable[[str], None] | None = None
+
+    def set_thumbnail_callback(self, callback: Callable[[str], None] | None) -> None:
+        """Register a callback invoked with card_id whenever a placeholder thumbnail is attached.
+
+        The adapter uses this to schedule an async real screenshot capture that
+        later calls attach_real_thumbnail() to replace the placeholder.
+        """
+        self._on_thumbnail_needed = callback
 
     def clear(self, run_id: str = "current") -> None:
         self._run_id = run_id or "current"
@@ -168,9 +177,11 @@ class MaaLogService:
     def _attach_thumbnail(self, card: MaaLogCard, placeholder: bool = False, image_data: bytes | None = None) -> None:
         thumbnail_id = f"{self._run_id}-thumb-{uuid4().hex[:10]}"
         card.thumbnail_id = thumbnail_id
-        self._thumbnails[thumbnail_id] = image_data if image_data else PLACEHOLDER_PNG
+        self._thumbnails[thumbnail_id] = image_data if image_data is not None else PLACEHOLDER_PNG
         self._trim_old_thumbnails()
         self._events.publish(EventRecord.now("maa.log.thumbnail.updated", "Log thumbnail updated.", detail={"card": card.payload()}))
+        if placeholder and self._on_thumbnail_needed is not None:
+            self._on_thumbnail_needed(card.id)
 
     def _trim_old_thumbnails(self) -> None:
         cards_with_thumbnails = [card for card in self._cards if card.thumbnail_id]

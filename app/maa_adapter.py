@@ -17,6 +17,7 @@ from .runner import DryRunMaaAdapter, MaaAdapter
 
 DEFAULT_MAA_PYTHON_DIR = Path(r"E:\Project\C\MaaAssistantArknights\src\Python")
 CLIENT_TYPE_OPTION = 6
+SCREENSHOT_BUFFER_SIZE = 32 * 1024 * 1024
 CLIENT_TYPE_ALIASES = {
     "官服": "Official",
     "B服": "Bilibili",
@@ -37,8 +38,22 @@ SUB_TASK_EVENTS = {
     "SubTaskStart": ("maa.sub_task.start", "Sub task started.", "info"),
     "SubTaskCompleted": ("maa.sub_task.completed", "Sub task completed.", "info"),
     "SubTaskError": ("maa.sub_task.error", "Sub task failed.", "error"),
-    "SubTaskExtraInfo": ("maa.sub_task.extra", "Sub task info.", "debug"),
 }
+
+# AsstMsg integer values → logical event name (from AsstMsg C++ enum)
+# TaskChain JSON has no "what" field — must dispatch by message number.
+_MSG_EVENT_MAP: dict[int, str] = {
+    3: "AllTasksCompleted",
+    10000: "TaskChainError",
+    10001: "TaskChainStart",
+    10002: "TaskChainCompleted",
+    10004: "TaskChainStopped",
+    20000: "SubTaskError",
+    20001: "SubTaskStart",
+    20002: "SubTaskCompleted",
+}
+_MSG_CONNECTION_INFO = 2
+_MSG_SUB_TASK_EXTRA_INFO = 20003
 
 
 class OfficialMaaAdapter:
@@ -67,6 +82,7 @@ class OfficialMaaAdapter:
         self._status_lock = Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._poll_interval = poll_interval
+        self._last_image_error: str | None = None
 
     @property
     def callback_events(self) -> list[EventRecord]:
@@ -76,6 +92,10 @@ class OfficialMaaAdapter:
     def task_chain_status(self) -> str | None:
         with self._status_lock:
             return self._task_chain_status
+
+    @property
+    def last_image_error(self) -> str | None:
+        return self._last_image_error
 
     async def connect(self, profile: Profile) -> bool:
         self._loop = asyncio.get_running_loop()
@@ -104,14 +124,23 @@ class OfficialMaaAdapter:
             raise RuntimeError("MaaCore stop failed.") from exc
 
     async def get_image(self) -> bytes | None:
-        """Capture current screen image from MaaCore."""
+        """Capture current screen image from MaaCore (returns PNG bytes).
+
+        AsstGetImage writes cv::imencode(".png") output into a caller-supplied
+        buffer.  The buffer needs to cover high-DPI emulator frames too; 5 MB
+        is not enough for some 4K PNG captures.
+        """
         asst = self._require_asst()
         get_img = getattr(asst, "get_image", None)
+        self._last_image_error = None
         if not callable(get_img):
+            self._last_image_error = "MaaCore get_image is not available."
             return None
         try:
-            return await asyncio.to_thread(get_img)
-        except Exception:
+            data = await asyncio.to_thread(get_img, SCREENSHOT_BUFFER_SIZE)
+            return _normalize_image_data(data)
+        except Exception as exc:
+            self._last_image_error = f"{type(exc).__name__}: {exc}"
             return None
 
     def _connect_sync(self, profile: Profile) -> bool:
@@ -124,6 +153,8 @@ class OfficialMaaAdapter:
             raise RuntimeError(f"Failed to load MaaCore from MAA_CORE_DIR: {self._core_dir}") from exc
         self._callback = self._build_callback(asst_cls)
         self._asst = asst_cls(callback=self._callback)
+        if self._log_service is not None:
+            self._log_service.set_thumbnail_callback(self._schedule_thumbnail_capture)
         try:
             self._set_client_type_option(profile)
             return bool(
@@ -180,31 +211,42 @@ class OfficialMaaAdapter:
             self._publish_callback_event(semantic_event)
 
     def _semantic_callback_events(self, message: int, details: Any) -> list[EventRecord]:
-        what = _callback_what(details)
-        detail = {"message": message, "details": details, "what": what}
-        self._append_log_event(what, details, detail)
-        if what in TASK_CHAIN_EVENTS:
-            event_type, final_status, text, level = TASK_CHAIN_EVENTS[what]
+        # "what" is meaningful only for ConnectionInfo (msg=2) and SubTaskExtraInfo (msg=20003).
+        # TaskChain messages carry NO "what" field in JSON — dispatch MUST use the int.
+        sub_what = _callback_what(details)
+        detail = {"message": message, "details": details, "what": sub_what}
+
+        # ── ConnectionInfo (msg=2): screencap method, connection state, etc. ──
+        if message == _MSG_CONNECTION_INFO:
+            if self._log_service is not None and sub_what == "FastestWayToScreencap":
+                self._append_connection_log(sub_what, details, detail)
+            return []
+
+        # ── TaskChain events (10001 / 10002 / 10000 / 10004 / 3) ──────────────
+        msg_name = _MSG_EVENT_MAP.get(message, "")
+        if msg_name in TASK_CHAIN_EVENTS:
+            if self._log_service is not None:
+                self._append_task_chain_log(msg_name, details, detail)
+            event_type, final_status, text, level = TASK_CHAIN_EVENTS[msg_name]
             if final_status is not None:
                 with self._status_lock:
                     self._task_chain_status = final_status
             return [EventRecord.now(event_type, text, level=level, detail=detail)]
-        if what in SUB_TASK_EVENTS:
-            event_type, text, level = SUB_TASK_EVENTS[what]
-            return [EventRecord.now(event_type, text, level=level, detail=detail)]
-        return []
 
-    def _append_log_event(self, what: str, details: Any, raw_detail: dict[str, Any]) -> None:
-        if self._log_service is None:
-            return
-        if what in {"ConnectionInfo", "FastestWayToScreencap"}:
-            self._append_connection_log(what, details, raw_detail)
-            return
-        if what in TASK_CHAIN_EVENTS:
-            self._append_task_chain_log(what, details, raw_detail)
-            return
-        if what in SUB_TASK_EVENTS:
-            self._append_sub_task_log(what, details, raw_detail)
+        # ── SubTask Start / Completed / Error (20001 / 20002 / 20000) ─────────
+        if msg_name in SUB_TASK_EVENTS:
+            if self._log_service is not None:
+                self._append_sub_task_log(msg_name, details, detail)
+            event_type, text, level = SUB_TASK_EVENTS[msg_name]
+            return [EventRecord.now(event_type, text, level=level, detail=detail)]
+
+        # ── SubTaskExtraInfo (20003): "what" in JSON is the actual sub-type ───
+        if message == _MSG_SUB_TASK_EXTRA_INFO:
+            if self._log_service is not None:
+                self._append_extra_info_log(sub_what, details, detail)
+            return [EventRecord.now("maa.sub_task.extra", sub_what or "extra", level="debug", detail=detail)]
+
+        return []
 
     def _append_connection_log(self, what: str, details: Any, raw_detail: dict[str, Any]) -> None:
         cost = _nested_value(details, "cost", "ms", "time") or _nested_value(details, "details", "cost")
@@ -253,84 +295,318 @@ class OfficialMaaAdapter:
             return
 
     def _append_sub_task_log(self, what: str, details: Any, raw_detail: dict[str, Any]) -> None:
-        if what == "SubTaskStart":
-            self._log_service.append(_sub_task_message(details, "开始任务"), color_key="MessageLogBrush", raw=raw_detail)
-            return
-        if what == "SubTaskCompleted":
-            self._log_service.append(_sub_task_message(details, "完成任务"), color_key="SuccessLogBrush", raw=raw_detail)
-            return
-        if what == "SubTaskExtraInfo":
-            extra_what = _nested_what(details)
-            self._append_extra_info_log(extra_what, details, raw_detail)
-            return
         if what == "SubTaskError":
             text = _sub_task_message(details, "任务出错")
             self._log_service.append(text, color_key="ErrorLogBrush", weight="Bold", raw=raw_detail)
 
-    def _append_extra_info_log(self, extra_what: str, details: Any, raw_detail: dict[str, Any]) -> None:
-        if extra_what == "RecruitTagsDetected":
-            tags = _string_lines(_nested_value(details, "tags", "data", "items"))
-            self._log_service.append(
-                "公招识别结果:\n" + "\n".join(tags),
-                color_key="InfoLogBrush",
-                split_mode="Before",
-                thumbnail={"capture": True, "placeholder": True},
-                tooltip={"kind": "recruit_tags", "tags": tags, "raw": raw_detail},
-                raw=raw_detail,
-            )
-            return
-        if extra_what == "RecruitResult":
-            level = int(_nested_value(details, "level", "star", "rarity") or 0)
-            color_key = "RareOperatorLogBrush" if level >= 5 else "InfoLogBrush"
-            self._log_service.append(
-                f"{level} ★ Tags",
-                color_key=color_key,
-                weight="Bold" if level >= 5 else "Regular",
-                tooltip={"kind": "recruit_result", "level": level, "raw": raw_detail},
-                raw=raw_detail,
-            )
-            return
-        if extra_what == "RecruitTagsSelected":
-            selected = _string_lines(_nested_value(details, "selected", "tags", "items"))
-            self._log_service.append("选择 Tags:\n" + "\n".join(selected), color_key="MessageLogBrush", raw=raw_detail)
-            return
-        if extra_what == "RecruitConfirm":
-            self._log_service.append("已确认招募", color_key="SuccessLogBrush", raw=raw_detail)
-            return
-        if extra_what == "RecruitTagsRefreshed":
-            count = _nested_value(details, "count", "times", "refresh_times") or 0
-            self._log_service.append(f"已刷新 {count} 次", color_key="MessageLogBrush", raw=raw_detail)
-            return
-        if extra_what == "EnterFacility":
-            facility = _facility_name(details)
-            index = int(_nested_value(details, "index", "facility_index") or 0) + 1
-            self._log_service.append(
-                f"当前设施: {facility} {index:02d}",
-                color_key="MessageLogBrush",
-                split_mode="Before",
-                thumbnail={"capture": True, "placeholder": True},
-                tooltip={"kind": "facility", "facility": facility, "index": index, "raw": raw_detail},
-                raw=raw_detail,
-            )
-            return
+    def _append_extra_info_log(self, extra_what: str, details: Any, raw_detail: dict[str, Any]) -> None:  # noqa: C901
+        # SubTaskExtraInfo JSON: {"taskchain":..., "what":"StageDrops", "details":{...}}
+        # Actual event payload lives in details["details"].
+        d = _sub_details(details)
+        ls = self._log_service
+
+        # ── 作战 ──────────────────────────────────────────────────────────────
         if extra_what == "StageDrops":
-            stage_code = _nested_value(details, "stage_code", "stage", "code") or "未知关卡"
-            drops = _string_lines(_nested_value(details, "drops", "items", "data"))
-            current = _nested_value(details, "cur_times", "current_times", "times") or 0
-            self._log_service.append(
-                f"{stage_code} 掉落统计:\n" + "\n".join(drops) + f"\n当前次数 : {current}",
-                color_key="InfoLogBrush",
-                split_mode="Before",
-                thumbnail={"capture": True, "placeholder": True},
-                tooltip={"kind": "stage_drops", "stage": stage_code, "drops": drops, "current_times": current, "raw": raw_detail},
-                raw=raw_detail,
-            )
+            stage_obj = d.get("stage") or {}
+            stage_code = (stage_obj.get("stageCode") if isinstance(stage_obj, dict) else None) or "未知关卡"
+            stats = d.get("stats") or []
+            cur_times = int(d.get("cur_times") or 0)
+            lines: list[str] = []
+            if isinstance(stats, list):
+                sorted_stats = sorted(
+                    (s for s in stats if isinstance(s, dict)),
+                    key=lambda s: (-(s.get("addQuantity") or 0), -(s.get("quantity") or 0)),
+                )
+                for s in sorted_stats:
+                    name = s.get("itemName") or s.get("itemId") or "未知"
+                    if name == "furni":
+                        name = "家具"
+                    total = s.get("quantity") or 0
+                    add = s.get("addQuantity") or 0
+                    lines.append(f"{name} : {total} (+{add})" if add > 0 else f"{name} : {total}")
+            drop_text = "\n".join(lines) if lines else "无掉落"
+            text = f"{stage_code} 掉落统计:\n{drop_text}"
+            if cur_times > 0:
+                text += f"\n当前次数 : {cur_times}"
+            ls.append(text, color_key="InfoLogBrush", split_mode="Before",
+                      thumbnail={"capture": True, "placeholder": True},
+                      tooltip={"kind": "stage_drops", "stage": stage_code, "cur_times": cur_times},
+                      raw=raw_detail)
             return
-        if extra_what == "ConnectionInfo":
-            self._log_service.append("正在连接模拟器……", color_key="MessageLogBrush", raw=raw_detail)
+
+        if extra_what == "StageInfo":
+            ls.append(f"开始战斗: {d.get('name', '')}", color_key="MessageLogBrush", raw=raw_detail)
             return
+
+        if extra_what == "StageInfoError":
+            ls.append("关卡识别错误", color_key="ErrorLogBrush", weight="Bold",
+                      split_mode="Both", thumbnail={"capture": True, "placeholder": True}, raw=raw_detail)
+            return
+
+        if extra_what == "UseMedicine":
+            is_expiring = bool(d.get("is_expiring"))
+            count = int(d.get("count") or 0)
+            label = "临期理智药" if is_expiring else "理智药"
+            ls.append(f"已使用{label} +{count}", color_key="InfoLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "StageQueueUnableToAgent":
+            ls.append(f"关卡队列 {d.get('stage_code', '')} 无法代理", color_key="InfoLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "StageQueueMissionCompleted":
+            ls.append(f"关卡队列 {d.get('stage_code', '')} - {d.get('stars', 0)} ★",
+                      color_key="InfoLogBrush", raw=raw_detail)
+            return
+
+        if extra_what in {"SanityBeforeStage", "FightTimes", "PenguinId", "Depot", "OperBox"}:
+            return  # data-only or handled elsewhere, no log entry
+
+        # ── 公招 ──────────────────────────────────────────────────────────────
+        if extra_what == "RecruitTagsDetected":
+            tags = d.get("tags") or []
+            tag_text = "\n".join(str(t) for t in tags) if tags else "无"
+            ls.append(f"公招识别结果:\n{tag_text}", color_key="InfoLogBrush", split_mode="Before",
+                      thumbnail={"capture": True, "placeholder": True},
+                      tooltip={"kind": "recruit_tags", "tags": tags}, raw=raw_detail)
+            return
+
+        if extra_what == "RecruitResult":
+            level = int(d.get("level") or 0)
+            color_key = "RareOperatorLogBrush" if level >= 5 else "InfoLogBrush"
+            ls.append(f"{level} ★ Tags", color_key=color_key,
+                      weight="Bold" if level >= 5 else "Regular",
+                      tooltip={"kind": "recruit_result", "level": level}, raw=raw_detail)
+            return
+
+        if extra_what == "RecruitTagsSelected":
+            tags = d.get("tags") or []
+            tag_text = "\n".join(str(t) for t in tags) if tags else "无"
+            ls.append(f"选择 Tags:\n{tag_text}", color_key="MessageLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "RecruitTagsRefreshed":
+            ls.append(f"已刷新 {int(d.get('count') or 0)} 次", color_key="MessageLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "RecruitConfirm":
+            ls.append("已确认招募", color_key="SuccessLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "RecruitSpecialTag":
+            ls.append(f"高稀有度 Tag: {d.get('tag', '')}", color_key="RareOperatorLogBrush",
+                      weight="Bold", raw=raw_detail)
+            return
+
+        if extra_what == "RecruitRobotTag":
+            ls.append(f"支援机械 Tag: {d.get('tag', '')}", color_key="InfoLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "RecruitSupportOperator":
+            ls.append(f"使用助战干员: {d.get('name', '')}", color_key="InfoLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "RecruitNoPermit":
+            msg = "继续刷新" if bool(d.get("continue")) else "招募许可证不足"
+            ls.append(msg, color_key="MessageLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "RecruitSlotCompleted":
+            ls.append("当前公招位完成", color_key="SuccessLogBrush", raw=raw_detail)
+            return
+
+        # ── 基建 ──────────────────────────────────────────────────────────────
+        if extra_what == "EnterFacility":
+            facility = _facility_name(d)
+            index = _index_one_based(d.get("index"))
+            ls.append(f"当前设施: {facility} {index:02d}", color_key="MessageLogBrush",
+                      split_mode="Before", thumbnail={"capture": True, "placeholder": True},
+                      tooltip={"kind": "facility", "facility": facility, "index": index},
+                      raw=raw_detail)
+            return
+
+        if extra_what == "ProductIncorrect":
+            ls.append("产品识别错误", color_key="ErrorLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "ProductUnknown":
+            ls.append("未知产品类型", color_key="ErrorLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "ProductChanged":
+            ls.append("产品已更换", color_key="InfoLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "ProductOfFacility":
+            ls.append(f"产品: {d.get('product', '')}", color_key="MessageLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "InfrastConfirmButton":
+            # No text; only signals a screenshot update.
+            ls.append("", color_key="MessageLogBrush", show_time=False,
+                      thumbnail={"capture": True, "placeholder": True}, raw=raw_detail)
+            return
+
+        if extra_what == "NotEnoughStaff":
+            facility = _facility_name(d)
+            index = _index_one_based(d.get("index"))
+            ls.append(f"可用干员不足: {facility} {index:02d}", color_key="ErrorLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "CustomInfrastRoomGroupsMatch":
+            ls.append(f"选用编组: {d.get('group', '')}", color_key="MessageLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "CustomInfrastRoomGroupsMatchFailed":
+            groups = d.get("groups") or []
+            groups_text = ", ".join(str(g) for g in groups) if isinstance(groups, list) else str(groups)
+            ls.append(f"编组匹配失败: {groups_text}", color_key="WarningLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "CustomInfrastRoomOperators":
+            names = d.get("names") or []
+            names_text = ", ".join(str(n) for n in names) if isinstance(names, list) else str(names)
+            ls.append(f"上班干员: {names_text}", color_key="MessageLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "InfrastTrainingIdle":
+            ls.append("当前无技能训练中", color_key="MessageLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "InfrastTrainingCompleted":
+            op = d.get("operator", "")
+            skill = d.get("skill", "")
+            level = d.get("level", 0)
+            ls.append(f"[{op}] {skill}\n训练等级: {level} 训练完成", color_key="InfoLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "InfrastTrainingTimeLeft":
+            op = d.get("operator", "")
+            skill = d.get("skill", "")
+            level = d.get("level", 0)
+            time_left = d.get("time", "")
+            ls.append(f"[{op}] {skill}\n训练等级: {level}\n剩余时间: {time_left}",
+                      color_key="InfoLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "CreditFullOnlyBuyDiscount":
+            ls.append(f"信用已满，仅购买折扣品 ({d.get('credit', 0)})",
+                      color_key="MessageLogBrush", raw=raw_detail)
+            return
+
+        # ── 作战指挥 (Copilot) ────────────────────────────────────────────────
+        if extra_what == "BattleFormation":
+            formation = d.get("formation") or []
+            opers = ", ".join(str(o) for o in formation) if isinstance(formation, list) else str(formation)
+            ls.append(f"编队阵容:\n[{opers}]", color_key="MessageLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "BattleFormationParseFailed":
+            ls.append("编队文件解析失败", color_key="ErrorLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "BattleFormationSelected":
+            selected = d.get("selected", "")
+            group = d.get("group_name", "")
+            text = f"{group} => {selected}" if group and group != selected else selected
+            ls.append(f"已选干员: {text}", color_key="MessageLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "BattleFormationOperUnavailable":
+            oper = d.get("oper_name", "")
+            req_type = d.get("requirement_type", "")
+            _TYPE_NAMES = {"elite": "精英化", "level": "等级", "skill_level": "技能等级", "module": "模组"}
+            req_label = _TYPE_NAMES.get(req_type, req_type)
+            color = "ErrorLogBrush" if req_type == "elite" else "WarningLogBrush"
+            ls.append(f"干员条件不满足: {oper} ({req_label})", color_key=color, raw=raw_detail)
+            return
+
+        if extra_what == "CopilotAction":
+            doc = d.get("doc", "")
+            if doc:
+                doc_color = d.get("doc_color") or "MessageLogBrush"
+                ls.append(doc, color_key=doc_color, raw=raw_detail)
+            action = d.get("action", "")
+            target = d.get("target", "")
+            step_text = f"当前步骤: {action}" + (f" ({target})" if target else "")
+            ls.append(step_text, color_key="MessageLogBrush", raw=raw_detail)
+            elapsed = d.get("elapsed_time")
+            if elapsed is not None:
+                try:
+                    t = int(elapsed)
+                    if t >= 0:
+                        ls.append(f"已用时: {t}s", color_key="MessageLogBrush", raw=raw_detail)
+                except (ValueError, TypeError):
+                    pass
+            return
+
+        if extra_what == "CopilotListLoadTaskFileSuccess":
+            ls.append(f"解析 {d.get('file_name', '')}[{d.get('stage_name', '')}] 成功",
+                      color_key="MessageLogBrush", raw=raw_detail)
+            return
+
+        # ── 保全导航 (SSS) ────────────────────────────────────────────────────
+        if extra_what == "SSSStage":
+            ls.append(f"当前关卡: {d.get('stage', '')}", color_key="InfoLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "SSSSettlement":
+            why = details.get("why", "") if isinstance(details, dict) else ""
+            ls.append(why or "保全导航结算", color_key="InfoLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "SSSGamePass":
+            ls.append("保全导航通过！", color_key="RareOperatorLogBrush", weight="Bold", raw=raw_detail)
+            return
+
+        if extra_what == "UnsupportedLevel":
+            ls.append(f"不支持的关卡: {d.get('level', '')}", color_key="ErrorLogBrush", raw=raw_detail)
+            return
+
+        # ── 生息演算 ──────────────────────────────────────────────────────────
+        if extra_what == "ReclamationReport":
+            ls.append(
+                f"演算完成\n勋章: {d.get('total_badges', 0)}(+{d.get('badges', 0)})"
+                f"\n建设点: {d.get('total_construction_points', 0)}(+{d.get('construction_points', 0)})",
+                color_key="MessageLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "ReclamationProcedureStart":
+            ls.append(f"任务开始 {int(d.get('times') or 0)} 次", color_key="InfoLogBrush", raw=raw_detail)
+            return
+
+        if extra_what == "ReclamationSmeltGold":
+            ls.append(f"黄金提炼 {int(d.get('times') or 0)} 次", color_key="MessageLogBrush", raw=raw_detail)
+            return
+
+        # ── 截图时序 ──────────────────────────────────────────────────────────
         if extra_what == "FastestWayToScreencap":
             self._append_connection_log(extra_what, details, raw_detail)
+            return
+
+    def _schedule_thumbnail_capture(self, card_id: str) -> None:
+        """Called from MaaLogService (on MaaCore callback thread) when a placeholder thumbnail is attached.
+
+        Schedules an async coroutine on the main event loop to capture a real
+        screenshot and replace the placeholder via attach_real_thumbnail().
+        """
+        loop = self._loop
+        if loop is not None and loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                self._capture_and_attach_thumbnail(card_id), loop
+            )
+
+    async def _capture_and_attach_thumbnail(self, card_id: str) -> None:
+        """Capture a real screenshot and replace the placeholder on the given card."""
+        if self._log_service is None or self._asst is None:
+            return
+        try:
+            await asyncio.sleep(0.4)  # brief pause so the screen settles
+            image_data = await self.get_image()
+            if image_data:
+                self._log_service.attach_real_thumbnail(card_id, image_data)
+        except Exception:
+            pass
 
     def _publish_callback_event(self, event: EventRecord) -> None:
         if self._events is None:
@@ -525,6 +801,57 @@ def _sanity_suffix(details: Any) -> str:
     if current is None or maximum is None:
         return ""
     return f"理智: {current}/{maximum}"
+
+
+def _sub_details(details: Any) -> Any:
+    """Extract inner 'details' dict from a SubTaskExtraInfo callback payload.
+
+    SubTaskExtraInfo JSON: {"taskchain":..., "what":"StageDrops", "details":{actual data}}
+    """
+    if isinstance(details, dict):
+        inner = details.get("details")
+        if isinstance(inner, dict):
+            return inner
+    return {}
+
+
+def _normalize_image_data(data: Any) -> bytes | None:
+    if not data:
+        return None
+    if isinstance(data, bytes):
+        image = data
+    elif isinstance(data, bytearray):
+        image = bytes(data)
+    elif isinstance(data, memoryview):
+        image = data.tobytes()
+    else:
+        return None
+    if not any(image):
+        return None
+    return _trim_png_buffer(image)
+
+
+def _trim_png_buffer(image: bytes) -> bytes:
+    if not image.startswith(b"\x89PNG\r\n\x1a\n"):
+        return image
+    offset = 8
+    while offset + 8 <= len(image):
+        chunk_len = int.from_bytes(image[offset:offset + 4], "big")
+        chunk_type = image[offset + 4:offset + 8]
+        chunk_end = offset + 12 + chunk_len
+        if chunk_end > len(image):
+            return image
+        if chunk_type == b"IEND":
+            return image[:chunk_end]
+        offset = chunk_end
+    return image
+
+
+def _index_one_based(value: Any) -> int:
+    try:
+        return int(value) + 1
+    except (TypeError, ValueError):
+        return 0
 
 
 def _nested_value(details: Any, *keys: str) -> Any:

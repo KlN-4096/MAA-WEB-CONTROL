@@ -4,8 +4,8 @@ import unittest
 from pathlib import Path
 
 from app.events import EventBus
-from app.logs import MaaLogService
-from app.maa_adapter import OfficialMaaAdapter, create_maa_adapter
+from app.logs import MaaLogService, PLACEHOLDER_PNG
+from app.maa_adapter import OfficialMaaAdapter, SCREENSHOT_BUFFER_SIZE, create_maa_adapter
 from app.models import AdbConfig, AppendCall, Profile
 from app.runner import DryRunMaaAdapter
 
@@ -13,11 +13,15 @@ from app.runner import DryRunMaaAdapter
 class FakeAsst:
     load_calls = []
     instances = []
+    image_error = None
+    image_payload = b"png"
 
     @classmethod
     def reset(cls):
         cls.load_calls = []
         cls.instances = []
+        cls.image_error = None
+        cls.image_payload = b"png"
 
     @staticmethod
     def load(path, incremental_path=None, user_dir=None):
@@ -32,6 +36,7 @@ class FakeAsst:
         self.start_calls = 0
         self.running_calls = 0
         self.stop_calls = 0
+        self.image_sizes = []
         self.running_values = [True, False]
         FakeAsst.instances.append(self)
 
@@ -60,6 +65,12 @@ class FakeAsst:
     def stop(self):
         self.stop_calls += 1
         return True
+
+    def get_image(self, size):
+        self.image_sizes.append(size)
+        if FakeAsst.image_error is not None:
+            raise FakeAsst.image_error
+        return FakeAsst.image_payload
 
 
 class MaaAdapterFactoryTest(unittest.TestCase):
@@ -137,6 +148,44 @@ class OfficialMaaAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fake.running_calls, 2)
         self.assertEqual(fake.stop_calls, 1)
 
+    async def test_get_image_passes_wrapper_buffer_size(self):
+        FakeAsst.image_payload = PLACEHOLDER_PNG + (b"\x00" * 16)
+        with tempfile.TemporaryDirectory() as directory:
+            adapter = OfficialMaaAdapter(
+                core_dir=Path("D:/MAA"),
+                python_dir=None,
+                user_dir=Path(directory),
+                asst_cls=FakeAsst,
+                events=EventBus(),
+                poll_interval=0,
+            )
+
+            await adapter.connect(Profile(name="daily"))
+            image = await adapter.get_image()
+
+        fake = FakeAsst.instances[0]
+        self.assertEqual(image, PLACEHOLDER_PNG)
+        self.assertEqual(fake.image_sizes, [SCREENSHOT_BUFFER_SIZE])
+        self.assertIsNone(adapter.last_image_error)
+
+    async def test_get_image_records_wrapper_errors(self):
+        FakeAsst.image_error = TypeError("missing required positional argument: 'size'")
+        with tempfile.TemporaryDirectory() as directory:
+            adapter = OfficialMaaAdapter(
+                core_dir=Path("D:/MAA"),
+                python_dir=None,
+                user_dir=Path(directory),
+                asst_cls=FakeAsst,
+                events=EventBus(),
+                poll_interval=0,
+            )
+
+            await adapter.connect(Profile(name="daily"))
+            image = await adapter.get_image()
+
+        self.assertIsNone(image)
+        self.assertIn("TypeError", adapter.last_image_error or "")
+
     async def test_callback_is_published_to_event_bus(self):
         with tempfile.TemporaryDirectory() as directory:
             events = EventBus()
@@ -155,9 +204,9 @@ class OfficialMaaAdapterTest(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0)
 
         recent = events.recent()
-        self.assertEqual(recent[-1].type, "maa.callback")
-        self.assertEqual(recent[-1].detail["message"], 10001)
-        self.assertEqual(recent[-1].detail["details"], {"what": "started"})
+        callback_event = [event for event in recent if event.type == "maa.callback"][-1]
+        self.assertEqual(callback_event.detail["message"], 10001)
+        self.assertEqual(callback_event.detail["details"], {"what": "started"})
 
     async def test_task_chain_callbacks_publish_semantic_events_and_status(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -174,7 +223,7 @@ class OfficialMaaAdapterTest(unittest.IsolatedAsyncioTestCase):
             )
 
             await adapter.connect(Profile(name="daily"))
-            FakeAsst.instances[0].callback(10001, b'{"what":"TaskChainError"}', None)
+            FakeAsst.instances[0].callback(10000, b'{"taskchain":"Fight"}', None)
             await asyncio.sleep(0)
 
         recent = events.recent()
@@ -200,14 +249,14 @@ class OfficialMaaAdapterTest(unittest.IsolatedAsyncioTestCase):
             )
 
             await adapter.connect(Profile(name="daily"))
-            details = b'{"what":"SubTaskExtraInfo","details":{"what":"EnterFacility","facility":"Manufacture","index":0}}'
-            FakeAsst.instances[0].callback(10001, details, None)
+            details = b'{"what":"EnterFacility","details":{"facility":"Manufacture","index":0}}'
+            FakeAsst.instances[0].callback(20003, details, None)
             await asyncio.sleep(0)
 
         log_event = [event for event in events.recent() if event.type == "maa.log.item"][-1]
         self.assertEqual(log_event.message, "当前设施: 制造站 01")
         self.assertEqual(log_event.detail["split_mode"], "Before")
-        self.assertEqual(log_event.detail["raw"]["what"], "SubTaskExtraInfo")
+        self.assertEqual(log_event.detail["raw"]["what"], "EnterFacility")
 
 
 if __name__ == "__main__":
