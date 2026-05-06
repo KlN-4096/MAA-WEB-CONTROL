@@ -1,0 +1,70 @@
+{
+  "enabled": true,
+  "slots": [
+    {
+      "enabled": false,
+      "time": "00:00",
+      "profile_name": "daily",
+      "force_start": false,
+      "start_emulator": true
+    },
+    {
+      "enabled": false,
+      "time": "03:00",
+      "profile_name": "daily",
+      "force_start": false,
+      "start_emulator": true
+    },
+    {
+      "enabled": false,
+      "time": "06:00",
+      "profile_name": "daily",
+      "force_start": false,
+      "start_emulator": true
+    },
+    {
+      "enabled": false,
+      "time": "09:00",
+      "profile_name": "daily",
+      "force_start": false,
+      "start_emulator": true
+    },
+    {
+      "enabled": false,
+      "time": "12:00",
+      "profile_name": "daily",
+      "force_start": false,
+      "start_emulator": true
+    },
+    {
+      "enabled": false,
+      "time": "15:00",
+      "profile_name": "daily",
+      "force_start": false,
+      "start_emulator": true
+    },
+    {
+      "enabled": true,
+      "time": "18:00",
+      "profile_name": "daily",
+      "force_start": false,
+      "start_emulator": true
+    },
+    {
+      "enabled": true,
+      "time": "21:00",
+      "profile_name": "daily",
+      "force_start": false,
+      "start_emulator": true
+    }
+  ],
+  "post_action": {
+    "type": "none",
+    "only_if_no_other_maa": false
+  },
+  "emulator_launch": {
+    "enabled": false,
+    "command": "",
+    "wait_seconds": 60
+  }
+}

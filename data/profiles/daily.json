@@ -6,7 +6,13 @@
     "adb_path": "adb",
     "client_type": "Official",
     "connect_config": {
-      "preset": "General"
+      "preset": "LDPlayer"
+    },
+    "ld_player_extras": {
+      "enabled": true,
+      "path": "D:\\APPS\\AppGroup_2_china\\LeidianMoNoQi\\leidian\\LDPlayer9\\",
+      "manual_index": false,
+      "index": 0
     }
   },
   "tasks": [
@@ -21,7 +27,7 @@
         "client_type": "Official",
         "auto_detect": false,
         "detect_every_time": true,
-        "connection": "General",
+        "connection": "LDPlayer",
         "touch_mode": "Minitouch（默认）"
       },
       "strategy": {}
@@ -92,8 +98,8 @@
         "times": 5,
         "use_drops": false,
         "series": 0,
-        "drop": "不选择",
-        "stage": "CE-6",
+        "drop": "",
+        "stage": "17-5",
         "custom_annihilation": false,
         "dr_grandet": false,
         "use_expiring_medicine": true,
@@ -108,8 +114,8 @@
         "weekly_schedule": false,
         "auto_restart": true,
         "stage_plan": [
-          "CE-6",
-          "当前/上次"
+          "17-5",
+          "CurrentStage"
         ]
       },
       "strategy": {}
@@ -117,7 +123,7 @@
     {
       "id": "remaining-sanity",
       "type": "Fight",
-      "enabled": false,
+      "enabled": true,
       "name": "剩余理智",
       "params": {
         "use_medicine": false,
@@ -128,8 +134,8 @@
         "times": 999,
         "use_drops": false,
         "series": 0,
-        "drop": "不选择",
-        "stage": "当前/上次",
+        "drop": "",
+        "stage": "1-7",
         "custom_annihilation": false,
         "dr_grandet": false,
         "use_expiring_medicine": true,
@@ -139,17 +145,21 @@
         "allow_stone_save": false,
         "custom_stage_code": false,
         "stage_reset": "当前/上次",
-        "use_alternate_stage": false,
+        "use_alternate_stage": true,
         "hide_unavailable_stage": true,
         "weekly_schedule": false,
-        "auto_restart": true
+        "auto_restart": true,
+        "stage_plan": [
+          "1-7",
+          "CurrentStage"
+        ]
       },
       "strategy": {}
     },
     {
       "id": "mall",
       "type": "Mall",
-      "enabled": false,
+      "enabled": true,
       "name": "信用收支",
       "params": {
         "visit_friends": true,
@@ -169,7 +179,7 @@
     {
       "id": "award",
       "type": "Award",
-      "enabled": false,
+      "enabled": true,
       "name": "领取奖励",
       "params": {
         "daily": true,
