@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .events import EventBus
-from .models import EventRecord, SchedulerConfig, TimerSlot
+from .models import EmulatorLaunchConfig, EventRecord, SchedulerConfig, TimerSlot
 
 
 class SchedulerService:
@@ -108,6 +108,9 @@ class SchedulerService:
                 detail={"slot_index": index, "profile_name": slot.profile_name},
             )
         )
+        launch_cfg = self._config.emulator_launch
+        if slot.start_emulator and launch_cfg.enabled and launch_cfg.command.strip():
+            await self._launch_emulator(launch_cfg)
         if self._run_callback and slot.profile_name:
             try:
                 await self._run_callback(slot.profile_name)
@@ -119,6 +122,42 @@ class SchedulerService:
                         level="error",
                     )
                 )
+
+    async def _launch_emulator(self, cfg: EmulatorLaunchConfig) -> None:
+        self._events.publish(EventRecord.now(
+            "scheduler.emulator.launch",
+            f"启动模拟器/容器: {cfg.command}",
+            detail={"command": cfg.command, "wait_seconds": cfg.wait_seconds},
+        ))
+        try:
+            await asyncio.create_subprocess_shell(
+                cfg.command,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+        except Exception as exc:
+            self._events.publish(EventRecord.now(
+                "scheduler.emulator.error",
+                f"启动命令执行失败: {exc}",
+                level="error",
+            ))
+            return
+        wait = max(0, cfg.wait_seconds)
+        elapsed = 0
+        while elapsed < wait:
+            step = min(10, wait - elapsed)
+            remaining = wait - elapsed
+            self._events.publish(EventRecord.now(
+                "scheduler.emulator.waiting",
+                f"等待模拟器就绪: 还剩 {remaining}s",
+                detail={"remaining": remaining},
+            ))
+            await asyncio.sleep(step)
+            elapsed += step
+        self._events.publish(EventRecord.now(
+            "scheduler.emulator.ready",
+            "模拟器等待完成，开始执行任务",
+        ))
 
 
 def _parse_time(value: str) -> dt_time | None:

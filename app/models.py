@@ -18,11 +18,19 @@ RunnerStateName = Literal[
 ]
 
 
+class LdPlayerExtras(BaseModel):
+    enabled: bool = False
+    path: str = ""
+    manual_index: bool = False
+    index: int = 0
+
+
 class AdbConfig(BaseModel):
     address: str = "127.0.0.1:5555"
     adb_path: str = "adb"
     client_type: str = "Official"
     connect_config: dict[str, Any] = Field(default_factory=dict)
+    ld_player_extras: LdPlayerExtras = Field(default_factory=LdPlayerExtras)
 
 
 class TaskDefinition(BaseModel):
@@ -107,12 +115,20 @@ class TimerSlot(BaseModel):
     time: str = "00:00"
     profile_name: str = ""
     force_start: bool = False
+    start_emulator: bool = True
+
+
+class EmulatorLaunchConfig(BaseModel):
+    enabled: bool = False
+    command: str = ""
+    wait_seconds: int = 60
 
 
 class SchedulerConfig(BaseModel):
     enabled: bool = False
     slots: list[TimerSlot] = Field(default_factory=list)
     post_action: PostAction = Field(default_factory=PostAction)
+    emulator_launch: EmulatorLaunchConfig = Field(default_factory=EmulatorLaunchConfig)
 
 
 class CopilotJob(BaseModel):

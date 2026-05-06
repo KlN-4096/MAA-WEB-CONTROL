@@ -10,7 +10,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisconnect
 
 from .capabilities import build_capabilities
+from .default_profiles import complete_profile_tasks
 from .events import EventBus
+from .image_codec import encode_peep_frame
 from .logs import MaaLogService
 from .models import (
     AdbStatus,
@@ -40,6 +42,8 @@ def create_api_router(
 ) -> APIRouter:
     router = APIRouter(prefix="/api")
     logs = log_service or runner.log_service
+    if scheduler is not None:
+        runner.set_post_action(scheduler.config.post_action)
 
     # ── Status & Profiles ──────────────────────────────────────────
 
@@ -53,7 +57,11 @@ def create_api_router(
 
     @router.get("/options")
     async def get_options():
-        return build_ui_options()
+        return await asyncio.to_thread(
+            build_ui_options,
+            adapter=runner.adapter,
+            project_root=project_root,
+        )
 
     @router.get("/capabilities")
     async def get_capabilities():
@@ -109,14 +117,14 @@ def create_api_router(
     @router.get("/profiles/{name}")
     async def get_profile(name: str):
         try:
-            return store.load(name)
+            return complete_profile_tasks(store.load(name))
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @router.put("/profiles/{name}")
     async def put_profile(name: str, profile: Profile):
         try:
-            return store.save(profile.model_copy(update={"name": name}))
+            return store.save(complete_profile_tasks(profile.model_copy(update={"name": name})))
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -176,6 +184,10 @@ def create_api_router(
     async def log_thumbnail(thumbnail_id: str):
         return logs.thumbnail_response(thumbnail_id)
 
+    @router.get("/logs/thumbnails/{thumbnail_id}/original")
+    async def log_thumbnail_original(thumbnail_id: str):
+        return logs.thumbnail_original_response(thumbnail_id)
+
     # ── ADB & Device ───────────────────────────────────────────────
 
     @router.get("/adb/devices")
@@ -192,11 +204,15 @@ def create_api_router(
         try:
             image_data = await get_image()
             if image_data:
-                return {
+                result = {
                     "ok": True,
                     "message": "截图成功",
                     "size": len(image_data),
                 }
+                benchmark = getattr(adapter, "screenshot_benchmark", None)
+                if isinstance(benchmark, dict):
+                    result["benchmark"] = benchmark
+                return result
             image_error = getattr(adapter, "last_image_error", None)
             if image_error:
                 return {"ok": False, "message": f"截图失败: {image_error}"}
@@ -308,7 +324,9 @@ def create_api_router(
     async def update_scheduler_config(config: SchedulerConfig):
         if scheduler is None:
             raise HTTPException(status_code=501, detail="Scheduler not initialized")
-        return scheduler.update_config(config)
+        updated = scheduler.update_config(config)
+        runner.set_post_action(updated.post_action)
+        return updated
 
     # ── Post Action ────────────────────────────────────────────────
 
@@ -318,6 +336,9 @@ def create_api_router(
 
     @router.put("/post-action")
     async def set_post_action(action: PostAction):
+        if scheduler is not None:
+            config = scheduler.config
+            scheduler.update_config(config.model_copy(update={"post_action": action}, deep=True))
         return runner.set_post_action(action)
 
     return router
@@ -509,10 +530,13 @@ async def peep_socket(websocket: WebSocket, runner: MaaRunnerService) -> None:
             if callable(get_image):
                 image_data = await get_image()
                 if image_data:
+                    frame = await asyncio.to_thread(encode_peep_frame, image_data)
                     await websocket.send_json({
                         "ok": True,
-                        "data": base64.b64encode(image_data).decode("ascii"),
-                        "size": len(image_data),
+                        "data": base64.b64encode(frame.data).decode("ascii"),
+                        "media_type": frame.media_type,
+                        "size": len(frame.data),
+                        "original_size": len(image_data),
                     })
                 else:
                     await websocket.send_json({"ok": False, "message": "截图返回空数据"})

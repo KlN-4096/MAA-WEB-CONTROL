@@ -19,8 +19,8 @@ CAPABILITIES: dict[str, Any] = {
         "settings": {"enabled": True},
     },
     "resources": {
-        "enabled": False,
-        "reason": "资源驱动选项尚未接 MaaCore resource，本轮继续使用静态/自由输入降级。",
+        "enabled": True,
+        "reason": "资源驱动选项从当前 MAA 配置目录读取，失败时前端保留内置降级。",
     },
     "profiles": {
         "defaults": ["daily-shoucai", "daily-shualizhi"],
@@ -33,7 +33,7 @@ CAPABILITIES: dict[str, Any] = {
             "default_params": {
                 "account": "",
                 "start_game_enabled": True,
-                "client_type": "官服",
+                "client_type": "Official",
             },
         },
         "Fight": {
@@ -41,8 +41,8 @@ CAPABILITIES: dict[str, Any] = {
             "title": "理智作战",
             "supports_advanced": True,
             "default_params": {
-                "stage": "当前/上次",
-                "stage_plan": ["当前/上次"],
+                "stage": "CurrentStage",
+                "stage_plan": ["CurrentStage"],
                 "use_medicine": False,
                 "use_stone": False,
                 "has_times_limited": False,
@@ -142,7 +142,7 @@ CAPABILITIES: dict[str, Any] = {
             "title": "关闭游戏",
             "supports_advanced": False,
             "default_params": {
-                "client_type": "官服",
+                "client_type": "Official",
             },
         },
         "Custom": {

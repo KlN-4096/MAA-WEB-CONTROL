@@ -49,6 +49,7 @@ async def on_startup() -> None:
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
     await scheduler.stop()
+    await runner.shutdown()
 
 
 @app.websocket("/api/events")

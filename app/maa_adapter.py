@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 import json
 import os
 import sys
@@ -10,23 +11,17 @@ from threading import Lock
 from typing import Any, Mapping
 
 from .events import EventBus
+from .image_codec import encode_log_preview
 from .logs import MaaLogService
 from .models import AppendCall, EventRecord, Profile
+from .resource_paths import normalize_client_type, resource_incremental_roots
 from .runner import DryRunMaaAdapter, MaaAdapter
 
 
 DEFAULT_MAA_PYTHON_DIR = Path(r"E:\Project\C\MaaAssistantArknights\src\Python")
 CLIENT_TYPE_OPTION = 6
 SCREENSHOT_BUFFER_SIZE = 32 * 1024 * 1024
-CLIENT_TYPE_ALIASES = {
-    "官服": "Official",
-    "B服": "Bilibili",
-    "Bilibili服": "Bilibili",
-    "国际服 (YostarEN)": "YoStarEN",
-    "日服 (YostarJP)": "YoStarJP",
-    "韩服 (YostarKR)": "YoStarKR",
-    "繁中服 (txwy)": "txwy",
-}
+LOG_THUMBNAIL_CAPTURE_DELAY = 0.4
 TASK_CHAIN_EVENTS = {
     "TaskChainStart": ("maa.task_chain.start", None, "Task chain started.", "info"),
     "TaskChainCompleted": ("maa.task_chain.completed", "Completed", "Task chain completed.", "info"),
@@ -83,6 +78,7 @@ class OfficialMaaAdapter:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._poll_interval = poll_interval
         self._last_image_error: str | None = None
+        self._screenshot_benchmark: dict[str, Any] | None = None
 
     @property
     def callback_events(self) -> list[EventRecord]:
@@ -92,6 +88,12 @@ class OfficialMaaAdapter:
     def task_chain_status(self) -> str | None:
         with self._status_lock:
             return self._task_chain_status
+
+    @property
+    def screenshot_benchmark(self) -> dict[str, Any] | None:
+        if self._screenshot_benchmark is None:
+            return None
+        return deepcopy(self._screenshot_benchmark)
 
     @property
     def last_image_error(self) -> str | None:
@@ -146,8 +148,9 @@ class OfficialMaaAdapter:
     def _connect_sync(self, profile: Profile) -> bool:
         asst_cls = self._resolve_asst_cls()
         self._user_dir.mkdir(parents=True, exist_ok=True)
+        self._screenshot_benchmark = None
         try:
-            if not asst_cls.load(self._core_dir, user_dir=self._user_dir):
+            if not self._load_resources(asst_cls, profile):
                 return False
         except Exception as exc:
             raise RuntimeError(f"Failed to load MaaCore from MAA_CORE_DIR: {self._core_dir}") from exc
@@ -156,6 +159,7 @@ class OfficialMaaAdapter:
         if self._log_service is not None:
             self._log_service.set_thumbnail_callback(self._schedule_thumbnail_capture)
         try:
+            self._set_connection_extras(profile, asst_cls)
             self._set_client_type_option(profile)
             return bool(
                 self._asst.connect(
@@ -167,6 +171,18 @@ class OfficialMaaAdapter:
         except Exception as exc:
             raise RuntimeError(f"MaaCore connect failed for ADB address: {profile.adb.address}") from exc
 
+    def _set_connection_extras(self, profile: Profile, asst_cls: type[Any]) -> None:
+        ld = profile.adb.ld_player_extras
+        if not ld.enabled or not ld.path:
+            return
+        set_extras = getattr(asst_cls, "set_connection_extras", None)
+        if not callable(set_extras):
+            return
+        index = ld.index if ld.manual_index else _ld_index_from_address(profile.adb.address)
+        pid = _ld_player_pid(ld.path, index)
+        extras: dict[str, Any] = {"path": ld.path, "index": index, "pid": pid}
+        set_extras("LDPlayer", extras)
+
     def _set_client_type_option(self, profile: Profile) -> None:
         client_type = _normalize_client_type(profile.adb.client_type)
         setter = getattr(self._asst, "set_instance_option", None)
@@ -174,6 +190,14 @@ class OfficialMaaAdapter:
             raise RuntimeError("MaaCore set_instance_option is not available.")
         if setter(CLIENT_TYPE_OPTION, client_type) is False:
             raise RuntimeError(f"MaaCore rejected client type: {client_type}")
+
+    def _load_resources(self, asst_cls: type[Any], profile: Profile) -> bool:
+        if not asst_cls.load(self._core_dir, user_dir=self._user_dir):
+            return False
+        for root in resource_incremental_roots(self._core_dir, profile.adb.client_type):
+            if not asst_cls.load(self._core_dir, incremental_path=root):
+                return False
+        return True
 
     def _resolve_asst_cls(self) -> type[Any]:
         if self._asst_cls is not None:
@@ -218,8 +242,8 @@ class OfficialMaaAdapter:
 
         # ── ConnectionInfo (msg=2): screencap method, connection state, etc. ──
         if message == _MSG_CONNECTION_INFO:
-            if self._log_service is not None and sub_what == "FastestWayToScreencap":
-                self._append_connection_log(sub_what, details, detail)
+            if sub_what == "FastestWayToScreencap":
+                self._record_screenshot_benchmark(details, detail)
             return []
 
         # ── TaskChain events (10001 / 10002 / 10000 / 10004 / 3) ──────────────
@@ -248,16 +272,24 @@ class OfficialMaaAdapter:
 
         return []
 
-    def _append_connection_log(self, what: str, details: Any, raw_detail: dict[str, Any]) -> None:
-        cost = _nested_value(details, "cost", "ms", "time") or _nested_value(details, "details", "cost")
+    def _record_screenshot_benchmark(self, details: Any, raw_detail: dict[str, Any]) -> None:
+        benchmark = _screenshot_benchmark(details)
+        if benchmark is None:
+            return
+        self._screenshot_benchmark = benchmark
+        if self._log_service is not None:
+            self._append_connection_log(benchmark, raw_detail)
+
+    def _append_connection_log(self, benchmark: dict[str, Any], raw_detail: dict[str, Any]) -> None:
+        cost = benchmark.get("cost")
         if cost is None:
             return
-        method = _nested_value(details, "method", "way", "screencap", "name") or "Unknown"
-        text = f"最快截图耗时: {cost}ms ({method})" if cost is not None else f"最快截图耗时: ({method})"
+        method = benchmark.get("method") or "Unknown"
+        text = f"最快截图耗时: {cost}ms ({method})"
         self._log_service.append(
             text,
             color_key="LdSpecialScreenshot",
-            tooltip={"kind": "screenshot", "method": method, "cost": cost},
+            tooltip=benchmark,
             raw=raw_detail,
         )
 
@@ -296,6 +328,8 @@ class OfficialMaaAdapter:
 
     def _append_sub_task_log(self, what: str, details: Any, raw_detail: dict[str, Any]) -> None:
         if what == "SubTaskError":
+            if _sub_task_name(details) == "ProcessTask":
+                return
             text = _sub_task_message(details, "任务出错")
             self._log_service.append(text, color_key="ErrorLogBrush", weight="Bold", raw=raw_detail)
 
@@ -420,7 +454,7 @@ class OfficialMaaAdapter:
             facility = _facility_name(d)
             index = _index_one_based(d.get("index"))
             ls.append(f"当前设施: {facility} {index:02d}", color_key="MessageLogBrush",
-                      split_mode="Before", thumbnail={"capture": True, "placeholder": True},
+                      split_mode="Before",
                       tooltip={"kind": "facility", "facility": facility, "index": index},
                       raw=raw_detail)
             return
@@ -551,7 +585,7 @@ class OfficialMaaAdapter:
             return
 
         if extra_what == "SSSSettlement":
-            why = details.get("why", "") if isinstance(details, dict) else ""
+            why = d.get("why", "")
             ls.append(why or "保全导航结算", color_key="InfoLogBrush", raw=raw_detail)
             return
 
@@ -581,7 +615,7 @@ class OfficialMaaAdapter:
 
         # ── 截图时序 ──────────────────────────────────────────────────────────
         if extra_what == "FastestWayToScreencap":
-            self._append_connection_log(extra_what, details, raw_detail)
+            self._record_screenshot_benchmark(details, raw_detail)
             return
 
     def _schedule_thumbnail_capture(self, card_id: str) -> None:
@@ -601,10 +635,11 @@ class OfficialMaaAdapter:
         if self._log_service is None or self._asst is None:
             return
         try:
-            await asyncio.sleep(0.4)  # brief pause so the screen settles
+            await asyncio.sleep(LOG_THUMBNAIL_CAPTURE_DELAY)
             image_data = await self.get_image()
             if image_data:
-                self._log_service.attach_real_thumbnail(card_id, image_data)
+                preview_image = await asyncio.to_thread(encode_log_preview, image_data)
+                self._log_service.attach_real_thumbnail(card_id, image_data, preview_image)
         except Exception:
             pass
 
@@ -650,21 +685,23 @@ def create_maa_adapter(
     log_service: MaaLogService | None = None,
 ) -> MaaAdapter:
     source_env = os.environ if env is None else env
-    adapter_name = source_env.get("MAA_ADAPTER", "").strip().lower()
-    core_dir_str = source_env.get("MAA_CORE_DIR", "").strip()
+    adapter_name = ""
+    core_dir_str = ""
 
-    # Fall back to persisted config file when using real environment
-    if env is None and (not adapter_name or not core_dir_str):
+    if env is None:
         config_file = project_root / "data" / "adapter.json"
         if config_file.exists():
             try:
                 file_cfg = json.loads(config_file.read_text(encoding="utf-8"))
-                if not adapter_name:
-                    adapter_name = str(file_cfg.get("adapter", "")).strip().lower()
-                if not core_dir_str:
-                    core_dir_str = str(file_cfg.get("core_dir", "")).strip()
+                adapter_name = str(file_cfg.get("adapter", "")).strip().lower()
+                core_dir_str = str(file_cfg.get("core_dir", "")).strip()
             except Exception:
                 pass
+
+    if not adapter_name:
+        adapter_name = source_env.get("MAA_ADAPTER", "").strip().lower()
+    if not core_dir_str:
+        core_dir_str = source_env.get("MAA_CORE_DIR", "").strip()
 
     if adapter_name not in {"official", "real"}:
         return DryRunMaaAdapter()
@@ -729,8 +766,7 @@ def _decode_callback_details(details: Any) -> Any:
 
 
 def _normalize_client_type(value: Any) -> str:
-    text = str(value or "Official")
-    return CLIENT_TYPE_ALIASES.get(text, text)
+    return normalize_client_type(value)
 
 
 def _callback_what(details: Any) -> str:
@@ -791,8 +827,12 @@ def _facility_name(details: Any) -> str:
 
 
 def _sub_task_message(details: Any, prefix: str) -> str:
+    return f"{prefix}: {_sub_task_name(details)}"
+
+
+def _sub_task_name(details: Any) -> str:
     value = _nested_value(details, "subtask", "task", "name", "what") or "子任务"
-    return f"{prefix}: {value}"
+    return str(value)
 
 
 def _sanity_suffix(details: Any) -> str:
@@ -854,6 +894,46 @@ def _index_one_based(value: Any) -> int:
         return 0
 
 
+def _screenshot_benchmark(details: Any) -> dict[str, Any] | None:
+    payload = _screenshot_details(details)
+    if not payload:
+        return None
+    cost = _nested_value(payload, "cost", "ms", "time")
+    if cost is None:
+        return None
+    method = _nested_value(payload, "method", "way", "screencap", "name") or "Unknown"
+    benchmark: dict[str, Any] = {"kind": "screenshot", "method": method, "cost": cost}
+    alternatives = _screenshot_alternatives(payload.get("alternatives"))
+    if alternatives:
+        benchmark["alternatives"] = alternatives
+    return benchmark
+
+
+def _screenshot_details(details: Any) -> dict[str, Any]:
+    if not isinstance(details, dict):
+        return {}
+    inner = details.get("details")
+    if isinstance(inner, dict):
+        return inner
+    return details
+
+
+def _screenshot_alternatives(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    alternatives: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        method = _nested_value(item, "method", "way", "screencap", "name") or "Unknown"
+        entry = {"method": method}
+        cost = _nested_value(item, "cost", "ms", "time")
+        if cost is not None:
+            entry["cost"] = cost
+        alternatives.append(entry)
+    return alternatives
+
+
 def _nested_value(details: Any, *keys: str) -> Any:
     if not isinstance(details, dict):
         return None
@@ -909,3 +989,42 @@ def _line_from_value(value: Any) -> str:
             return f"{name} : {total}{suffix}"
         return str(name)
     return str(value)
+
+
+def _ld_index_from_address(address: str) -> int:
+    """Derive LDPlayer instance index from ADB address (mirrors WPF GetEmulatorIndex)."""
+    if not address:
+        return 0
+    try:
+        if address.startswith("emulator-"):
+            return (int(address[9:]) - 5554) // 2
+        if address.startswith("127.0.0.1:"):
+            return (int(address[10:]) - 5555) // 2
+    except (ValueError, IndexError):
+        pass
+    return 0
+
+
+def _ld_player_pid(ld_path: str, index: int) -> int:
+    """Call ldconsole.exe list2 to get the PID of the LDPlayer instance (mirrors WPF GetEmulatorPid)."""
+    import subprocess
+    ldconsole = os.path.join(ld_path, "ldconsole.exe")
+    if not os.path.exists(ldconsole):
+        return 0
+    try:
+        result = subprocess.run(
+            [ldconsole, "list2"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=0x08000000 if sys.platform == "win32" else 0,  # CREATE_NO_WINDOW
+        )
+        for line in result.stdout.splitlines():
+            parts = line.split(",")
+            if len(parts) >= 6 and parts[0].strip().isdigit() and int(parts[0].strip()) == index:
+                pid_str = parts[5].strip()
+                if pid_str.isdigit():
+                    return int(pid_str)
+    except Exception:
+        pass
+    return 0

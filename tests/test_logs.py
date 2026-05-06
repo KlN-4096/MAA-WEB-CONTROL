@@ -1,7 +1,7 @@
 import unittest
 
 from app.events import EventBus
-from app.logs import MaaLogService
+from app.logs import MaaLogService, PLACEHOLDER_PNG
 
 
 class MaaLogServiceTest(unittest.TestCase):
@@ -57,6 +57,25 @@ class MaaLogServiceTest(unittest.TestCase):
         self.assertEqual(item_event.detail["weight"], "Bold")
         self.assertEqual(item_event.detail["tooltip"], {"kind": "image"})
         self.assertEqual(item_event.detail["raw"], {"what": "TaskChainError"})
+
+    def test_placeholder_thumbnail_waits_for_real_capture_before_showing(self):
+        logs = MaaLogService(EventBus())
+        requested_cards: list[str] = []
+        logs.set_thumbnail_callback(requested_cards.append)
+
+        logs.clear()
+        logs.append("当前设施: 贸易站 02", thumbnail={"capture": True, "placeholder": True})
+
+        cards = logs.cards()
+        self.assertIsNone(cards[0]["thumbnail_id"])
+        self.assertEqual(requested_cards, ["current-card-001"])
+
+        logs.attach_real_thumbnail(requested_cards[0], PLACEHOLDER_PNG)
+
+        cards = logs.cards()
+        self.assertIsNotNone(cards[0]["thumbnail_id"])
+        self.assertIsNotNone(cards[0]["thumbnail_url"])
+        self.assertIsNotNone(cards[0]["original_url"])
 
 
 if __name__ == "__main__":

@@ -4,6 +4,17 @@ from .models import Profile, TaskDefinition
 
 
 ALL_FACILITIES = ["制造站", "贸易站", "控制中枢", "发电站", "会客室", "办公室", "宿舍", "加工站", "训练室"]
+BUILTIN_TASK_ORDER = [
+    "startup",
+    "recruit",
+    "infrast",
+    "fight",
+    "remaining-sanity",
+    "mall",
+    "award",
+    "roguelike",
+    "reclamation",
+]
 
 
 def build_default_profiles() -> list[Profile]:
@@ -11,46 +22,90 @@ def build_default_profiles() -> list[Profile]:
         Profile(
             name="daily-shoucai",
             description="Daily resource routine.",
-            tasks=[
-                _task("startup", "StartUp", _startup_params()),
-                _task("recruit", "Recruit", _recruit_params()),
-                _task("infrast", "Infrast", _infrast_params()),
-                _task("mall", "Mall", _mall_params()),
-                _task("award", "Award", _award_params()),
-            ],
+            tasks=_profile_tasks({"startup", "recruit", "infrast", "mall", "award"}),
         ),
         Profile(
             name="daily-shualizhi",
             description="Daily sanity routine.",
-            tasks=[
-                _task("startup", "StartUp", _startup_params()),
-                _task("fight", "Fight", _fight_params()),
-                _task("award", "Award", _award_params()),
-            ],
+            tasks=_profile_tasks({"startup", "fight", "award"}),
         ),
     ]
 
 
-def _task(task_id: str, task_type: str, params: dict[str, object]) -> TaskDefinition:
-    return TaskDefinition(id=task_id, type=task_type, enabled=True, name=_task_name(task_type), params=params)
+def complete_profile_tasks(profile: Profile) -> Profile:
+    existing_by_id = {task.id: task for task in profile.tasks}
+    ordered_tasks: list[TaskDefinition] = []
+    used_ids: set[str] = set()
+    for template in _profile_tasks(set()):
+        task = existing_by_id.get(template.id) or template
+        ordered_tasks.append(task)
+        used_ids.add(task.id)
+    ordered_tasks.extend(task for task in profile.tasks if task.id not in used_ids)
+    return profile.model_copy(update={"tasks": ordered_tasks}, deep=True)
 
 
-def _task_name(task_type: str) -> str:
+def _profile_tasks(enabled_ids: set[str]) -> list[TaskDefinition]:
+    return [_builtin_task(task_id, task_id in enabled_ids) for task_id in BUILTIN_TASK_ORDER]
+
+
+def _builtin_task(task_id: str, enabled: bool) -> TaskDefinition:
+    task_type = _task_type(task_id)
+    return TaskDefinition(
+        id=task_id,
+        type=task_type,
+        enabled=enabled,
+        name=_task_name(task_id),
+        params=_task_params(task_id),
+    )
+
+
+def _task_type(task_id: str) -> str:
     return {
-        "StartUp": "开始唤醒",
-        "Recruit": "自动公招",
-        "Infrast": "基建换班",
-        "Fight": "理智作战",
-        "Mall": "信用收支",
-        "Award": "领取奖励",
-    }.get(task_type, task_type)
+        "startup": "StartUp",
+        "recruit": "Recruit",
+        "infrast": "Infrast",
+        "fight": "Fight",
+        "remaining-sanity": "Fight",
+        "mall": "Mall",
+        "award": "Award",
+        "roguelike": "Roguelike",
+        "reclamation": "Reclamation",
+    }[task_id]
+
+
+def _task_name(task_id: str) -> str:
+    return {
+        "startup": "开始唤醒",
+        "recruit": "自动公招",
+        "infrast": "基建换班",
+        "fight": "理智作战",
+        "remaining-sanity": "剩余理智",
+        "mall": "信用收支",
+        "award": "领取奖励",
+        "roguelike": "自动肉鸽",
+        "reclamation": "生息演算",
+    }.get(task_id, task_id)
+
+
+def _task_params(task_id: str) -> dict[str, object]:
+    return {
+        "startup": _startup_params,
+        "recruit": _recruit_params,
+        "infrast": _infrast_params,
+        "fight": _fight_params,
+        "remaining-sanity": _remaining_sanity_params,
+        "mall": _mall_params,
+        "award": _award_params,
+        "roguelike": _roguelike_params,
+        "reclamation": _reclamation_params,
+    }[task_id]()
 
 
 def _startup_params() -> dict[str, object]:
     return {
         "account": "",
         "start_game_enabled": True,
-        "client_type": "官服",
+        "client_type": "Official",
         "auto_detect": True,
         "detect_every_time": True,
         "connection": "雷电模拟器",
@@ -131,7 +186,7 @@ def _fight_params() -> dict[str, object]:
         "has_times_limited": False,
         "times": 99999,
         "use_drops": False,
-        "drop": "不选择",
+        "drop": "",
         "series": 0,
         "custom_annihilation": False,
         "dr_grandet": False,
@@ -141,7 +196,7 @@ def _fight_params() -> dict[str, object]:
         "hide_series": False,
         "allow_stone_save": False,
         "custom_stage_code": False,
-        "stage_reset": "当前/上次",
+        "stage_reset": "CurrentStage",
         "use_alternate_stage": True,
         "hide_unavailable_stage": True,
         "weekly_schedule": False,
@@ -149,4 +204,45 @@ def _fight_params() -> dict[str, object]:
         "report_to_penguin": True,
         "penguin_id": "614858333",
         "server": "CN",
+    }
+
+
+def _remaining_sanity_params() -> dict[str, object]:
+    params = _fight_params()
+    params.update({
+        "stage_plan": ["1-7", "CurrentStage"],
+        "stage": "1-7",
+        "use_remaining_sanity_stage": False,
+        "medicine": 0,
+        "stone": 0,
+        "times": 999,
+    })
+    return params
+
+
+def _roguelike_params() -> dict[str, object]:
+    return {
+        "theme": "萨卡兹",
+        "difficulty": "MAX (18)",
+        "strategy": "刷等级，尽可能稳定地打更多层数",
+        "squad": "指挥分队",
+        "roles": "稳扎稳打（重装、术师、狙击）",
+        "operator": "",
+        "starts_count": 99999,
+        "investment_enabled": True,
+        "use_support_unit": False,
+        "stop_at_final_boss": False,
+        "stop_at_max_level": False,
+        "start_with_seed": False,
+        "delay_abort": True,
+    }
+
+
+def _reclamation_params() -> dict[str, object]:
+    return {
+        "theme": "沙洲遗闻",
+        "strategy": "有存档，通过组装支援道具刷生息点数",
+        "tool_to_craft": "荧光棒",
+        "increment_mode": "连点",
+        "max_craft_count": 16,
     }

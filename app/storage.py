@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 from threading import Lock
 
@@ -33,7 +34,7 @@ class ProfileStore:
         with self._write_lock:
             tmp = path.with_suffix(".json.tmp")
             tmp.write_text(content, encoding="utf-8")
-            tmp.replace(path)
+            _replace_with_retry(tmp, path)
         return profile
 
     def ensure_defaults(self, profiles: list[Profile]) -> list[str]:
@@ -50,3 +51,14 @@ class ProfileStore:
         if not PROFILE_NAME_PATTERN.fullmatch(name):
             raise ValueError("Profile name can only contain letters, numbers, dot, dash, and underscore.")
         return self.root / f"{name}.json"
+
+
+def _replace_with_retry(src: Path, dst: Path, *, retries: int = 5, delay: float = 0.05) -> None:
+    for attempt in range(retries):
+        try:
+            src.replace(dst)
+            return
+        except PermissionError:
+            if attempt == retries - 1:
+                raise
+            time.sleep(delay)

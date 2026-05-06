@@ -88,6 +88,19 @@ class RunnerStateTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("runner.stopped", event_types)
         self.assertNotIn("runner.completed", event_types)
 
+    async def test_shutdown_stops_running_task_before_returning(self):
+        events = EventBus()
+        adapter = FakeRunnerAdapter(wait_for_stop=True)
+        runner = MaaRunnerService(adapter, events)
+
+        await runner.run(profile_with_task())
+        await adapter.started.wait()
+        await runner.shutdown()
+
+        self.assertTrue(adapter.stop_called)
+        self.assertTrue(runner._task.done())
+        self.assertEqual(runner.status().state, "Stopped")
+
     async def test_append_failure_publishes_error_log(self):
         events = EventBus()
         runner = MaaRunnerService(FakeRunnerAdapter(append_error=RuntimeError("append failed")), events)

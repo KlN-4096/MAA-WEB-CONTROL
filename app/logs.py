@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Literal
 from uuid import uuid4
@@ -8,6 +9,7 @@ from fastapi import HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .events import EventBus
+from .image_codec import EncodedImage, IMAGE_PNG, detect_media_type, encode_log_preview
 from .models import EventRecord
 
 
@@ -20,6 +22,14 @@ PLACEHOLDER_PNG = (
     b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc````\x00"
     b"\x00\x00\x05\x00\x01\xa5\xf6E@\x00\x00\x00\x00IEND\xaeB`\x82"
 )
+
+
+@dataclass(frozen=True)
+class ThumbnailEntry:
+    preview_data: bytes
+    preview_media_type: str
+    original_data: bytes | None = None
+    original_media_type: str = IMAGE_PNG
 
 
 class MaaLogItem(BaseModel):
@@ -37,8 +47,12 @@ class MaaLogCard(BaseModel):
     id: str
     items: list[MaaLogItem] = Field(default_factory=list)
     thumbnail_id: str | None = None
+    original_available: bool = False
 
     def payload(self) -> dict[str, Any]:
+        original_url = None
+        if self.thumbnail_id and self.original_available:
+            original_url = f"/api/logs/thumbnails/{self.thumbnail_id}/original"
         return {
             "id": self.id,
             "items": [item.model_dump(mode="json") for item in self.items],
@@ -46,6 +60,7 @@ class MaaLogCard(BaseModel):
             "end_time": self.items[-1].time if self.items else "",
             "thumbnail_id": self.thumbnail_id,
             "thumbnail_url": f"/api/logs/thumbnails/{self.thumbnail_id}" if self.thumbnail_id else None,
+            "original_url": original_url,
             "show_thumbnail": self.thumbnail_id is not None,
         }
 
@@ -54,7 +69,7 @@ class MaaLogService:
     def __init__(self, events: EventBus, max_thumbnails: int = DEFAULT_MAX_THUMBNAILS) -> None:
         self._events = events
         self._cards: list[MaaLogCard] = []
-        self._thumbnails: dict[str, bytes] = {}
+        self._thumbnails: dict[str, ThumbnailEntry] = {}
         self._run_id = "current"
         self._max_thumbnails = max_thumbnails
         self._run_started_at: datetime | None = None
@@ -114,10 +129,16 @@ class MaaLogService:
         self._events.publish(EventRecord.now("maa.log.run.completed", message))
 
     def thumbnail_response(self, thumbnail_id: str) -> Response:
-        data = self._thumbnails.get(thumbnail_id)
-        if data is None:
+        entry = self._thumbnails.get(thumbnail_id)
+        if entry is None:
             raise HTTPException(status_code=404, detail="Thumbnail is not available.")
-        return Response(content=data, media_type="image/png")
+        return Response(content=entry.preview_data, media_type=entry.preview_media_type)
+
+    def thumbnail_original_response(self, thumbnail_id: str) -> Response:
+        entry = self._thumbnails.get(thumbnail_id)
+        if entry is None or entry.original_data is None:
+            raise HTTPException(status_code=404, detail="Original thumbnail is not available.")
+        return Response(content=entry.original_data, media_type=entry.original_media_type)
 
     def elapsed_text(self) -> str:
         if self._run_started_at is None:
@@ -160,7 +181,12 @@ class MaaLogService:
         self._events.publish(EventRecord.now("maa.log.card.created", "Log card created.", detail={"card": card.payload()}))
         return card
 
-    def attach_real_thumbnail(self, card_id: str, image_data: bytes) -> None:
+    def attach_real_thumbnail(
+        self,
+        card_id: str,
+        image_data: bytes,
+        preview_image: EncodedImage | None = None,
+    ) -> None:
         """Attach real screenshot data to an existing card by ID."""
         card = next((c for c in self._cards if c.id == card_id), None)
         if card is None:
@@ -168,16 +194,31 @@ class MaaLogService:
         old_thumb = card.thumbnail_id
         if old_thumb:
             self._thumbnails.pop(old_thumb, None)
+        preview = preview_image or encode_log_preview(image_data)
         thumbnail_id = f"{self._run_id}-thumb-{uuid4().hex[:10]}"
         card.thumbnail_id = thumbnail_id
-        self._thumbnails[thumbnail_id] = image_data
+        card.original_available = True
+        self._thumbnails[thumbnail_id] = ThumbnailEntry(
+            preview_data=preview.data,
+            preview_media_type=preview.media_type,
+            original_data=image_data,
+            original_media_type=detect_media_type(image_data),
+        )
         self._trim_old_thumbnails()
         self._events.publish(EventRecord.now("maa.log.thumbnail.updated", "Real thumbnail attached.", detail={"card": card.payload()}))
 
     def _attach_thumbnail(self, card: MaaLogCard, placeholder: bool = False, image_data: bytes | None = None) -> None:
+        if placeholder and image_data is None and self._on_thumbnail_needed is not None:
+            self._on_thumbnail_needed(card.id)
+            return
         thumbnail_id = f"{self._run_id}-thumb-{uuid4().hex[:10]}"
         card.thumbnail_id = thumbnail_id
-        self._thumbnails[thumbnail_id] = image_data if image_data is not None else PLACEHOLDER_PNG
+        card.original_available = False
+        data = image_data if image_data is not None else PLACEHOLDER_PNG
+        self._thumbnails[thumbnail_id] = ThumbnailEntry(
+            preview_data=data,
+            preview_media_type=detect_media_type(data),
+        )
         self._trim_old_thumbnails()
         self._events.publish(EventRecord.now("maa.log.thumbnail.updated", "Log thumbnail updated.", detail={"card": card.payload()}))
         if placeholder and self._on_thumbnail_needed is not None:
@@ -190,6 +231,7 @@ class MaaLogService:
             if card.thumbnail_id:
                 self._thumbnails.pop(card.thumbnail_id, None)
                 card.thumbnail_id = None
+                card.original_available = False
 
     def _publish_item(self, card: MaaLogCard, item: MaaLogItem, split_mode: LogSplitMode) -> None:
         detail = {

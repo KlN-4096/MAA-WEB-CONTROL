@@ -8,7 +8,8 @@ from threading import Lock
 from typing import Any
 
 from .models import AppendCall, Profile, TaskDefinition
-from .options import DEFAULT_MAA_SOURCE_DIR, EXCLUDED_DROP_IDS
+from .options import EXCLUDED_DROP_IDS
+from .resource_paths import resolve_maa_root
 
 
 SUPPORTED_TASK_TYPES = {
@@ -53,6 +54,48 @@ STARTUP_CLIENT_TYPES = {
     "日服 (YostarJP)": "YoStarJP",
     "韩服 (YostarKR)": "YoStarKR",
     "繁中服 (txwy)": "txwy",
+}
+
+STAGE_VALUE_ALIASES = {
+    "当前/上次": "",
+    "当前": "",
+    "上次": "",
+    "CurrentStage": "",
+    "CE": "CE-6",
+    "龙门币": "CE-6",
+    "龙门币-6/5": "CE-6",
+    "LS": "LS-6",
+    "经验": "LS-6",
+    "经验-6/5": "LS-6",
+    "狗粮": "LS-6",
+    "CA": "CA-5",
+    "技能": "CA-5",
+    "技能-5": "CA-5",
+    "AP": "AP-5",
+    "红票": "AP-5",
+    "红票-5": "AP-5",
+    "SK": "SK-5",
+    "碳": "SK-5",
+    "碳-5": "SK-5",
+    "炭": "SK-5",
+    "AN": "Annihilation",
+    "剿灭": "Annihilation",
+    "剿灭模式": "Annihilation",
+    "当期剿灭": "Annihilation",
+    "Chernobog": "Chernobog@Annihilation",
+    "切尔诺伯格": "Chernobog@Annihilation",
+    "LungmenOutskirts": "LungmenOutskirts@Annihilation",
+    "龙门外环": "LungmenOutskirts@Annihilation",
+    "LungmenDowntown": "LungmenDowntown@Annihilation",
+    "龙门市区": "LungmenDowntown@Annihilation",
+    "奶/盾芯片": "PR-A-1",
+    "奶/盾芯片组": "PR-A-2",
+    "术/狙芯片": "PR-B-1",
+    "术/狙芯片组": "PR-B-2",
+    "先/辅芯片": "PR-C-1",
+    "先/辅芯片组": "PR-C-2",
+    "近/特芯片": "PR-D-1",
+    "近/特芯片组": "PR-D-2",
 }
 
 INFRAST_MODE_VALUES = {
@@ -110,8 +153,6 @@ RECLAMATION_INCREMENT_MODE_VALUES = {
     "连点": 0,
     "长按": 1,
 }
-
-_STAGE_CURRENT_ALIASES = frozenset({"当前/上次", "当前", "上次", "CurrentStage"})
 
 TOUCH_MODE_VALUES = {
     "Minitouch（默认）": "minitouch",
@@ -438,13 +479,15 @@ def _normalize_stage_plan(params: dict[str, Any]) -> None:
     stage_plan = params.get("stage_plan")
     if not isinstance(stage_plan, list):
         return
-    stage = _select_stage_from_plan(stage_plan)
-    if stage:
+    normalized = [_normalize_stage_str(str(stage)) for stage in stage_plan if stage is not None]
+    params["stage_plan"] = normalized
+    stage = _select_stage_from_plan(normalized)
+    if stage or normalized[:1] == [""]:
         params["stage"] = stage
 
 
 def _select_stage_from_plan(stage_plan: list[Any], weekday: int | None = None) -> str:
-    candidates = [_normalize_stage_str(str(stage)) for stage in stage_plan if stage]
+    candidates = [_normalize_stage_str(str(stage)) for stage in stage_plan if stage is not None]
     if not candidates:
         return ""
     current_weekday = datetime.now().weekday() if weekday is None else weekday
@@ -460,7 +503,7 @@ def _is_stage_open(stage: str, weekday: int) -> bool:
 
 
 def _normalize_stage_str(stage: str) -> str:
-    return "" if stage in _STAGE_CURRENT_ALIASES else stage
+    return STAGE_VALUE_ALIASES.get(stage, stage)
 
 
 def _normalize_client_type(value: Any) -> str:
@@ -592,18 +635,19 @@ def _medicine_expire_days(params: dict[str, Any]) -> int:
 
 _drop_map_cache: dict[str, str] | None = None
 _drop_map_mtime: float = 0.0
+_drop_map_path: Path | None = None
 _drop_map_lock = Lock()
 
 
 def _drop_name_to_id_map() -> dict[str, str]:
-    global _drop_map_cache, _drop_map_mtime
-    path = DEFAULT_MAA_SOURCE_DIR / "resource" / "item_index.json"
+    global _drop_map_cache, _drop_map_mtime, _drop_map_path
+    path = resolve_maa_root() / "resource" / "item_index.json"
     try:
         current_mtime = path.stat().st_mtime
     except OSError:
         return _drop_map_cache or {}
     with _drop_map_lock:
-        if _drop_map_cache is not None and current_mtime == _drop_map_mtime:
+        if _drop_map_cache is not None and current_mtime == _drop_map_mtime and path == _drop_map_path:
             return _drop_map_cache
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -620,6 +664,7 @@ def _drop_name_to_id_map() -> dict[str, str]:
                 result[str(name)] = str(item_id)
         _drop_map_cache = result
         _drop_map_mtime = current_mtime
+        _drop_map_path = path
         return result
 
 

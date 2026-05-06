@@ -1,11 +1,13 @@
 import asyncio
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 from app.events import EventBus
 from app.logs import MaaLogService, PLACEHOLDER_PNG
-from app.maa_adapter import OfficialMaaAdapter, SCREENSHOT_BUFFER_SIZE, create_maa_adapter
+from app.maa_adapter import LOG_THUMBNAIL_CAPTURE_DELAY, OfficialMaaAdapter, SCREENSHOT_BUFFER_SIZE, create_maa_adapter
 from app.models import AdbConfig, AppendCall, Profile
 from app.runner import DryRunMaaAdapter
 
@@ -103,10 +105,102 @@ class MaaAdapterFactoryTest(unittest.TestCase):
         self.assertIsInstance(adapter, OfficialMaaAdapter)
         self.assertEqual(adapter._python_dir, python_dir)
 
+    def test_factory_prefers_persisted_config_over_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project_root = Path(directory)
+            configured = project_root / "configured-maa"
+            (configured / "Python").mkdir(parents=True)
+            (project_root / "data").mkdir()
+            (project_root / "data" / "adapter.json").write_text(
+                json.dumps({"adapter": "official", "core_dir": str(configured)}),
+                encoding="utf-8",
+            )
+
+            adapter = create_maa_adapter(
+                project_root,
+                EventBus(),
+                env=None,
+                asst_cls=FakeAsst,
+            )
+
+        self.assertIsInstance(adapter, OfficialMaaAdapter)
+        self.assertEqual(adapter._core_dir, configured)
+
 
 class OfficialMaaAdapterTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         FakeAsst.reset()
+
+    async def test_official_client_loads_main_and_cache_resources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core_dir = Path(directory) / "MAA"
+            (core_dir / "resource").mkdir(parents=True)
+            (core_dir / "cache" / "resource").mkdir(parents=True)
+            adapter = OfficialMaaAdapter(
+                core_dir=core_dir,
+                python_dir=None,
+                user_dir=Path(directory) / "maa-user",
+                asst_cls=FakeAsst,
+                events=EventBus(),
+                poll_interval=0,
+            )
+
+            connected = await adapter.connect(Profile(name="daily", adb=AdbConfig(client_type="Official")))
+
+        self.assertTrue(connected)
+        self.assertEqual(FakeAsst.load_calls, [
+            (core_dir, None, Path(directory) / "maa-user"),
+            (core_dir, core_dir / "cache", None),
+        ])
+
+    async def test_overseas_client_loads_global_resource_layers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core_dir = Path(directory) / "MAA"
+            (core_dir / "resource").mkdir(parents=True)
+            (core_dir / "cache" / "resource").mkdir(parents=True)
+            (core_dir / "resource" / "global" / "YoStarEN" / "resource").mkdir(parents=True)
+            (core_dir / "cache" / "resource" / "global" / "YoStarEN" / "resource").mkdir(parents=True)
+            adapter = OfficialMaaAdapter(
+                core_dir=core_dir,
+                python_dir=None,
+                user_dir=Path(directory) / "maa-user",
+                asst_cls=FakeAsst,
+                events=EventBus(),
+                poll_interval=0,
+            )
+
+            connected = await adapter.connect(Profile(name="daily", adb=AdbConfig(client_type="YoStarEN")))
+
+        self.assertTrue(connected)
+        self.assertEqual(FakeAsst.load_calls, [
+            (core_dir, None, Path(directory) / "maa-user"),
+            (core_dir, core_dir / "cache", None),
+            (core_dir, core_dir / "resource" / "global" / "YoStarEN", None),
+            (core_dir, core_dir / "cache" / "resource" / "global" / "YoStarEN", None),
+        ])
+
+    async def test_bilibili_client_reuses_official_resource_layers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core_dir = Path(directory) / "MAA"
+            (core_dir / "resource").mkdir(parents=True)
+            (core_dir / "cache" / "resource").mkdir(parents=True)
+            (core_dir / "resource" / "global" / "Bilibili" / "resource").mkdir(parents=True)
+            adapter = OfficialMaaAdapter(
+                core_dir=core_dir,
+                python_dir=None,
+                user_dir=Path(directory) / "maa-user",
+                asst_cls=FakeAsst,
+                events=EventBus(),
+                poll_interval=0,
+            )
+
+            connected = await adapter.connect(Profile(name="daily", adb=AdbConfig(client_type="Bilibili")))
+
+        self.assertTrue(connected)
+        self.assertEqual(FakeAsst.load_calls, [
+            (core_dir, None, Path(directory) / "maa-user"),
+            (core_dir, core_dir / "cache", None),
+        ])
 
     async def test_fake_asst_loads_connects_appends_starts_waits_and_stops(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -257,6 +351,101 @@ class OfficialMaaAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(log_event.message, "当前设施: 制造站 01")
         self.assertEqual(log_event.detail["split_mode"], "Before")
         self.assertEqual(log_event.detail["raw"]["what"], "EnterFacility")
+        self.assertIsNone(logs.cards()[0]["thumbnail_id"])
+
+    async def test_connection_callback_records_screenshot_benchmark_alternatives(self):
+        with tempfile.TemporaryDirectory() as directory:
+            events = EventBus()
+            logs = MaaLogService(events)
+            adapter = OfficialMaaAdapter(
+                core_dir=Path("D:/MAA"),
+                python_dir=None,
+                user_dir=Path(directory),
+                asst_cls=FakeAsst,
+                events=events,
+                log_service=logs,
+                poll_interval=0,
+            )
+
+            await adapter.connect(Profile(name="daily"))
+            payload = {
+                "what": "FastestWayToScreencap",
+                "details": {
+                    "method": "LDExtras",
+                    "cost": 41,
+                    "alternatives": [
+                        {"method": "RawByNc", "cost": "931"},
+                        {"method": "RawWithGzip", "cost": "1086"},
+                        {"method": "Encode", "cost": "3411"},
+                        {"method": "LDExtras", "cost": "41"},
+                    ],
+                },
+            }
+            FakeAsst.instances[0].callback(2, json.dumps(payload).encode("utf-8"), None)
+            await asyncio.sleep(0)
+
+        tooltip = {
+            "kind": "screenshot",
+            "method": "LDExtras",
+            "cost": 41,
+            "alternatives": [
+                {"method": "RawByNc", "cost": "931"},
+                {"method": "RawWithGzip", "cost": "1086"},
+                {"method": "Encode", "cost": "3411"},
+                {"method": "LDExtras", "cost": "41"},
+            ],
+        }
+        log_event = [event for event in events.recent() if event.type == "maa.log.item"][-1]
+        self.assertEqual(log_event.message, "最快截图耗时: 41ms (LDExtras)")
+        self.assertEqual(log_event.detail["tooltip"], tooltip)
+        self.assertEqual(adapter.screenshot_benchmark, tooltip)
+
+    async def test_process_task_subtask_error_stays_out_of_execution_log(self):
+        with tempfile.TemporaryDirectory() as directory:
+            events = EventBus()
+            logs = MaaLogService(events)
+            adapter = OfficialMaaAdapter(
+                core_dir=Path("D:/MAA"),
+                python_dir=None,
+                user_dir=Path(directory),
+                asst_cls=FakeAsst,
+                events=events,
+                log_service=logs,
+                poll_interval=0,
+            )
+
+            await adapter.connect(Profile(name="daily"))
+            details = b'{"taskchain":"Infrast","subtask":"ProcessTask","details":{"task":"InfrastBegin"}}'
+            FakeAsst.instances[0].callback(20000, details, None)
+            await asyncio.sleep(0)
+
+        recent = events.recent()
+        self.assertTrue(any(event.type == "maa.sub_task.error" for event in recent))
+        self.assertFalse(any(event.type == "maa.log.item" for event in recent))
+
+    async def test_thumbnail_capture_waits_before_screenshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            events = EventBus()
+            logs = MaaLogService(events)
+            adapter = OfficialMaaAdapter(
+                core_dir=Path("D:/MAA"),
+                python_dir=None,
+                user_dir=Path(directory),
+                asst_cls=FakeAsst,
+                events=events,
+                log_service=logs,
+                poll_interval=0,
+            )
+
+            await adapter.connect(Profile(name="daily"))
+            logs.clear()
+            logs.append("facility")
+            sleep_mock = AsyncMock()
+            with patch("app.maa_adapter.asyncio.sleep", sleep_mock):
+                await adapter._capture_and_attach_thumbnail("current-card-001")
+
+        sleep_mock.assert_awaited_once_with(LOG_THUMBNAIL_CAPTURE_DELAY)
+        self.assertEqual(FakeAsst.instances[0].image_sizes, [SCREENSHOT_BUFFER_SIZE])
 
 
 if __name__ == "__main__":

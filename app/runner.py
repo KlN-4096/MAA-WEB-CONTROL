@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import platform
 import subprocess
+from contextlib import suppress
 from datetime import datetime
 from typing import Protocol
 
@@ -108,6 +109,15 @@ class MaaRunnerService:
         await self._adapter.stop()
         return self.status()
 
+    async def shutdown(self) -> None:
+        task = self._task
+        if task is None or task.done():
+            return
+        if self._status.state != "Stopping":
+            await self.stop()
+        with suppress(Exception):
+            await task
+
     async def _run_profile(self, profile: Profile) -> None:
         try:
             calls = profile_to_append_calls(profile)
@@ -190,6 +200,9 @@ class MaaRunnerService:
         try:
             if action.type == "exit_game":
                 await self._adapter.stop()
+            elif action.type == "exit_emulator":
+                await self._adapter.stop()
+                self._logs.append("后置动作: 已请求关闭模拟器（通过 ADB stop）", color_key="WarningLogBrush")
             elif action.type == "shutdown":
                 await self._run_power_action("shutdown")
             elif action.type == "sleep":
@@ -210,11 +223,18 @@ class MaaRunnerService:
             "sleep": ["systemctl", "suspend"],
             "hibernate": ["systemctl", "hibernate"],
         }
+        WINDOWS_COMMANDS = {
+            "shutdown": ["shutdown", "/s", "/t", "0"],
+            "sleep": ["rundll32.exe", "powrprof.dll,SetSuspendState", "0", "1", "0"],
+            "hibernate": ["shutdown", "/h"],
+        }
         if system == "Linux" and action in LINUX_COMMANDS:
             self._logs.append(f"后置动作: {action}…", color_key="WarningLogBrush")
             await asyncio.to_thread(subprocess.Popen, LINUX_COMMANDS[action])
+        elif system == "Windows" and action in WINDOWS_COMMANDS:
+            self._logs.append(f"后置动作: {action}…", color_key="WarningLogBrush")
+            await asyncio.to_thread(subprocess.Popen, WINDOWS_COMMANDS[action])
         else:
-            # TODO: implement Windows/macOS power actions
             self._logs.append(
                 f"后置动作: {action}（当前平台 {system} 暂不支持，请手动执行）",
                 color_key="WarningLogBrush",

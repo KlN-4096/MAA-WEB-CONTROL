@@ -1,5 +1,9 @@
 import unittest
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
+import app.mapper as mapper
 from app.mapper import (
     TaskMappingError,
     _select_stage_from_plan,
@@ -23,6 +27,13 @@ class TaskMapperTest(unittest.TestCase):
         self.assertEqual(call.type, "Fight")
         self.assertEqual(call.params["stage"], "1-7")
         self.assertTrue(call.params["enable"])
+
+    def test_current_stage_resource_value_maps_to_empty_stage(self):
+        task = TaskDefinition(id="fight", type="Fight", params={"stage": "CurrentStage"})
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params["stage"], "")
 
     def test_startup_maps_client_type_and_account_name(self):
         task = TaskDefinition(
@@ -53,6 +64,25 @@ class TaskMapperTest(unittest.TestCase):
         self.assertEqual(_select_stage_from_plan(["CE-6", "1-7"], weekday=0), "1-7")
         self.assertEqual(_select_stage_from_plan(["CE-6", "1-7"], weekday=1), "CE-6")
 
+    def test_legacy_stage_labels_normalize_to_resource_values(self):
+        task = TaskDefinition(
+            id="fight",
+            type="Fight",
+            params={"stage": "龙门币-6/5", "stage_plan": ["龙门币-6/5", "当期剿灭", "当前/上次"]},
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertIn(call.params["stage"], {"CE-6", "Annihilation", ""})
+        self.assertEqual(call.params["stage_plan"], ["CE-6", "Annihilation", ""])
+
+    def test_fixed_annihilation_label_maps_to_core_value(self):
+        task = TaskDefinition(id="fight", type="Fight", params={"stage": "切尔诺伯格"})
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params["stage"], "Chernobog@Annihilation")
+
     def test_custom_task_preserves_official_task_names(self):
         task = TaskDefinition(id="custom", type="Custom", params={"task_names": "GachaOnce;MiniGame@PV"})
 
@@ -79,6 +109,29 @@ class TaskMapperTest(unittest.TestCase):
         self.assertEqual(call.params["medicine"], 2)
         self.assertEqual(call.params["stone"], 1)
         self.assertEqual(call.params["times"], 3)
+
+    def test_fight_drop_item_id_passes_through(self):
+        task = TaskDefinition(id="fight", type="Fight", params={"use_drops": True, "drop": "30011", "drop_count": 2})
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params["drops"], {"30011": 2})
+
+    def test_fight_legacy_drop_name_uses_configured_resource(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            item_index = root / "resource" / "item_index.json"
+            item_index.parent.mkdir(parents=True)
+            item_index.write_text('{"30011": {"name": "源岩"}}', encoding="utf-8")
+            mapper._drop_map_cache = None
+            mapper._drop_map_mtime = 0.0
+            mapper._drop_map_path = None
+            task = TaskDefinition(id="fight", type="Fight", params={"use_drops": True, "drop": "源岩"})
+
+            with patch("app.mapper.resolve_maa_root", return_value=root):
+                call = task_to_append_call(task)
+
+        self.assertEqual(call.params["drops"], {"30011": 1})
 
     def test_recruit_maps_confirmation_and_times(self):
         task = TaskDefinition(
