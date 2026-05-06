@@ -374,6 +374,20 @@ p {
   font-weight: 400;
 }
 
+.afterRunLabel {
+  color: var(--text);
+}
+
+.afterRunSelect {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+}
+
 .linkStart {
   width: 100px;
   height: 50px;
@@ -543,6 +557,7 @@ input[type="checkbox"] {
   width: 260px;
   color: var(--text);
   line-height: 1.35;
+  white-space: pre-line;
 }
 
 .tipsBlock span {
@@ -737,6 +752,10 @@ input[type="checkbox"] {
   line-height: 1.45;
 }
 
+.tooltipScreencapRow {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .tooltipKey {
   color: var(--muted);
 }
@@ -798,13 +817,25 @@ input[type="checkbox"] {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
 }
 
-.maaLogPreviewClose {
+.maaLogPreviewToolbar {
   position: absolute;
   top: 24px;
   right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.maaLogPreviewOriginal {
+  min-height: 28px;
+  padding: 0 10px;
+}
+
+.maaLogPreviewClose {
   width: 28px;
   min-width: 28px;
   height: 28px;
+  min-height: 28px;
   border-radius: 50%;
   font-size: 16px;
 }
@@ -2009,6 +2040,59 @@ input[type="checkbox"] {
   grid-template-columns: repeat(2, 200px);
   justify-content: center;
   gap: 7px 22px;
+}
+
+.timerEmulatorSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.timerSectionDivider {
+  width: 100%;
+  height: 1px;
+  background: var(--border, #e0e0e0);
+  margin: 4px 0;
+}
+
+.timerEmulatorConfig {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 4px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.timerEmulatorRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+}
+
+.timerEmulatorLabel {
+  flex: 0 0 72px;
+  font-size: 0.88em;
+  color: var(--text-secondary, var(--text));
+  white-space: nowrap;
+}
+
+.timerEmulatorInput {
+  flex: 1;
+  min-width: 0;
+  max-width: 340px;
+}
+
+.timerEmulatorWait {
+  width: 64px;
+  text-align: center;
+}
+
+.timerEmulatorUnit {
+  font-size: 0.88em;
+  color: var(--text-secondary, var(--text));
 }
 
 .settingsFormRow {

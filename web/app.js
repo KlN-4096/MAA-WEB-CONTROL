@@ -3,7 +3,29 @@ const SELECTED_TASK_KEY = "maa-web.selectedTaskByProfile";
 const SETTING_MODE_KEY = "maa-web.settingMode";
 const DEFAULT_VIEW = "basement";
 const FALLBACK_PROFILE_KEY = "__default__";
+const PROFILE_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
 const ADD_TASK_TYPES = ["StartUp", "Fight", "Infrast", "Recruit", "Mall", "Award", "Custom", "Roguelike", "Reclamation", "CloseDown", "UserDataUpdate"];
+const POST_ACTION_OPTIONS = [
+  { label: "无动作", value: "none" },
+  { label: "退出游戏", value: "exit_game" },
+  { label: "关闭模拟器", value: "exit_emulator" },
+  { label: "睡眠", value: "sleep" },
+  { label: "休眠", value: "hibernate" },
+  { label: "关机", value: "shutdown" }
+];
+const POST_ACTION_VALUES = new Set(POST_ACTION_OPTIONS.map((option) => option.value));
+const BUILTIN_PROFILE_TASKS = [
+  ["startup", "StartUp", "开始唤醒"],
+  ["recruit", "Recruit", "自动公招"],
+  ["infrast", "Infrast", "基建换班"],
+  ["fight", "Fight", "理智作战"],
+  ["remaining-sanity", "Fight", "剩余理智"],
+  ["mall", "Mall", "信用收支"],
+  ["award", "Award", "领取奖励"],
+  ["roguelike", "Roguelike", "自动肉鸽"],
+  ["reclamation", "Reclamation", "生息演算"]
+];
+const DEFAULT_ENABLED_PROFILE_TASKS = new Set(["startup", "recruit", "infrast", "mall", "award"]);
 
 const state = {
   profiles: [],
@@ -14,6 +36,7 @@ const state = {
   options: null,
   capabilities: null,
   saveTimer: null,
+  postAction: { type: "none", only_if_no_other_maa: false },
   runnerState: "Idle",
   logs: [],
   logCards: []
@@ -166,6 +189,66 @@ async function loadProfile(name) {
   renderAll();
 }
 
+async function switchProfileConfig(name) {
+  if (isProfileEditingLocked() || !name || state.profile?.name === name) return;
+  await flushProfileSave();
+  await loadProfile(name);
+}
+
+async function flushProfileSave() {
+  if (isProfileEditingLocked() || !state.profile) return;
+  clearTimeout(state.saveTimer);
+  collectProfileForm();
+  collectTaskForm();
+  await persistProfile(false);
+}
+
+function buildProfile(name) {
+  return {
+    name,
+    description: "",
+    adb: { address: "127.0.0.1:5555", adb_path: "adb", client_type: "Official", connect_config: {} },
+    tasks: BUILTIN_PROFILE_TASKS.map(([id]) => builtInProfileTask(id))
+  };
+}
+
+function builtInProfileTask(id) {
+  const [, type, name] = BUILTIN_PROFILE_TASKS.find((task) => task[0] === id);
+  const params = defaultParams(type);
+  if (id === "remaining-sanity") {
+    Object.assign(params, {
+      stage: "1-7",
+      stage_plan: ["1-7", "CurrentStage"],
+      medicine: 0,
+      stone: 0,
+      times: 999
+    });
+  }
+  return {
+    id,
+    type,
+    enabled: DEFAULT_ENABLED_PROFILE_TASKS.has(id),
+    name,
+    params,
+    strategy: {}
+  };
+}
+
+async function deleteProfile(name) {
+  if (isProfileEditingLocked() || !name || state.profiles.length <= 1) return false;
+  await api(`/api/profiles/${encodeURIComponent(name)}`, { method: "DELETE" });
+  const nextProfiles = state.profiles.filter((profileName) => profileName !== name);
+  state.profiles = nextProfiles;
+  if (state.profile?.name === name) {
+    state.profile = null;
+    if (nextProfiles.length) await loadProfile(nextProfiles[0]);
+  } else {
+    await loadProfiles();
+  }
+  renderAll();
+  return true;
+}
+
 function scheduleRefreshStatus() {
   if (refreshStatusTimer) return;
   refreshStatusTimer = setTimeout(() => {
@@ -175,10 +258,9 @@ function scheduleRefreshStatus() {
 }
 
 async function refreshStatus() {
-  const [status, adb, redroid] = await Promise.all([
+  const [status, adb] = await Promise.all([
     api("/api/status"),
-    api("/api/adb/devices"),
-    api("/api/redroid/status")
+    api("/api/adb/devices")
   ]);
   state.runnerState = status.state || "Idle";
   setText("runnerState", status.state);
@@ -187,8 +269,6 @@ async function refreshStatus() {
   setText("sideTaskProgress", `${status.appended_tasks} / ${status.total_tasks}`);
   setText("adbStatus", statusMessage(adb, "未配置"));
   setText("toolsAdbStatus", statusMessage(adb, "未配置"));
-  setText("redroidStatus", statusMessage(redroid, "未启用"));
-  setText("toolsRedroidStatus", statusMessage(redroid, "未启用"));
   syncRunnerControls();
 }
 
@@ -215,7 +295,99 @@ function renderBasementView() {
   renderProfiles();
   renderTasks();
   renderEditor();
+  renderPostActionControl();
   syncRunnerControls();
+  renderStageTips();
+}
+
+function normalizePostAction(action = {}) {
+  const source = action && typeof action === "object" ? action : {};
+  const type = POST_ACTION_VALUES.has(source.type) ? source.type : "none";
+  return {
+    type,
+    only_if_no_other_maa: Boolean(source.only_if_no_other_maa)
+  };
+}
+
+function renderPostActionControl() {
+  const root = document.querySelector(".afterRun");
+  if (!root) return;
+  const current = normalizePostAction(state.postAction).type;
+  const disabled = isRunnerBusy() ? " disabled" : "";
+  root.innerHTML = `<label class="afterRunLabel" for="postActionInput">完成后</label>
+    <select id="postActionInput" class="afterRunSelect"${disabled}>
+      ${POST_ACTION_OPTIONS.map((option) => {
+        const selected = option.value === current ? " selected" : "";
+        return `<option value="${escapeHtml(option.value)}"${selected}>${escapeHtml(option.label)}</option>`;
+      }).join("")}
+    </select>`;
+}
+
+async function loadPostActionConfig() {
+  try {
+    state.postAction = normalizePostAction(await api("/api/post-action"));
+    renderPostActionControl();
+  } catch (error) {
+    addLocalLog("warning", "ui.post_action", "后置动作配置加载失败，已使用无动作。");
+  }
+}
+
+async function savePostAction(type) {
+  if (isRunnerBusy()) return;
+  state.postAction = normalizePostAction({ ...state.postAction, type });
+  state.postAction = normalizePostAction(await api("/api/post-action", {
+    method: "PUT",
+    body: JSON.stringify(state.postAction)
+  }));
+  renderPostActionControl();
+}
+
+// Stage open schedule: JS getDay() values (0=Sun, 1=Mon, ..., 6=Sat)
+const CLIENT_TIMEZONE_OFFSETS = {
+  Official: 8,
+  Bilibili: 8,
+  txwy: 8,
+  YoStarEN: -7,
+  YoStarJP: 9,
+  YoStarKR: 9
+};
+const STAGE_SCHEDULE = [
+  { days: new Set([2,4,6,0]), tip: "CE-6: 龙门币" },
+  { days: new Set([1,4,6,0]), tip: "AP-5: 红票" },
+  { days: new Set([2,3,5,0]), tip: "CA-5: 技能" },
+  { days: new Set([1,3,5,6]), tip: "SK-5: 碳" },
+  { days: null,               tip: "LS-6: 经验" },
+  { days: new Set([1,4,5,0]), tip: "PR-A-1/2: 奶&盾芯片" },
+  { days: new Set([1,2,5,6]), tip: "PR-B-1/2: 术&狙芯片" },
+  { days: new Set([3,4,6,0]), tip: "PR-C-1/2: 先&辅芯片" },
+  { days: new Set([2,3,6,0]), tip: "PR-D-1/2: 近&特芯片" },
+];
+
+function renderStageTips() {
+  const block = document.getElementById("stageTipsBlock");
+  if (!block) return;
+  block.textContent = activeStageTipText() || fallbackStageTipText();
+}
+
+function activeStageTipText() {
+  const tips = (typeof activeClientOptions === "function" ? activeClientOptions() : null)?.stage_tips
+    || state.options?.stage_tips;
+  const text = tips && typeof tips.text === "string" ? tips.text.trim() : "";
+  return text || "";
+}
+
+function fallbackStageTipText() {
+  const today = maaStageDay();
+  const lines = STAGE_SCHEDULE
+    .filter((g) => g.days === null || g.days.has(today))
+    .map((g) => g.tip);
+  return ["今日关卡小提示:", ...lines].join("\n");
+}
+
+function maaStageDay() {
+  const client = typeof activeClientType === "function" ? activeClientType() : "Official";
+  const offset = CLIENT_TIMEZONE_OFFSETS[client] ?? 8;
+  return new Date(Date.now() + (offset - 4) * 60 * 60 * 1000).getUTCDay();
 }
 
 function renderView() {
@@ -425,7 +597,8 @@ function syncProfileEditingControls() {
     "descriptionInput",
     "adbAddressInput",
     "clientTypeInput",
-    "newProfileButton"
+    "newProfileButton",
+    "postActionInput"
   ], locked);
   document.querySelectorAll("#profileList .profileItem").forEach((button) => {
     setLockDisabled(button, locked);
@@ -662,7 +835,8 @@ function wireBasementView() {
   addListener("#moveUpButton", "click", () => runFeatureAction("basement", "selectAllTasks"));
   addListener("#clearLogsButton", "click", () => runFeatureAction("basement", "clearLogs"));
   addListener("#rawLogToggle", "click", toggleRawLog);
-  addListener("#newProfileButton", "click", () => runFeatureAction("basement", "createProfile"));
+  addListener("#newProfileButton", "click", () => runFeatureAction("basement", "createProfile")?.catch(showError));
+  addListener(".afterRun", "change", onPostActionChange);
   addListener("#taskEditor", "change", onTaskEditorChange);
   addListener("#taskEditor", "click", onTaskEditorClick);
   basementWired = true;
@@ -842,6 +1016,12 @@ function onAddTaskButtonClick(event) {
   closeTaskContextMenu();
   if (isProfileEditingLocked()) return;
   toggleTaskTypeMenu(event.currentTarget);
+}
+
+function onPostActionChange(event) {
+  const select = event.target.closest("#postActionInput");
+  if (!select) return;
+  savePostAction(select.value).catch(showError);
 }
 
 function addTaskTypeOptions() {
@@ -1096,12 +1276,27 @@ function openLogThumbnail(thumbnailId) {
   const card = state.logCards.find((entry) => entry.thumbnail_id === thumbnailId);
   const url = card?.thumbnail_url;
   if (!url) return;
+  const originalUrl = card?.original_url || "";
+  const originalButton = originalUrl
+    ? `<button type="button" class="maaLogPreviewOriginal" data-log-original="${escapeHtml(originalUrl)}">查看原图</button>`
+    : "";
   closeLogThumbnail();
   const overlay = document.createElement("div");
   overlay.className = "maaLogPreview";
-  overlay.innerHTML = `<button type="button" class="maaLogPreviewClose" aria-label="关闭">×</button>
+  overlay.innerHTML = `<div class="maaLogPreviewToolbar">
+      ${originalButton}
+      <button type="button" class="maaLogPreviewClose" aria-label="关闭">×</button>
+    </div>
     <img src="${escapeHtml(url)}" alt="" />`;
   overlay.addEventListener("click", (event) => {
+    const original = event.target.closest("[data-log-original]");
+    if (original) {
+      const img = overlay.querySelector("img");
+      if (img) img.src = original.dataset.logOriginal;
+      original.disabled = true;
+      original.textContent = "已显示原图";
+      return;
+    }
     if (event.target === overlay || event.target.closest(".maaLogPreviewClose")) closeLogThumbnail();
   });
   document.body.appendChild(overlay);
@@ -1143,6 +1338,7 @@ function renderTooltipContent(data) {
     facility: "设施", screenshot: "截图方式"
   };
   const kind = data.kind;
+  if (kind === "screenshot") return renderScreenshotTooltip(data, KIND_LABELS.screenshot);
   const title = KIND_LABELS[kind] || kind || "详情";
   const rows = Object.entries(data)
     .filter(([k]) => k !== "kind")
@@ -1153,18 +1349,31 @@ function renderTooltipContent(data) {
   return `<div class="tooltipTitle">${escapeHtml(title)}</div>${rows || "<div class=\"tooltipRow\">—</div>"}`;
 }
 
-function createProfile() {
+function renderScreenshotTooltip(data, title) {
+  const alternatives = Array.isArray(data.alternatives) && data.alternatives.length ? data.alternatives : [data];
+  const rows = alternatives.map((item) => {
+    const method = item && typeof item === "object" ? (item.method || data.method || "Unknown") : "Unknown";
+    const cost = item && typeof item === "object" ? (item.cost != null ? item.cost : "???") : "???";
+    return `<div class="tooltipRow tooltipScreencapRow"><span class="tooltipKey">${escapeHtml(method)}</span><span class="tooltipVal">${escapeHtml(`${cost} ms`)}</span></div>`;
+  }).join("");
+  return `<div class="tooltipTitle">${escapeHtml(title)}</div>${rows || "<div class=\"tooltipRow\">—</div>"}`;
+}
+
+async function createProfile(name = "") {
   if (isProfileEditingLocked()) return;
-  state.profile = {
-    name: `profile-${Date.now().toString().slice(-5)}`,
-    description: "",
-    adb: { address: "127.0.0.1:5555", adb_path: "adb", client_type: "Official", connect_config: {} },
-    tasks: [defaultTask("StartUp"), defaultTask("Fight"), defaultTask("Award")]
-  };
+  await flushProfileSave();
+  const profileName = String(name || `profile-${Date.now().toString().slice(-5)}`).trim();
+  const safeName = profileName || "daily";
+  if (!PROFILE_NAME_PATTERN.test(safeName)) {
+    throw new Error("配置名称只能包含字母、数字、点、横线和下划线。");
+  }
+  state.profile = buildProfile(safeName);
   state.selectedTask = 0;
   persistSelectedTask();
   renderAll();
-  scheduleSave();
+  await persistProfile(false);
+  await loadProfiles();
+  await loadProfile(state.profile.name);
 }
 
 function onTaskEditorChange(event) {
@@ -1178,6 +1387,7 @@ function onTaskEditorChange(event) {
     collectTaskForm();
     renderTasks();
     renderEditor();
+    renderStageTips();
     scheduleSave();
     return;
   }
@@ -1185,6 +1395,7 @@ function onTaskEditorChange(event) {
   if (event.target.id !== "taskTypeInput") {
     collectTaskForm();
     renderTasks();
+    renderStageTips();
     scheduleSave();
     return;
   }
@@ -1193,6 +1404,7 @@ function onTaskEditorChange(event) {
   task.params = defaultParams(task.type);
   renderEditor();
   renderTasks();
+  renderStageTips();
   scheduleSave();
 }
 
@@ -1225,22 +1437,23 @@ function updateStagePlan(button) {
   const params = task.params || {};
   const plan = currentStagePlan(params);
   if (button.dataset.stageAction === "add") {
-    plan.push("当前/上次");
+    plan.push("CurrentStage");
     params.use_alternate_stage = true;
   } else if (button.dataset.stageAction === "remove" && plan.length > 1) {
     plan.splice(Number(button.dataset.stageIndex), 1);
   }
 
   params.stage_plan = plan;
-  params.stage = plan[0] || "当前/上次";
+  params.stage = plan[0] || "CurrentStage";
   task.params = params;
   renderEditor();
   scheduleSave();
 }
 
 function currentStagePlan(params) {
-  const plan = Array.isArray(params.stage_plan) ? params.stage_plan : [params.stage || "当前/上次"];
-  return plan.length ? [...plan] : ["当前/上次"];
+  const plan = Array.isArray(params.stage_plan) ? params.stage_plan : [params.stage || "CurrentStage"];
+  const values = plan.length ? [...plan] : ["CurrentStage"];
+  return typeof normalizeStageValue === "function" ? values.map(normalizeStageValue) : values;
 }
 
 function persistBasementState() {
@@ -1262,7 +1475,10 @@ const BASEMENT_ACTIONS = {
   },
   clearTasks: () => clearTasks(),
   selectAllTasks: () => selectAllTasks(),
-  createProfile: () => createProfile(),
+  createProfile: (payload) => {
+    const value = basementPayload(payload);
+    return createProfile(value.name ?? value.value);
+  },
   clearLogs: () => clearLogs(),
   selectTask: (payload) => {
     const value = basementPayload(payload);
@@ -1329,8 +1545,9 @@ async function boot() {
   await refreshStatus();
   await loadLogCards();
   if (typeof loadSchedulerConfig === "function") await loadSchedulerConfig();
+  await loadPostActionConfig();
   if (typeof loadVersionInfo === "function") loadVersionInfo();
-  if (typeof loadAdapterConfig === "function") loadAdapterConfig();
+  if (typeof loadAdapterConfig === "function") await loadAdapterConfig();
   renderAll();
   renderLogs();
 }

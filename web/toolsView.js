@@ -508,7 +508,7 @@ function startPeepSocket() {
   peepSocket.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
-      if (data.ok && data.data) updatePeepFrame(data.data);
+      if (data.ok && data.data) updatePeepFrame(data.data, data.media_type);
     } catch (e) { /* ignore parse errors */ }
     if (TOOLS_STATE.peeping && peepSocket?.readyState === WebSocket.OPEN) {
       sendPeepRequest();
@@ -541,7 +541,7 @@ function closePeepSocket() {
   }
 }
 
-function updatePeepFrame(base64Data) {
+function updatePeepFrame(base64Data, mediaType) {
   const screen = document.querySelector(".peepScreen");
   if (!screen) return;
   let img = screen.querySelector("img");
@@ -550,7 +550,7 @@ function updatePeepFrame(base64Data) {
     img.className = "peepFrame";
     screen.appendChild(img);
   }
-  img.src = "data:image/png;base64," + base64Data;
+  img.src = `data:${mediaType || "image/jpeg"};base64,${base64Data}`;
 }
 
 function manageMiniGameTask() {

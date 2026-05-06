@@ -23,7 +23,12 @@ const SETTINGS_CONDITIONAL_FIELDS = new Set([
   "connectConfig",
   "useCardLog",
   "proxyType",
-  "maaAdapterType"
+  "maaAdapterType",
+  "ldExtrasEnabled",
+  "ldManualIndex",
+  "mumuExtrasEnabled",
+  "mumuBridge",
+  "emulatorLaunchEnabled"
 ]);
 const SETTINGS_PERSISTED_FIELDS = [
   "selected",
@@ -43,6 +48,8 @@ const SETTINGS_PERSISTED_FIELDS = [
   "detectEveryTime",
   "ldExtrasEnabled",
   "ldManualIndex",
+  "ldExtrasPath",
+  "ldExtrasIndex",
   "mumuExtrasEnabled",
   "mumuBridge",
   "useTray",
@@ -55,7 +62,10 @@ const SETTINGS_PERSISTED_FIELDS = [
   "logThumbnailMax",
   "maaAdapterType",
   "maaCoreDir",
-  "timers"
+  "timers",
+  "emulatorLaunchEnabled",
+  "emulatorLaunchCommand",
+  "emulatorLaunchWait"
 ];
 const SETTINGS_AUTO_SCROLL_SUPPRESS_MS = 120;
 const SETTINGS_SMOOTH_SCROLL_SUPPRESS_MS = 1200;
@@ -78,6 +88,8 @@ const SETTINGS_STATE = {
   detectEveryTime: true,
   ldExtrasEnabled: true,
   ldManualIndex: false,
+  ldExtrasPath: "",
+  ldExtrasIndex: 0,
   mumuExtrasEnabled: true,
   mumuBridge: false,
   useTray: true,
@@ -103,7 +115,10 @@ const SETTINGS_STATE = {
     hour: index * 3,
     minute: 0,
     config: ""
-  }))
+  })),
+  emulatorLaunchEnabled: false,
+  emulatorLaunchCommand: "",
+  emulatorLaunchWait: 60
 };
 
 Object.assign(SETTINGS_STATE, restoreSettingsState());
@@ -145,9 +160,15 @@ function restoreSettingsState() {
     "achievementPopupDisabled",
     "achievementPopupAutoClose"
   ].forEach((field) => MaaStorage.copyBoolean(parsed, restored, field));
-  ["clientType", "connectConfig", "adbAddress", "adbPath", "touchMode", "updateSource", "proxyType", "maaAdapterType", "maaCoreDir"].forEach((field) => MaaStorage.copyString(parsed, restored, field));
+  ["clientType", "connectConfig", "adbAddress", "adbPath", "touchMode", "updateSource", "proxyType", "maaAdapterType", "maaCoreDir", "ldExtrasPath"].forEach((field) => MaaStorage.copyString(parsed, restored, field));
+  if (Number.isInteger(parsed.ldExtrasIndex)) restored.ldExtrasIndex = Math.max(0, parsed.ldExtrasIndex);
   if (parsed?.logThumbnailMax !== undefined) restored.logThumbnailMax = clampNumber(parsed.logThumbnailMax, 1, 9999, SETTINGS_STATE.logThumbnailMax);
   if (Array.isArray(parsed.timers)) restored.timers = restoreTimers(parsed.timers);
+  MaaStorage.copyBoolean(parsed, restored, "emulatorLaunchEnabled");
+  MaaStorage.copyString(parsed, restored, "emulatorLaunchCommand");
+  if (Number.isFinite(parsed.emulatorLaunchWait)) {
+    restored.emulatorLaunchWait = Math.max(0, Math.min(300, Math.round(parsed.emulatorLaunchWait)));
+  }
   return restored;
 }
 
@@ -303,20 +324,23 @@ function renderPerformanceSection() {
 }
 
 function renderGameSection() {
-  const overseasTip = SETTINGS_STATE.clientType && !["Official", "Bilibili"].includes(SETTINGS_STATE.clientType)
+  const clientType = typeof canonicalClientType === "function" ? canonicalClientType(SETTINGS_STATE.clientType) : SETTINGS_STATE.clientType;
+  const clientOptions = typeof clientTypeOptionsList === "function" ? clientTypeOptionsList() : [
+    { label: "官服", value: "Official" },
+    { label: "Bilibili服", value: "Bilibili" },
+    { label: "国际服 (YostarEN)", value: "YoStarEN" },
+    { label: "日服 (YostarJP)", value: "YoStarJP" },
+    { label: "韩服 (YostarKR)", value: "YoStarKR" },
+    { label: "繁中服 (txwy)", value: "txwy" }
+  ];
+  const overseasTip = clientType && !["Official", "Bilibili"].includes(clientType)
     ? '<p class="settingsLineText">海外服资源适配提示</p>'
     : "";
-  const yostarTip = SETTINGS_STATE.clientType === "YoStarEN"
+  const yostarTip = clientType === "YoStarEN"
     ? '<p class="settingsLineText">YoStarEN 需要使用 1920x1080 分辨率。</p>'
     : "";
   return settingsColumn(`
-    ${fieldRow("客户端类型", selectBox([
-      { label: "官服", value: "Official" },
-      { label: "Bilibili", value: "Bilibili" },
-      { label: "YoStarEN", value: "YoStarEN" },
-      { label: "YoStarJP", value: "YoStarJP" },
-      { label: "YoStarKR", value: "YoStarKR" }
-    ], SETTINGS_STATE.clientType, "clientType"))}
+    ${fieldRow("客户端类型", selectBox(clientOptions, clientType, "clientType"))}
     ${yostarTip}
     ${overseasTip}
     <p class="settingsGlobalTip">以下选项暂未接入 Web 版：</p>
@@ -348,10 +372,10 @@ function renderConnectionSection() {
     ], SETTINGS_STATE.connectConfig, "connectConfig"), "", "settingsControlXL")}
     ${fieldRow("连接地址", textBox(SETTINGS_STATE.adbAddress, "settingsControlXL", "adbAddress", disabledAuto), "写入当前 profile.adb.address")}
     ${fieldRow("ADB 路径", textBox(SETTINGS_STATE.adbPath, "settingsControlXL", "adbPath", disabledAuto))}
-    ${isLd ? checkLine("启用 LD 截图增强模式", true, "", "ldExtrasEnabled", true) : ""}
-    ${isLd ? fieldRow("LD 安装路径", textBox("D:\\\\APPS\\\\LDPlayer", "settingsControlXXL", "", " disabled")) : ""}
-    ${isLd ? checkLine("手动填写「实例编号」", false, "", "ldManualIndex", true) : ""}
-    ${isLd && SETTINGS_STATE.ldManualIndex ? fieldRow("实例编号", numberBox("0", "settingsControlS", "", " disabled")) : ""}
+    ${isLd ? checkLine("启用 LD 截图增强模式", true, "启用后可解锁 LDExtras 高速截图。", "ldExtrasEnabled") : ""}
+    ${isLd && SETTINGS_STATE.ldExtrasEnabled ? fieldRow("LD 安装路径", textBox(SETTINGS_STATE.ldExtrasPath, "settingsControlXXL", "ldExtrasPath"), "雷电模拟器安装目录，含 ldopengl64.dll") : ""}
+    ${isLd && SETTINGS_STATE.ldExtrasEnabled ? checkLine("手动填写「实例编号」", false, "", "ldManualIndex") : ""}
+    ${isLd && SETTINGS_STATE.ldExtrasEnabled && SETTINGS_STATE.ldManualIndex ? fieldRow("实例编号", numberBox(String(SETTINGS_STATE.ldExtrasIndex), "settingsControlS", "ldExtrasIndex")) : ""}
     ${isMumu ? checkLine("启用 MuMu 截图增强模式", true, "", "mumuExtrasEnabled", true) : ""}
     ${isMumu ? fieldRow("MuMu 安装路径", textBox("C:\\\\Program Files\\\\Netease\\\\MuMuPlayer-12.0", "settingsControlXXL", "", " disabled")) : ""}
     ${isMumu ? checkLine("MuMu 网络桥接模式", false, "", "mumuBridge", true) : ""}
@@ -384,21 +408,34 @@ function renderMaaCoreSection() {
 }
 
 function renderStartupSection() {
+  const launchDetail = SETTINGS_STATE.emulatorLaunchEnabled ? `
+    <div class="timerEmulatorConfig">
+      <div class="timerEmulatorRow">
+        <span class="timerEmulatorLabel">启动命令</span>
+        <input class="timerEmulatorInput" type="text" data-settings-field="emulatorLaunchCommand"
+          value="${escapeHtml(SETTINGS_STATE.emulatorLaunchCommand)}"
+          placeholder="Windows: path\\to\\emulator.exe  Linux: docker start redroid" />
+      </div>
+      <div class="timerEmulatorRow">
+        <span class="timerEmulatorLabel">等待秒数</span>
+        <input class="timerEmulatorWait" type="number" min="0" max="300"
+          data-settings-field="emulatorLaunchWait"
+          value="${SETTINGS_STATE.emulatorLaunchWait}" />
+        <span class="timerEmulatorUnit">秒</span>
+      </div>
+    </div>` : "";
   return settingsColumn(`
-    <p class="settingsGlobalTip">此选项页为全局配置，以下选项暂未接入 Web 版。</p>
     <div class="settingsSplit">
       <div class="settingsColumn">
+        <p class="settingsGlobalTip" style="text-align:left">以下选项暂未接入 Web 版：</p>
         ${checkLine("开机自动启动 MAA", false, "需要系统权限时可能失败。", "", true)}
         ${checkLine("启动 MAA 后直接最小化", true, "", "", true)}
-        <hr class="settingsDivider" />
         ${checkLine("启动 MAA 后直接运行", false, "", "", true)}
-        ${checkLine("启动 MAA 后自动开启模拟器", true, "", "", true)}
-        ${checkLine("ADB 连接失败时尝试启动模拟器", true, "连接失败后自动启动模拟器。", "", true)}
       </div>
       <div class="settingsColumn">
-        ${fieldRow("模拟器路径", inputButton("D:\\\\APPS\\\\leidian\\\\LDPlayer9\\\\dnplayer", "选择", "settingsControlL", " disabled"))}
-        ${fieldRow("附加命令", textBox("--instance Pie64", "settingsControlL", "", " disabled"))}
-        ${fieldRow("等待模拟器启动时间（秒）", numberBox("30", "settingsControlS", "", " disabled"))}
+        <p class="settingsGlobalTip" style="text-align:left">定时任务触发前自动启动：</p>
+        ${checkLine("自动启动模拟器/容器", SETTINGS_STATE.emulatorLaunchEnabled, "定时任务触发时先执行启动命令，等待就绪后再连接 ADB。", "emulatorLaunchEnabled")}
+        ${launchDetail}
       </div>
     </div>
   `);
@@ -627,11 +664,11 @@ function onSettingsClick(event) {
     return;
   }
   if (event.target.closest("[data-settings-add-config]")) {
-    runSettingsAction("addConfig");
+    runSettingsAction("addConfig")?.catch(showError);
     return;
   }
   if (event.target.closest("[data-settings-delete-config]")) {
-    runSettingsAction("deleteConfig");
+    runSettingsAction("deleteConfig")?.catch(showError);
     return;
   }
   if (event.target.closest("[data-settings-action='screenshotTest']")) {
@@ -651,6 +688,9 @@ function onSettingsChange(event) {
   if (event.target.matches("[data-settings-current-config]")) {
     SETTINGS_STATE.currentConfig = event.target.value;
     persistSettingsState();
+    if (typeof switchProfileConfig === "function") {
+      switchProfileConfig(event.target.value).catch(showError);
+    }
     return;
   }
   const flag = event.target.closest("[data-settings-flag]");
@@ -658,10 +698,15 @@ function onSettingsChange(event) {
     SETTINGS_STATE[flag.dataset.settingsFlag] = flag.checked;
     persistSettingsState();
     saveSettingsProfile();
+    if (["forceStart", "emulatorLaunchEnabled"].includes(flag.dataset.settingsFlag)) syncTimersToScheduler();
     renderSettingsView();
     return;
   }
-  if (updateSettingsField(event.target)) return;
+  if (updateSettingsField(event.target)) {
+    const field = event.target.dataset.settingsField;
+    if (field && field.startsWith("emulatorLaunch")) syncTimersToScheduler();
+    return;
+  }
   if (updateTimerField(event.target)) {
     persistSettingsState();
     syncTimersToScheduler();
@@ -709,11 +754,15 @@ function toggleSettingsSection(key) {
 
 function syncSettingsConfigs() {
   const source = state.profiles.join("\n") || state.profile?.name || "Default";
-  if (SETTINGS_STATE.configsDirty || SETTINGS_STATE.configsSource === source) return;
-  SETTINGS_STATE.configs = state.profiles.length ? [...state.profiles] : [source];
-  SETTINGS_STATE.currentConfig = state.profile?.name || SETTINGS_STATE.configs[0];
-  SETTINGS_STATE.configsSource = source;
-  SETTINGS_STATE.timers.forEach((timer) => { timer.config = SETTINGS_STATE.currentConfig; });
+  if (SETTINGS_STATE.configsDirty) return;
+  if (SETTINGS_STATE.configsSource !== source) {
+    SETTINGS_STATE.configs = state.profiles.length ? [...state.profiles] : [source];
+    SETTINGS_STATE.configsSource = source;
+    SETTINGS_STATE.timers.forEach((timer) => {
+      if (!SETTINGS_STATE.configs.includes(timer.config)) timer.config = state.profile?.name || SETTINGS_STATE.configs[0];
+    });
+  }
+  SETTINGS_STATE.currentConfig = state.profile?.name || SETTINGS_STATE.currentConfig || SETTINGS_STATE.configs[0];
 }
 
 function isSettingsEditingLocked() {
@@ -762,10 +811,18 @@ function syncSettingsFromProfile() {
   const profile = typeof state !== "undefined" ? state.profile : null;
   if (!profile) return;
   const adb = profile.adb || {};
-  SETTINGS_STATE.clientType = adb.client_type || SETTINGS_STATE.clientType;
+  SETTINGS_STATE.clientType = typeof canonicalClientType === "function"
+    ? canonicalClientType(adb.client_type || SETTINGS_STATE.clientType)
+    : (adb.client_type || SETTINGS_STATE.clientType);
   SETTINGS_STATE.adbAddress = adb.address || SETTINGS_STATE.adbAddress;
   SETTINGS_STATE.adbPath = adb.adb_path || SETTINGS_STATE.adbPath;
   SETTINGS_STATE.connectConfig = profileConnectPreset(adb.connect_config) || SETTINGS_STATE.connectConfig;
+  const ld = adb.ld_player_extras;
+  if (ld && typeof ld === "object") {
+    if (typeof ld.enabled === "boolean") SETTINGS_STATE.ldExtrasEnabled = ld.enabled;
+    if (typeof ld.path === "string" && ld.path) SETTINGS_STATE.ldExtrasPath = ld.path;
+    if (Number.isInteger(ld.index)) SETTINGS_STATE.ldExtrasIndex = Math.max(0, ld.index);
+  }
   const startup = firstTaskParams("StartUp");
   if (startup) {
     SETTINGS_STATE.autoDetectConnection = startup.auto_detect ?? SETTINGS_STATE.autoDetectConnection;
@@ -786,14 +843,22 @@ function firstTaskParams(type) {
 
 function applySettingsToProfile() {
   if (typeof state === "undefined" || !state.profile || isSettingsEditingLocked()) return;
+  const clientType = typeof canonicalClientType === "function" ? canonicalClientType(SETTINGS_STATE.clientType) : SETTINGS_STATE.clientType;
+  SETTINGS_STATE.clientType = clientType;
   state.profile.adb = state.profile.adb || {};
-  state.profile.adb.client_type = SETTINGS_STATE.clientType;
+  state.profile.adb.client_type = clientType;
   state.profile.adb.address = SETTINGS_STATE.adbAddress;
   state.profile.adb.adb_path = SETTINGS_STATE.adbPath;
   state.profile.adb.connect_config = { preset: SETTINGS_STATE.connectConfig };
+  state.profile.adb.ld_player_extras = {
+    enabled: SETTINGS_STATE.ldExtrasEnabled,
+    path: SETTINGS_STATE.ldExtrasPath,
+    manual_index: SETTINGS_STATE.ldManualIndex,
+    index: Number.parseInt(SETTINGS_STATE.ldExtrasIndex, 10) || 0,
+  };
   const startup = firstTaskParams("StartUp");
   if (startup) {
-    startup.client_type = SETTINGS_STATE.clientType;
+    startup.client_type = clientType;
     startup.connection = SETTINGS_STATE.connectConfig;
     startup.auto_detect = SETTINGS_STATE.autoDetectConnection;
     startup.detect_every_time = SETTINGS_STATE.detectEveryTime;
@@ -809,25 +874,44 @@ function saveSettingsProfile() {
   }
 }
 
-function addLocalConfig() {
+async function addLocalConfig() {
   if (isSettingsEditingLocked()) return;
-  const name = SETTINGS_STATE.newConfigName.trim() || new Date().toLocaleString();
-  if (!SETTINGS_STATE.configs.includes(name)) {
-    SETTINGS_STATE.configs = [...SETTINGS_STATE.configs, name];
-  }
-  SETTINGS_STATE.configsDirty = true;
-  SETTINGS_STATE.currentConfig = name;
+  const name = SETTINGS_STATE.newConfigName.trim() || `profile-${Date.now().toString().slice(-5)}`;
   SETTINGS_STATE.newConfigName = "";
+  if (SETTINGS_STATE.configs.includes(name)) {
+    SETTINGS_STATE.currentConfig = name;
+    persistSettingsState();
+    if (typeof switchProfileConfig === "function") await switchProfileConfig(name);
+    renderSettingsView();
+    return;
+  }
+  SETTINGS_STATE.currentConfig = name;
+  SETTINGS_STATE.configsDirty = false;
+  if (typeof createProfile === "function") {
+    await createProfile(name);
+  } else {
+    SETTINGS_STATE.configs = [...SETTINGS_STATE.configs, name];
+    SETTINGS_STATE.configsDirty = true;
+  }
   persistSettingsState();
   renderSettingsView();
 }
 
-function deleteLocalConfig() {
+async function deleteLocalConfig() {
   if (isSettingsEditingLocked()) return;
   if (SETTINGS_STATE.configs.length <= 1) return;
-  SETTINGS_STATE.configs = SETTINGS_STATE.configs.filter((name) => name !== SETTINGS_STATE.currentConfig);
-  SETTINGS_STATE.configsDirty = true;
-  SETTINGS_STATE.currentConfig = SETTINGS_STATE.configs[0];
+  const name = SETTINGS_STATE.currentConfig;
+  if (!confirm(`删除配置「${name}」？`)) return;
+  if (typeof deleteProfile === "function") {
+    await deleteProfile(name);
+    SETTINGS_STATE.configsDirty = false;
+    SETTINGS_STATE.configsSource = "";
+    SETTINGS_STATE.currentConfig = state.profile?.name || state.profiles[0] || "";
+  } else {
+    SETTINGS_STATE.configs = SETTINGS_STATE.configs.filter((config) => config !== name);
+    SETTINGS_STATE.configsDirty = true;
+    SETTINGS_STATE.currentConfig = SETTINGS_STATE.configs[0];
+  }
   persistSettingsState();
   renderSettingsView();
 }
@@ -924,12 +1008,27 @@ function syncTimersToScheduler() {
       time: `${String(t.hour).padStart(2, "0")}:${String(t.minute).padStart(2, "0")}`,
       profile_name: t.config || "",
       force_start: Boolean(SETTINGS_STATE.forceStart)
-    }))
+    })),
+    post_action: currentPostActionPayload(),
+    emulator_launch: {
+      enabled: Boolean(SETTINGS_STATE.emulatorLaunchEnabled),
+      command: SETTINGS_STATE.emulatorLaunchCommand || "",
+      wait_seconds: Math.max(0, Math.min(300, Number(SETTINGS_STATE.emulatorLaunchWait) || 60))
+    }
   };
   api("/api/scheduler", {
     method: "PUT",
     body: JSON.stringify(config)
   }).catch(() => {});
+}
+
+function currentPostActionPayload() {
+  const action = typeof state !== "undefined" ? state.postAction : null;
+  if (typeof normalizePostAction === "function") return normalizePostAction(action);
+  return {
+    type: action?.type || "none",
+    only_if_no_other_maa: Boolean(action?.only_if_no_other_maa)
+  };
 }
 
 async function loadSchedulerConfig() {
@@ -946,9 +1045,29 @@ async function loadSchedulerConfig() {
       timer.minute = Math.min(59, Math.max(0, parseInt(m, 10) || 0));
       timer.config = slot.profile_name || "";
     });
-    if (config.slots.some((s) => s.force_start)) SETTINGS_STATE.forceStart = true;
+    SETTINGS_STATE.forceStart = config.slots.some((s) => s.force_start);
+    if (config.post_action && typeof state !== "undefined") {
+      state.postAction = currentPostActionPayloadFrom(config.post_action);
+      if (typeof renderPostActionControl === "function") renderPostActionControl();
+    }
+    if (config.emulator_launch && typeof config.emulator_launch === "object") {
+      const el = config.emulator_launch;
+      if (typeof el.enabled === "boolean") SETTINGS_STATE.emulatorLaunchEnabled = el.enabled;
+      if (typeof el.command === "string") SETTINGS_STATE.emulatorLaunchCommand = el.command;
+      if (Number.isFinite(el.wait_seconds)) {
+        SETTINGS_STATE.emulatorLaunchWait = Math.max(0, Math.min(300, Math.round(el.wait_seconds)));
+      }
+    }
     persistSettingsState();
   } catch (e) { /* ignore if scheduler not available */ }
+}
+
+function currentPostActionPayloadFrom(action) {
+  if (typeof normalizePostAction === "function") return normalizePostAction(action);
+  return {
+    type: action?.type || "none",
+    only_if_no_other_maa: Boolean(action?.only_if_no_other_maa)
+  };
 }
 
 async function loadVersionInfo() {
@@ -968,6 +1087,7 @@ async function loadAdapterConfig() {
     if (data.adapter !== undefined) SETTINGS_STATE.maaAdapterType = data.adapter;
     if (data.core_dir !== undefined) SETTINGS_STATE.maaCoreDir = data.core_dir;
     SETTINGS_STATE.maaActiveType = data.active_type || "dry-run";
+    if (typeof state !== "undefined" && state.currentView === "settings") renderSettingsView();
   } catch (e) { /* ignore */ }
 }
 
@@ -1006,13 +1126,24 @@ async function runSettingsScreenshotTest() {
     const result = await api("/api/adb/test-screenshot", { method: "POST" });
     const elapsed = Date.now() - t0;
     if (resultEl) {
+      const benchmark = formatScreenshotBenchmark(result.benchmark);
       resultEl.textContent = result.ok
-        ? `截图成功 (${elapsed} ms)${result.message ? " — " + result.message : ""}`
+        ? `截图成功 (${elapsed} ms)${benchmark ? " · " + benchmark : ""}`
         : `截图失败: ${result.message || "未知错误"}`;
     }
   } catch (error) {
     if (resultEl) resultEl.textContent = `截图失败: ${error.message || "请求错误"}`;
   }
+}
+
+function formatScreenshotBenchmark(benchmark) {
+  if (!benchmark || typeof benchmark !== "object") return "";
+  const method = benchmark.method ? String(benchmark.method) : "";
+  const cost = benchmark.cost !== undefined && benchmark.cost !== null && benchmark.cost !== "" ? `${benchmark.cost} ms` : "";
+  if (method && cost) return `最快方式: ${method} ${cost}`;
+  if (method) return `最快方式: ${method}`;
+  if (cost) return `最快方式: ${cost}`;
+  return "";
 }
 
 const SETTINGS_ACTION_NAMES = ["selectSection", "toggleSection", "addConfig", "deleteConfig", "persist"];

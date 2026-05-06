@@ -22,6 +22,7 @@ function normalizeLogCard(card = {}) {
     end_time: card.end_time || items[items.length - 1]?.time || "",
     thumbnail_id: card.thumbnail_id || "",
     thumbnail_url: card.thumbnail_url || (card.thumbnail_id ? `/api/logs/thumbnails/${card.thumbnail_id}` : ""),
+    original_url: card.original_url || "",
     show_thumbnail: Boolean(card.show_thumbnail ?? card.thumbnail_id)
   };
 }

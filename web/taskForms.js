@@ -18,13 +18,42 @@ const TASK_NAMES = {
 };
 
 const NO_ADVANCED_TASKS = new Set(["StartUp", "Award", "CloseDown", "UserDataUpdate"]);
-const STARTUP_CLIENT_TYPES = ["官服", "Bilibili服", "国际服 (YostarEN)", "日服 (YostarJP)", "韩服 (YostarKR)", "繁中服 (txwy)"];
+const STARTUP_CLIENT_TYPES = [
+  { label: "官服", value: "Official" },
+  { label: "Bilibili服", value: "Bilibili" },
+  { label: "国际服 (YostarEN)", value: "YoStarEN" },
+  { label: "日服 (YostarJP)", value: "YoStarJP" },
+  { label: "韩服 (YostarKR)", value: "YoStarKR" },
+  { label: "繁中服 (txwy)", value: "txwy" }
+];
 const CONNECTION_PRESETS = ["通用模式", "蓝叠模拟器", "MuMu 模拟器", "雷电模拟器", "应用宝模拟器", "Android 虚拟设备（AVD）", "夜神模拟器", "逍遥模拟器", "PC 端", "WSA 旧版本", "兼容模式", "第二分辨率", "通用模式（屏蔽异常输出）"];
 const TOUCH_MODES = ["Minitouch（默认）", "MaaTouch（实验功能）", "ADB Input（不推荐使用）", "MaaFramework（实验功能）"];
 const INFRAST_MODES = ["常规模式", "队列轮换", "自定义基建配置"];
 const DRONE_OPTIONS = ["不使用无人机", "贸易站-龙门币", "贸易站-合成玉", "制造站-经验书", "制造站-赤金", "制造站-源石碎片", "制造站-芯片组"];
-const STAGE_OPTIONS = ["当前/上次", "1-7", "R8-11", "12-17-HARD", "龙门币-6/5", "红票-5", "技能-5", "经验-6/5", "碳-5", "剿灭模式", "奶/盾芯片", "奶/盾芯片组", "术/狙芯片", "术/狙芯片组", "先/辅芯片", "先/辅芯片组", "近/特芯片", "近/特芯片组", "切尔诺伯格", "龙门外环", "龙门市区"];
-const DROP_OPTIONS = ["不选择", "基础作战记录", "初级作战记录", "中级作战记录", "高级作战记录", "源岩", "固源岩", "固源岩组", "提纯源岩", "代糖", "糖", "糖组", "糖聚块", "赤金", "酯原料", "聚酸酯", "聚酸酯组", "聚酸酯块", "异铁碎片", "异铁", "异铁组", "异铁块", "双酮", "酮凝集", "酮凝集组", "酮阵列", "破损装置", "装置", "全新装置", "改量装置", "扭转醇", "白马醇", "轻锰矿", "三水锰矿", "研磨石", "五水研磨石", "RMA70-12", "RMA70-24", "聚合剂", "双极纳米片", "凝胶", "聚合凝胶", "炽合金", "炽合金块", "晶体元件", "晶体电路", "半自然溶剂", "精炼溶剂", "龙骨", "化合切削液", "切削原液", "转质盐组", "转质盐聚块", "褐素纤维", "固化纤维板", "环烃聚质", "环烃预制体", "类凝结核", "手性屈光体", "碳", "碳素", "碳素组", "基础加固建材", "进阶加固建材", "高级加固建材", "源石碎片", "芯片助剂", "先锋芯片", "先锋芯片组", "先锋双芯片", "近卫芯片", "近卫芯片组", "近卫双芯片", "重装芯片", "重装芯片组", "重装双芯片", "狙击芯片", "狙击芯片组", "狙击双芯片", "术师芯片", "术师芯片组", "术师双芯片", "医疗芯片", "医疗芯片组", "医疗双芯片", "辅助芯片", "辅助芯片组", "辅助双芯片", "特种芯片", "特种芯片组", "特种双芯片", "技巧概要·卷1", "技巧概要·卷2", "技巧概要·卷3", "家具零件", "龙门币", "至纯源石", "合成玉", "高级凭证", "资质凭证", "采购凭证", "声望", "演习券", "招聘许可", "加急许可", "寻访凭证", "十连寻访凭证"];
+const STAGE_OPTIONS = [
+  { label: "当前/上次", value: "CurrentStage" },
+  { label: "1-7", value: "1-7" },
+  { label: "R8-11", value: "R8-11" },
+  { label: "12-17-HARD", value: "12-17-HARD" },
+  { label: "龙门币-6/5", value: "CE-6" },
+  { label: "红票-5", value: "AP-5" },
+  { label: "技能-5", value: "CA-5" },
+  { label: "经验-6/5", value: "LS-6" },
+  { label: "碳-5", value: "SK-5" },
+  { label: "当期剿灭", value: "Annihilation" },
+  { label: "切尔诺伯格", value: "Chernobog@Annihilation" },
+  { label: "龙门外环", value: "LungmenOutskirts@Annihilation" },
+  { label: "龙门市区", value: "LungmenDowntown@Annihilation" },
+  { label: "奶/盾芯片", value: "PR-A-1" },
+  { label: "奶/盾芯片组", value: "PR-A-2" },
+  { label: "术/狙芯片", value: "PR-B-1" },
+  { label: "术/狙芯片组", value: "PR-B-2" },
+  { label: "先/辅芯片", value: "PR-C-1" },
+  { label: "先/辅芯片组", value: "PR-C-2" },
+  { label: "近/特芯片", value: "PR-D-1" },
+  { label: "近/特芯片组", value: "PR-D-2" }
+];
+const DROP_OPTIONS = [{ label: "不选择", value: "" }];
 const SERIES_OPTIONS = [{ label: "AUTO", value: 0 }, { label: "6", value: 6 }, { label: "5", value: 5 }, { label: "4", value: 4 }, { label: "3", value: 3 }, { label: "2", value: 2 }, { label: "1", value: 1 }, { label: "不切换", value: -1 }];
 const MEDICINE_EXPIRE_OPTIONS = ["24h", "48h", "72h", "96h", "120h", "144h", "168h"];
 const ROGUELIKE_THEMES = ["傀影", "水月", "萨米", "萨卡兹", "界园"];
@@ -63,6 +92,57 @@ const FIGHT_TOOLTIPS = {
 };
 
 let UI_OPTIONS = null;
+const CLIENT_TYPE_ALIASES = {
+  "": "Official",
+  "官服": "Official",
+  "Bilibili": "Bilibili",
+  "B服": "Bilibili",
+  "Bilibili服": "Bilibili",
+  "国际服 (YostarEN)": "YoStarEN",
+  "日服 (YostarJP)": "YoStarJP",
+  "韩服 (YostarKR)": "YoStarKR",
+  "繁中服 (txwy)": "txwy"
+};
+const STAGE_VALUE_ALIASES = {
+  "当前/上次": "CurrentStage",
+  "当前": "CurrentStage",
+  "上次": "CurrentStage",
+  "CE": "CE-6",
+  "龙门币": "CE-6",
+  "龙门币-6/5": "CE-6",
+  "LS": "LS-6",
+  "经验": "LS-6",
+  "经验-6/5": "LS-6",
+  "狗粮": "LS-6",
+  "CA": "CA-5",
+  "技能": "CA-5",
+  "技能-5": "CA-5",
+  "AP": "AP-5",
+  "红票": "AP-5",
+  "红票-5": "AP-5",
+  "SK": "SK-5",
+  "碳": "SK-5",
+  "碳-5": "SK-5",
+  "炭": "SK-5",
+  "AN": "Annihilation",
+  "剿灭": "Annihilation",
+  "剿灭模式": "Annihilation",
+  "当期剿灭": "Annihilation",
+  "Chernobog": "Chernobog@Annihilation",
+  "切尔诺伯格": "Chernobog@Annihilation",
+  "LungmenOutskirts": "LungmenOutskirts@Annihilation",
+  "龙门外环": "LungmenOutskirts@Annihilation",
+  "LungmenDowntown": "LungmenDowntown@Annihilation",
+  "龙门市区": "LungmenDowntown@Annihilation",
+  "奶/盾芯片": "PR-A-1",
+  "奶/盾芯片组": "PR-A-2",
+  "术/狙芯片": "PR-B-1",
+  "术/狙芯片组": "PR-B-2",
+  "先/辅芯片": "PR-C-1",
+  "先/辅芯片组": "PR-C-2",
+  "近/特芯片": "PR-D-1",
+  "近/特芯片组": "PR-D-2"
+};
 
 function setTaskFormOptions(options) {
   UI_OPTIONS = options && typeof options === "object" ? options : null;
@@ -139,9 +219,9 @@ function taskSupportsAdvanced(type) {
 }
 
 function builtinDefaultParams(type) {
-  if (type === "Fight") return { stage: "当前/上次", stage_plan: ["当前/上次"], medicine: 999, stone: 999, times: 5, series: 0, use_alternate_stage: false };
+  if (type === "Fight") return { stage: "CurrentStage", stage_plan: ["CurrentStage"], medicine: 999, stone: 999, times: 5, series: 0, use_alternate_stage: false };
   if (type === "Custom") return { task_names: [] };
-  if (type === "StartUp") return { client_type: "官服", start_game_enabled: true, connection: "雷电模拟器", touch_mode: "Minitouch（默认）" };
+  if (type === "StartUp") return { client_type: "Official", start_game_enabled: true, connection: "雷电模拟器", touch_mode: "Minitouch（默认）" };
   if (type === "Recruit") return { auto_expedited: false, refresh: true, confirm_3: true, confirm_4: true, max_times: 99 };
   if (type === "Infrast") return { mode: "常规模式", drone: "贸易站-龙门币", mood: 30, facilities: allFacilities() };
   if (type === "Mall") return { visit_friends: supportsVisitAsMallSubtask(), shopping: true, buy_first: ["招聘许可"], blacklist: ["碳素", "家具零件"] };
@@ -209,7 +289,7 @@ function renderFightGeneral(p, escapeHtml) {
       ${checkNumberRow("use_medicine", `使用药剂${hint(FIGHT_TOOLTIPS.onceAsNull, escapeHtml)}`, "paramMedicine", p.use_medicine, p.medicine, 999)}
       ${checkNumberRow("use_stone", `使用源石*${hint(FIGHT_TOOLTIPS.once, escapeHtml)}`, "paramStone", p.use_stone, p.stone, 999)}
       ${checkNumberRow("has_times_limited", `指定次数${hint(FIGHT_TOOLTIPS.onceAsNull, escapeHtml)}`, "paramTimes", p.has_times_limited, p.times, 6)}
-      <div class="paramRow"><label class="checkLabel"><input id="paramUseDrops" type="checkbox" ${checked(p.use_drops)} />指定材料${hint(FIGHT_TOOLTIPS.drops, escapeHtml)}</label><select id="paramDrops">${selectOptions(dropOptions(), p.drop || "不选择", escapeHtml)}</select></div>
+      <div class="paramRow"><label class="checkLabel"><input id="paramUseDrops" type="checkbox" ${checked(p.use_drops)} />指定材料${hint(FIGHT_TOOLTIPS.drops, escapeHtml)}</label><select id="paramDrops">${selectOptions(dropOptions(), normalizeDropValue(p.drop), escapeHtml)}</select></div>
       <div class="paramRow"><span>代理倍率${hint(FIGHT_TOOLTIPS.series, escapeHtml)}</span><select id="paramSeries">${seriesOptions(p.series, escapeHtml)}</select></div>
       <div class="stageBlock">
         <div class="stageLabel"><span>${useAlternate ? "候选关卡" : "关卡指定"}</span>${addButton}</div>
@@ -233,7 +313,7 @@ function renderFightAdvanced(p, escapeHtml) {
       ${checkRow("hide_series", "隐藏代理倍率", p.hide_series)}
       ${checkRow("allow_stone_save", "允许使用源石保存状态", p.allow_stone_save)}
       ${checkRow("custom_stage_code", `手动输入关卡名${hint(FIGHT_TOOLTIPS.customStage, escapeHtml)}`, p.custom_stage_code)}
-      <span>过期关卡重置为</span><select id="paramStageReset">${selectOptions(["当前/上次", "不切换"], p.stage_reset || "当前/上次", escapeHtml)}</select>
+      <span>过期关卡重置为</span><select id="paramStageReset">${selectOptions([{ label: "当前/上次", value: "CurrentStage" }, "不切换"], normalizeStageValue(p.stage_reset), escapeHtml)}</select>
       ${checkRow("use_alternate_stage", "使用备选关卡", p.use_alternate_stage ?? true)}
       ${checkRow("hide_unavailable_stage", "下拉框中隐藏当日不开关卡", p.hide_unavailable_stage)}
       ${checkRow("weekly_schedule", "启用周计划", p.weekly_schedule)}
@@ -249,7 +329,7 @@ function renderStartUpGeneral(p, escapeHtml) {
       <span>账号切换${hint("需要切换至的账号，留空以禁用。输入登录界面显示的内容，如 123****4567，可输入 123****4567、4567 或 23****45。仅支持官服、B服，不支持登录账号。", escapeHtml)}</span><div><input id="paramAccount" class="accountInput" value="${escapeHtml(p.account || "")}" /><button disabled>立即切换</button></div>
       <strong class="sectionTitle">以下选项为多任务共用</strong>
       ${checkRow("start_game_enabled", "是否启动客户端", p.start_game_enabled ?? true)}
-      <span>客户端类型</span><select id="paramClientType">${selectOptions(STARTUP_CLIENT_TYPES, p.client_type || "官服", escapeHtml)}</select>
+      <span>客户端类型</span><select id="paramClientType">${selectOptions(clientTypeOptionsList(), canonicalClientType(p.client_type), escapeHtml)}</select>
       ${checkRow("auto_detect", `自动检测连接${hint("每次检测完成后会自动取消勾选，如需重新检测可再次勾选。仅当端口经常发生变化时，才需要勾选「每次重新检测」。检测时请确保只开启需要连接的模拟器。", escapeHtml)}`, p.auto_detect ?? true)}
       ${checkRow("detect_every_time", `每次重新检测${hint("不推荐勾选此选项。仅当端口经常发生变化且确认只运行单个模拟器时才建议勾选。", escapeHtml)}`, p.detect_every_time ?? true, "redText")}
       <span>连接配置</span><select id="paramConnection">${selectOptions(CONNECTION_PRESETS, p.connection || "雷电模拟器", escapeHtml)}</select>
@@ -452,7 +532,16 @@ function collectTaskEditor(task) {
   task.name = $("taskNameInput").value.trim();
   task.type = $("taskTypeInput").value;
   task.params = { ...(task.params || {}), ...collectParams(task.type) };
+  syncProfileClientFromStartup(task);
   task.strategy = parseJsonField("taskStrategyInput");
+}
+
+function syncProfileClientFromStartup(task) {
+  if (task.type !== "StartUp" || typeof state === "undefined" || !state.profile) return;
+  const clientType = canonicalClientType(task.params?.client_type);
+  state.profile.adb = state.profile.adb || {};
+  state.profile.adb.client_type = clientType;
+  if (typeof SETTINGS_STATE !== "undefined") SETTINGS_STATE.clientType = clientType;
 }
 
 function collectParams(type) {
@@ -479,11 +568,13 @@ function collectFightParams() {
   addBool(params, "use_stone", "use_stone");
   addBool(params, "has_times_limited", "has_times_limited");
   addBool(params, "use_drops", "paramUseDrops");
-  addValue(params, "drop", "paramDrops", "不选择");
-  const stagePlan = valuesByName("paramStagePlan").map((stage) => stage.trim()).filter(Boolean);
+  addValue(params, "drop", "paramDrops", "");
+  const stagePlan = valuesByName("paramStagePlan")
+    .map((stage) => normalizeStageValue(stage.trim()))
+    .filter(Boolean);
   if (stagePlan.length) {
     params.stage_plan = stagePlan;
-    params.stage = stagePlan[0] || "当前/上次";
+    params.stage = stagePlan[0] || "CurrentStage";
   }
 
   addBool(params, "custom_annihilation", "custom_annihilation");
@@ -494,7 +585,7 @@ function collectFightParams() {
   addBool(params, "hide_series", "hide_series");
   addBool(params, "allow_stone_save", "allow_stone_save");
   addBool(params, "custom_stage_code", "custom_stage_code");
-  addValue(params, "stage_reset", "paramStageReset", "当前/上次");
+  addValue(params, "stage_reset", "paramStageReset", "CurrentStage");
   addBool(params, "use_alternate_stage", "use_alternate_stage");
   addBool(params, "hide_unavailable_stage", "hide_unavailable_stage");
   addBool(params, "weekly_schedule", "weekly_schedule");
@@ -505,7 +596,7 @@ function collectFightParams() {
 function collectStartUpParams() {
   const params = {};
   addValue(params, "account", "paramAccount", "");
-  addValue(params, "client_type", "paramClientType", "官服");
+  addValue(params, "client_type", "paramClientType", "Official");
   addValue(params, "connection", "paramConnection", "雷电模拟器");
   addValue(params, "touch_mode", "paramTouchMode", "Minitouch（默认）");
   addBool(params, "start_game_enabled", "start_game_enabled");
@@ -642,7 +733,7 @@ function stageSelect(value, index, manual, removable, escapeHtml) {
 }
 
 function stageOptions(current, escapeHtml) {
-  return selectOptions(stageOptionsList(), current || "当前/上次", escapeHtml);
+  return selectOptions(stageOptionsList(), normalizeStageValue(current), escapeHtml);
 }
 
 function selectOptions(options, current, escapeHtml) {
@@ -670,12 +761,12 @@ function normalizeOption(option) {
 }
 
 function stagePlanOf(params) {
-  const plan = Array.isArray(params.stage_plan) ? params.stage_plan : [params.stage || "当前/上次"];
-  const normalized = plan.map((stage) => String(stage || "当前/上次")).filter(Boolean);
+  const plan = Array.isArray(params.stage_plan) ? params.stage_plan : [params.stage || "CurrentStage"];
+  const normalized = plan.map((stage) => normalizeStageValue(stage)).filter(Boolean);
   if (params.use_alternate_stage === false) {
-    return [normalized[0] || "当前/上次"];
+    return [normalized[0] || "CurrentStage"];
   }
-  return normalized.length ? normalized : ["当前/上次"];
+  return normalized.length ? normalized : ["CurrentStage"];
 }
 
 function stageOptionsList() {
@@ -687,8 +778,51 @@ function dropOptions() {
 }
 
 function dynamicOptions(key, fallback) {
-  const values = UI_OPTIONS?.[key];
+  const values = activeClientOptions()?.[key] || UI_OPTIONS?.[key];
   return Array.isArray(values) && values.length ? values : fallback;
+}
+
+function activeClientOptions() {
+  const byClient = UI_OPTIONS?.by_client;
+  if (!byClient || typeof byClient !== "object") return null;
+  const active = activeClientType();
+  const fallback = UI_OPTIONS?.resource?.default_client || "Official";
+  return byClient[active] || byClient[fallback] || byClient.Official || null;
+}
+
+function activeClientType() {
+  const profile = typeof state !== "undefined" ? state.profile : null;
+  const startupClient = profile?.tasks?.find((task) => task.type === "StartUp")?.params?.client_type;
+  const profileClient = profile?.adb?.client_type;
+  return canonicalClientType(startupClient || profileClient || UI_OPTIONS?.resource?.default_client || "Official");
+}
+
+function canonicalClientType(value) {
+  const text = String(value ?? "");
+  return CLIENT_TYPE_ALIASES[text] || text || "Official";
+}
+
+function clientTypeOptionsList() {
+  const clients = UI_OPTIONS?.resource?.clients;
+  return Array.isArray(clients) && clients.length ? clients : STARTUP_CLIENT_TYPES;
+}
+
+function normalizeStageValue(value) {
+  const text = String(value || "CurrentStage");
+  return normalizeOptionValue(STAGE_VALUE_ALIASES[text] || text, stageOptionsList());
+}
+
+function normalizeDropValue(value) {
+  const text = String(value || "");
+  if (text === "不选择") return "";
+  return normalizeOptionValue(text, dropOptions());
+}
+
+function normalizeOptionValue(value, options) {
+  const text = String(value ?? "");
+  const normalized = options.map(normalizeOption);
+  const option = normalized.find((item) => item.value === text || item.label === text);
+  return option ? option.value : text;
 }
 
 function escapeHtmlFallback(value) {
@@ -754,7 +888,7 @@ function roguelikeRoleOptions(theme) {
 }
 
 function roguelikeOperatorOptions(theme) {
-  const dynamicOperators = UI_OPTIONS?.roguelike?.operators?.[theme];
+  const dynamicOperators = activeClientOptions()?.roguelike?.operators?.[theme] || UI_OPTIONS?.roguelike?.operators?.[theme];
   if (Array.isArray(dynamicOperators) && dynamicOperators.length) return dynamicOperators;
   return ROGUELIKE_OPERATOR_OPTIONS[theme] || ROGUELIKE_OPERATOR_OPTIONS["萨卡兹"];
 }
