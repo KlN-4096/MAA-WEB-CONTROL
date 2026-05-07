@@ -1,6 +1,6 @@
 # 原版 MAA 功能与当前 Web 项目缺口对比
 
-生成日期：2026-05-07（最近更新：2026-05-07，第六次）
+生成日期：2026-05-07（最近更新：2026-05-07，第七次）
 
 对照范围：
 
@@ -350,8 +350,8 @@
 | `Connect.LdPlayerManualSetIndex` | 手动实例编号 | 已覆盖 | profile `manual_index`。 |
 | `Connect.LdPlayerIndex` | LD 实例编号 | 已覆盖 | profile `index`。 |
 | `Connect.RetryOnDisconnected` | 断连重试 | 未覆盖 | 无 UI/API/runner 逻辑。 |
-| `Connect.AllowADBRestart` | 连接失败重启 ADB server | 仅 UI | UI 禁用展示，后端未实现。 |
-| `Connect.AllowADBHardRestart` | 重启 ADB 进程 | 仅 UI | UI 禁用展示，后端未实现。 |
+| `Connect.AllowADBRestart` | 连接失败重启 ADB server | 已覆盖 | UI 复选框；`AdbConfig.allow_adb_restart`；`OfficialMaaAdapter._connect_with_retry` 在首次连接失败后执行 `adb kill-server` 后重试一次。 |
+| `Connect.AllowADBHardRestart` | 重启 ADB 进程 | 已覆盖 | UI 复选框；`AdbConfig.allow_adb_hard_restart`；Windows `taskkill /F /IM adb.exe`，Linux `pkill -9 adb`，作为兜底再重试一次。 |
 | `Connect.AdbLiteEnabled` / instance option `4` | 使用 AdbLite | 已覆盖 | UI 保存 `adb_lite_enabled`；`_set_instance_options` 在连接时设置 option 4。 |
 | `Connect.KillAdbOnExit` / instance option `5` | 退出释放 ADB | 已覆盖 | UI 保存 `kill_adb_on_exit`；`_set_instance_options` 在连接时设置 option 5。 |
 | `Connect.TouchMode` / instance option `2` | `minitouch/maatouch/adb/MaaFwAdb` | 已覆盖 | UI 保存触控模式；`_set_instance_options` 用 `TOUCH_MODE_ALIASES` 规范化后设置 option 2。 |
@@ -401,7 +401,7 @@
 | `Penguin.EnablePenguin` | 部分覆盖 | mapper 可传，设置页开关禁用展示。 |
 | `Penguin.Id` | 部分覆盖 | mapper 可传，设置页输入禁用展示。 |
 | `Yituliu.EnableYituliu` | 未覆盖 | 无 mapper/UI 执行。 |
-| `TaskTimeoutMinutes` | 仅 UI | 设置页禁用展示，runner 无任务超时配置。 |
+| `TaskTimeoutMinutes` | 已覆盖 | 设置页「外部通知」节内的「任务超时（分钟）」数值输入；`/api/runner/config` 持久化到 `data/runner_config.json`；runner `_run_profile` 用 `asyncio.wait_for` 包裹 `_start_and_finish`，超时后调用 stop + 触发 `timeout` notification 事件。 |
 | `ReminderIntervalMinutes` | 仅 UI | 设置页禁用展示。 |
 
 ### 界面/背景/热键/成就
@@ -457,7 +457,7 @@
 | `ExternalNotification.SendWhenComplete` | 已覆盖 | UI 复选框；runner 在 `_start_and_finish` 完成路径触发 `complete` 事件。 |
 | `ExternalNotification.EnableDetails` | 已覆盖 | UI 复选框；通知 JSON 是否附加 `details` 字段（profile/state/task counts/last_error）。 |
 | `ExternalNotification.SendWhenError` | 已覆盖 | UI 复选框；runner `error` 事件触发。 |
-| `ExternalNotification.SendWhenTimeout` | 未覆盖 | runner 无 timeout 检测；当前与 `error` 合流。 |
+| `ExternalNotification.SendWhenTimeout` | 已覆盖 | UI 复选框；runner `_run_profile` 用 `asyncio.wait_for` 监控 `task_timeout_minutes`，超时后 `_handle_timeout` 派发独立的 `timeout` 事件给 NotificationService。 |
 | SMTP `Server/Port/User/Password/UseSsl/RequiresAuthentication/From/To` | 未覆盖 | 无 UI/API/发送器。 |
 | ServerChan `SendKey` | 未覆盖 | 无。 |
 | Discord `BotToken/UserId/WebhookUrl` | 部分覆盖 | 仅可通过通用 Webhook URL 转发；专用字段未实现。 |
@@ -500,6 +500,7 @@
 
 ## 高优先级缺口建议
 
+> 2026-05-07（第七次更新）：实现 ADB 连接失败自动重启（`Connect.AllowADBRestart` / `Connect.AllowADBHardRestart`，分别执行 `adb kill-server` 与 `taskkill /F /IM adb.exe` / `pkill -9 adb`），并补齐任务超时检测（`TaskTimeoutMinutes` + `ExternalNotification.SendWhenTimeout`）：runner 用 `asyncio.wait_for` 监控超时、`/api/runner/config` 持久化到 `data/runner_config.json`、设置页有数值输入与勾选；新增 4 条单元测试覆盖 ADB restart 与 timeout 场景。
 > 2026-05-07（第六次更新）：实现外部通知 Webhook 通道——新增 `NotificationConfig`/`WebhookNotificationConfig` 模型、`NotificationService`（持久化到 `data/notifications.json`、支持 POST/PUT JSON、自定义 Header）、`/api/notifications` GET/PUT 与 `/api/notifications/test` 端点、设置页「外部通知」全功能 UI；`MaaRunnerService` 增加 `run_event_callback`，在完成/失败/停止路径自动派发 webhook。
 > 2026-05-07（第五次更新）：补齐 Fight/Recruit `server` 下拉、Fight `custom_annihilation + annihilation_stage` 子关卡映射、相应 mapper 单元测试。
 > 2026-05-07（第四次更新）：补齐 Recruit 上报/`set_time`/6 星时间/`reserve_level_1`、Fight 一图流上报与 `expiring_medicine` 数量、Roguelike 烧水/密文板/坍缩范式开关、Reclamation Fire 主题，以及 `UserDataUpdate.TriggerInterval`（含 `data/userdata_state.json` 周期跳过实现）。

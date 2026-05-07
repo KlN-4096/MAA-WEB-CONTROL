@@ -47,6 +47,8 @@ const SETTINGS_PERSISTED_FIELDS = [
   "deploymentWithPause",
   "adbLiteEnabled",
   "killAdbOnExit",
+  "allowAdbRestart",
+  "allowAdbHardRestart",
   "autoDetectConnection",
   "detectEveryTime",
   "ldExtrasEnabled",
@@ -69,7 +71,8 @@ const SETTINGS_PERSISTED_FIELDS = [
   "emulatorLaunchEnabled",
   "emulatorLaunchCommand",
   "emulatorLaunchWait",
-  "notification"
+  "notification",
+  "taskTimeoutMinutes"
 ];
 const SETTINGS_AUTO_SCROLL_SUPPRESS_MS = 120;
 const SETTINGS_SMOOTH_SCROLL_SUPPRESS_MS = 1200;
@@ -91,6 +94,8 @@ const SETTINGS_STATE = {
   deploymentWithPause: false,
   adbLiteEnabled: false,
   killAdbOnExit: false,
+  allowAdbRestart: true,
+  allowAdbHardRestart: false,
   autoDetectConnection: false,
   detectEveryTime: true,
   ldExtrasEnabled: true,
@@ -127,7 +132,9 @@ const SETTINGS_STATE = {
   emulatorLaunchCommand: "",
   emulatorLaunchWait: 60,
   notification: null,
-  notificationStatus: ""
+  notificationStatus: "",
+  taskTimeoutMinutes: 0,
+  taskTimeoutStatus: ""
 };
 
 Object.assign(SETTINGS_STATE, restoreSettingsState());
@@ -162,6 +169,8 @@ function restoreSettingsState() {
     "deploymentWithPause",
     "adbLiteEnabled",
     "killAdbOnExit",
+    "allowAdbRestart",
+    "allowAdbHardRestart",
     "ldExtrasEnabled",
     "ldManualIndex",
     "mumuExtrasEnabled",
@@ -183,6 +192,9 @@ function restoreSettingsState() {
   }
   if (parsed.notification && typeof parsed.notification === "object" && !Array.isArray(parsed.notification)) {
     restored.notification = mergeNotificationState(parsed.notification);
+  }
+  if (Number.isFinite(Number(parsed.taskTimeoutMinutes))) {
+    restored.taskTimeoutMinutes = Math.max(0, Math.min(999, Math.round(Number(parsed.taskTimeoutMinutes))));
   }
   return restored;
 }
@@ -397,10 +409,10 @@ function renderConnectionSection() {
     ${isMumu && SETTINGS_STATE.mumuBridge ? fieldRow("MuMu 实例编号", numberBox("0", "settingsControlS", "", " disabled")) : ""}
     ${fieldRow("触控模式", selectBox(["Minitouch（默认）", "MaaTouch（实验功能）", "ADB Input（不推荐使用）", "MaaFramework（实验功能）"], SETTINGS_STATE.touchMode, "touchMode"))}
     <div class="settingsInlinePair">${checkLine("退出时释放 ADB", false, "", "killAdbOnExit")}${checkLine("使用 ADB Lite（实验性功能）", false, "", "adbLiteEnabled")}</div>
+    ${checkLine("连接失败后重启 ADB Server", true, "MaaCore 第一次连接失败时自动执行 adb kill-server 后重试。", "allowAdbRestart")}
+    ${checkLine("连接失败后强制结束 ADB 进程", false, "Windows 上执行 taskkill /F /IM adb.exe，Linux 上执行 pkill -9 adb，作为最后的兜底。", "allowAdbHardRestart")}
     <p class="settingsGlobalTip">以下选项暂未接入 Web 版：</p>
     ${checkLine("ADB 连接失败时尝试启动模拟器", true, "连接失败后自动启动模拟器。", "", true)}
-    ${checkLine("连接失败后尝试重启 ADB Server", true, "", "", true)}
-    ${checkLine("连接失败后尝试关闭并重启 ADB 进程", true, "", "", true)}
     <button class="settingsButtonSmall" type="button" data-settings-action="screenshotTest">截图测试</button>
     <p class="settingsLineText" id="screenshotTestResult">点击「截图测试」以验证当前 ADB 连接的截图能力。</p>
   `);
@@ -516,7 +528,9 @@ function renderNotificationSection() {
     ${checkLine("启用外部通知", notif.enabled, "全局开关；关闭时即使运行结束也不发送。", "notification.enabled")}
     ${checkLine("任务完成时通知", notif.send_on_complete, "", "notification.send_on_complete")}
     ${checkLine("任务失败时通知", notif.send_on_error, "", "notification.send_on_error")}
+    ${checkLine("任务超时时通知", notif.send_on_timeout, "需开启「任务超时」并设置非零分钟数。", "notification.send_on_timeout")}
     ${checkLine("任务被停止时通知", notif.send_on_stopped, "默认关闭：手动停止通常不需要通知。", "notification.send_on_stopped")}
+    ${fieldRow("任务超时（分钟）", numberBox(String(SETTINGS_STATE.taskTimeoutMinutes ?? 0), "settingsControlS", "taskTimeoutMinutes"), "0 = 关闭。任务执行超过该分钟数时，runner 会自动调用 stop 并发出 timeout 通知。")}
     ${checkLine("附带任务详情", notif.include_details, "在 JSON 内附 details（profile/state/task counts/last_error）。", "notification.include_details")}
     ${checkLine("启用 Webhook", webhook.enabled, "", "notification.webhook.enabled")}
     ${fieldRow("Webhook URL", textBox(webhook.url || "", "settingsControlL", "notification.webhook.url"))}
@@ -539,6 +553,7 @@ function defaultNotificationState() {
     send_on_complete: true,
     send_on_error: true,
     send_on_stopped: false,
+    send_on_timeout: true,
     include_details: true,
     webhook: { enabled: false, url: "", method: "POST", headers: {} }
   };
@@ -896,6 +911,8 @@ function syncSettingsFromProfile() {
   SETTINGS_STATE.deploymentWithPause = Boolean(adb.deployment_with_pause);
   SETTINGS_STATE.adbLiteEnabled = Boolean(adb.adb_lite_enabled);
   SETTINGS_STATE.killAdbOnExit = Boolean(adb.kill_adb_on_exit);
+  if (typeof adb.allow_adb_restart === "boolean") SETTINGS_STATE.allowAdbRestart = adb.allow_adb_restart;
+  if (typeof adb.allow_adb_hard_restart === "boolean") SETTINGS_STATE.allowAdbHardRestart = adb.allow_adb_hard_restart;
   SETTINGS_STATE.connectConfig = profileConnectPreset(adb.connect_config) || SETTINGS_STATE.connectConfig;
   const ld = adb.ld_player_extras;
   if (ld && typeof ld === "object") {
@@ -933,6 +950,8 @@ function applySettingsToProfile() {
   state.profile.adb.deployment_with_pause = Boolean(SETTINGS_STATE.deploymentWithPause);
   state.profile.adb.adb_lite_enabled = Boolean(SETTINGS_STATE.adbLiteEnabled);
   state.profile.adb.kill_adb_on_exit = Boolean(SETTINGS_STATE.killAdbOnExit);
+  state.profile.adb.allow_adb_restart = Boolean(SETTINGS_STATE.allowAdbRestart);
+  state.profile.adb.allow_adb_hard_restart = Boolean(SETTINGS_STATE.allowAdbHardRestart);
   state.profile.adb.connect_config = { preset: SETTINGS_STATE.connectConfig };
   state.profile.adb.ld_player_extras = {
     enabled: SETTINGS_STATE.ldExtrasEnabled,
@@ -1021,8 +1040,14 @@ function updateSettingsField(target) {
     ? target.checked
     : field === "logThumbnailMax"
       ? clampNumber(target.value, 1, 9999, SETTINGS_STATE.logThumbnailMax)
-      : target.value;
+      : field === "taskTimeoutMinutes"
+        ? clampNumber(target.value, 0, 999, SETTINGS_STATE.taskTimeoutMinutes ?? 0)
+        : target.value;
   persistSettingsState();
+  if (field === "taskTimeoutMinutes") {
+    saveRunnerConfig();
+    return true;
+  }
   saveSettingsProfile();
   if (SETTINGS_CONDITIONAL_FIELDS.has(field)) renderSettingsView();
   return true;
@@ -1225,6 +1250,30 @@ async function applyAdapterConfig() {
   }
 }
 
+async function loadRunnerConfig() {
+  if (typeof api !== "function") return;
+  try {
+    const data = await api("/api/runner/config");
+    if (data && Number.isFinite(Number(data.task_timeout_minutes))) {
+      SETTINGS_STATE.taskTimeoutMinutes = Math.max(0, Number(data.task_timeout_minutes));
+      if (typeof state !== "undefined" && state.currentView === "settings") renderSettingsView();
+    }
+  } catch (e) { /* ignore */ }
+}
+
+async function saveRunnerConfig() {
+  if (typeof api !== "function") return;
+  try {
+    await api("/api/runner/config", {
+      method: "PUT",
+      body: JSON.stringify({ task_timeout_minutes: Number(SETTINGS_STATE.taskTimeoutMinutes ?? 0) })
+    });
+    SETTINGS_STATE.taskTimeoutStatus = "已保存";
+  } catch (e) {
+    SETTINGS_STATE.taskTimeoutStatus = `保存失败：${e.message || "请求错误"}`;
+  }
+}
+
 async function loadNotificationConfig() {
   if (typeof api !== "function") return;
   try {
@@ -1244,6 +1293,7 @@ function mergeNotificationState(data) {
     send_on_complete: data.send_on_complete !== false,
     send_on_error: data.send_on_error !== false,
     send_on_stopped: Boolean(data.send_on_stopped),
+    send_on_timeout: data.send_on_timeout !== false,
     include_details: data.include_details !== false,
     webhook: {
       enabled: Boolean(data.webhook?.enabled),

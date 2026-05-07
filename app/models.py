@@ -33,6 +33,8 @@ class AdbConfig(BaseModel):
     deployment_with_pause: bool = False
     adb_lite_enabled: bool = False
     kill_adb_on_exit: bool = False
+    allow_adb_restart: bool = True
+    allow_adb_hard_restart: bool = False
     connect_config: dict[str, Any] = Field(default_factory=dict)
     ld_player_extras: LdPlayerExtras = Field(default_factory=LdPlayerExtras)
 
@@ -194,9 +196,14 @@ class NotificationConfig(BaseModel):
     send_on_complete: bool = True
     send_on_error: bool = True
     send_on_stopped: bool = False
+    send_on_timeout: bool = True
     include_details: bool = True
     webhook: WebhookNotificationConfig = Field(default_factory=WebhookNotificationConfig)
 
 
 class NotificationTestRequest(BaseModel):
     config: NotificationConfig | None = None
+
+
+class RunnerConfig(BaseModel):
+    task_timeout_minutes: int = 0

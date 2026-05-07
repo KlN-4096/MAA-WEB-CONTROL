@@ -1551,6 +1551,7 @@ async function boot() {
   if (typeof loadVersionInfo === "function") loadVersionInfo();
   if (typeof loadAdapterConfig === "function") await loadAdapterConfig();
   if (typeof loadNotificationConfig === "function") loadNotificationConfig();
+  if (typeof loadRunnerConfig === "function") loadRunnerConfig();
   renderAll();
   renderLogs();
 }

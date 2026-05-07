@@ -61,6 +61,7 @@ class MaaRunnerService:
         *,
         userdata_state_path: Path | None = None,
         run_event_callback: RunEventCallback | None = None,
+        task_timeout_minutes: int = 0,
     ) -> None:
         self._adapter = adapter
         self._events = events
@@ -72,9 +73,18 @@ class MaaRunnerService:
         self._post_action: PostAction = PostAction()
         self._userdata_state_path = userdata_state_path
         self._run_event_callback = run_event_callback
+        self._task_timeout_minutes = max(0, int(task_timeout_minutes))
+        self._timed_out = False
 
     def set_run_event_callback(self, callback: RunEventCallback | None) -> None:
         self._run_event_callback = callback
+
+    def set_task_timeout_minutes(self, minutes: int) -> None:
+        self._task_timeout_minutes = max(0, int(minutes))
+
+    @property
+    def task_timeout_minutes(self) -> int:
+        return self._task_timeout_minutes
 
     def status(self) -> RunnerStatus:
         return self._status.model_copy()
@@ -111,6 +121,7 @@ class MaaRunnerService:
         if self._task and not self._task.done():
             raise RuntimeError("Runner is busy.")
         self._stop_requested = False
+        self._timed_out = False
         self._profile = profile.model_copy(deep=True)
         self._status = RunnerStatus(state="Connecting", current_profile=profile.name)
         self._logs.clear()
@@ -140,7 +151,17 @@ class MaaRunnerService:
             calls = profile_to_append_calls(profile, state_path=self._userdata_state_path)
             await self._connect(profile)
             await self._append_tasks(calls)
-            await self._start_and_finish()
+            if self._task_timeout_minutes > 0:
+                try:
+                    await asyncio.wait_for(
+                        self._start_and_finish(),
+                        timeout=self._task_timeout_minutes * 60,
+                    )
+                except asyncio.TimeoutError:
+                    self._timed_out = True
+                    await self._handle_timeout()
+            else:
+                await self._start_and_finish()
         except RunStopped as exc:
             self._stop(str(exc))
             await self._fire_run_event("stopped", str(exc))
@@ -149,6 +170,16 @@ class MaaRunnerService:
             await self._fire_run_event("error", str(exc))
         finally:
             await self._execute_post_action()
+
+    async def _handle_timeout(self) -> None:
+        message = f"任务执行超过 {self._task_timeout_minutes} 分钟，自动停止。"
+        try:
+            await self._adapter.stop()
+        except Exception:
+            pass
+        self._fail(message)
+        self._events.publish(EventRecord.now("runner.timeout", message, level="error"))
+        await self._fire_run_event("timeout", message)
 
     async def _connect(self, profile: Profile) -> None:
         self._logs.append("正在连接模拟器……", color_key="MessageLogBrush")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
@@ -22,6 +23,16 @@ WEB_DIR = PROJECT_ROOT / "web"
 SCHEDULER_CONFIG = PROJECT_ROOT / "data" / "scheduler.json"
 USERDATA_STATE_PATH = PROJECT_ROOT / "data" / "userdata_state.json"
 NOTIFICATION_CONFIG = PROJECT_ROOT / "data" / "notifications.json"
+RUNNER_CONFIG = PROJECT_ROOT / "data" / "runner_config.json"
+
+
+def _initial_task_timeout_minutes() -> int:
+    try:
+        data = json.loads(RUNNER_CONFIG.read_text(encoding="utf-8"))
+    except (OSError, FileNotFoundError, json.JSONDecodeError):
+        return 0
+    return int(data.get("task_timeout_minutes", 0)) if isinstance(data, dict) else 0
+
 
 event_bus = EventBus()
 log_service = MaaLogService(event_bus)
@@ -34,6 +45,7 @@ runner = MaaRunnerService(
     log_service,
     userdata_state_path=USERDATA_STATE_PATH,
     run_event_callback=notification_service.dispatch_run_event,
+    task_timeout_minutes=_initial_task_timeout_minutes(),
 )
 
 

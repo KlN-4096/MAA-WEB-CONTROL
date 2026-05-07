@@ -25,6 +25,7 @@ from .models import (
     PostAction,
     Profile,
     RedroidStatus,
+    RunnerConfig,
     RunRequest,
     SchedulerConfig,
     ToolRequest,
@@ -321,6 +322,24 @@ def create_api_router(
         updated = scheduler.update_config(config)
         runner.set_post_action(updated.post_action)
         return updated
+
+    # ── Runner config ──────────────────────────────────────────────
+
+    @router.get("/runner/config")
+    async def get_runner_config():
+        return RunnerConfig(task_timeout_minutes=runner.task_timeout_minutes)
+
+    @router.put("/runner/config")
+    async def put_runner_config(config: RunnerConfig):
+        runner.set_task_timeout_minutes(config.task_timeout_minutes)
+        if project_root is not None:
+            target = project_root / "data" / "runner_config.json"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(
+                json.dumps(config.model_dump(mode="json"), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        return RunnerConfig(task_timeout_minutes=runner.task_timeout_minutes)
 
     # ── Notifications ──────────────────────────────────────────────
 

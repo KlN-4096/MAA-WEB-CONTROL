@@ -165,15 +165,77 @@ class OfficialMaaAdapter:
         try:
             self._set_connection_extras(profile, asst_cls)
             self._set_instance_options(profile)
-            return bool(
+        except Exception as exc:
+            raise RuntimeError(f"MaaCore connect failed for ADB address: {profile.adb.address}") from exc
+        try:
+            return self._connect_with_retry(profile)
+        except Exception as exc:
+            raise RuntimeError(f"MaaCore connect failed for ADB address: {profile.adb.address}") from exc
+
+    def _connect_with_retry(self, profile: Profile) -> bool:
+        connected = bool(
+            self._asst.connect(
+                profile.adb.adb_path,
+                profile.adb.address,
+                _profile_connect_config(profile, self._connect_config),
+            )
+        )
+        if connected:
+            return True
+        if profile.adb.allow_adb_restart:
+            self._publish_adb_event("adb.restart", "重启 ADB 服务后重试连接……", level="warning")
+            self._restart_adb_server(profile.adb.adb_path, hard=False)
+            connected = bool(
                 self._asst.connect(
                     profile.adb.adb_path,
                     profile.adb.address,
                     _profile_connect_config(profile, self._connect_config),
                 )
             )
-        except Exception as exc:
-            raise RuntimeError(f"MaaCore connect failed for ADB address: {profile.adb.address}") from exc
+            if connected:
+                return True
+        if profile.adb.allow_adb_hard_restart:
+            self._publish_adb_event("adb.hard_restart", "强制结束 ADB 进程后重试连接……", level="warning")
+            self._restart_adb_server(profile.adb.adb_path, hard=True)
+            connected = bool(
+                self._asst.connect(
+                    profile.adb.adb_path,
+                    profile.adb.address,
+                    _profile_connect_config(profile, self._connect_config),
+                )
+            )
+        return connected
+
+    def _restart_adb_server(self, adb_path: str, *, hard: bool) -> None:
+        import subprocess
+        if hard:
+            kill_cmd: list[str]
+            if sys.platform == "win32":
+                kill_cmd = ["taskkill", "/F", "/IM", "adb.exe"]
+            else:
+                kill_cmd = ["pkill", "-9", "adb"]
+            try:
+                subprocess.run(kill_cmd, capture_output=True, timeout=5, check=False)
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+        else:
+            try:
+                subprocess.run(
+                    [adb_path or "adb", "kill-server"],
+                    capture_output=True,
+                    timeout=5,
+                    check=False,
+                )
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+
+    def _publish_adb_event(self, event_type: str, message: str, *, level: str = "info") -> None:
+        if self._events is None:
+            return
+        self._events.publish(EventRecord.now(event_type, message, level=level))  # type: ignore[arg-type]
+        if self._log_service is not None:
+            color_key = "WarningLogBrush" if level == "warning" else "MessageLogBrush"
+            self._log_service.append(message, color_key=color_key)
 
     def _set_connection_extras(self, profile: Profile, asst_cls: type[Any]) -> None:
         ld = profile.adb.ld_player_extras

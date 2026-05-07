@@ -46,6 +46,8 @@ class NotificationService:
             return False
         if event_type == "stopped" and not config.send_on_stopped:
             return False
+        if event_type == "timeout" and not config.send_on_timeout:
+            return False
         body = self._build_body(event_type, payload, include_details=config.include_details)
         return await self._send(config, body)
 

@@ -202,6 +202,69 @@ class OfficialMaaAdapterTest(unittest.IsolatedAsyncioTestCase):
             (core_dir, core_dir / "cache", None),
         ])
 
+    async def test_connect_retries_with_adb_restart_when_initial_attempt_fails(self):
+        class FlakyConnect(FakeAsst):
+            def __init__(self, callback=None, arg=None):
+                super().__init__(callback=callback, arg=arg)
+                self._return_values = [False, True]
+
+            def connect(self, adb_path, address, config="General"):
+                self.connect_calls.append((adb_path, address, config))
+                return self._return_values.pop(0) if self._return_values else False
+
+        FakeAsst.reset()
+        with tempfile.TemporaryDirectory() as directory:
+            adapter = OfficialMaaAdapter(
+                core_dir=Path("D:/MAA"),
+                python_dir=None,
+                user_dir=Path(directory) / "maa-user",
+                asst_cls=FlakyConnect,
+                events=EventBus(),
+                poll_interval=0,
+            )
+            profile = Profile(
+                name="daily",
+                adb=AdbConfig(allow_adb_restart=True, allow_adb_hard_restart=False),
+            )
+
+            with patch("subprocess.run") as run_mock:
+                connected = await adapter.connect(profile)
+
+        self.assertTrue(connected)
+        instance = FlakyConnect.instances[-1]
+        self.assertEqual(len(instance.connect_calls), 2)
+        run_mock.assert_called_once()
+        self.assertEqual(run_mock.call_args[0][0][1], "kill-server")
+
+    async def test_connect_does_not_restart_adb_when_disabled(self):
+        class AlwaysFails(FakeAsst):
+            def connect(self, adb_path, address, config="General"):
+                self.connect_calls.append((adb_path, address, config))
+                return False
+
+        FakeAsst.reset()
+        with tempfile.TemporaryDirectory() as directory:
+            adapter = OfficialMaaAdapter(
+                core_dir=Path("D:/MAA"),
+                python_dir=None,
+                user_dir=Path(directory) / "maa-user",
+                asst_cls=AlwaysFails,
+                events=EventBus(),
+                poll_interval=0,
+            )
+            profile = Profile(
+                name="daily",
+                adb=AdbConfig(allow_adb_restart=False, allow_adb_hard_restart=False),
+            )
+
+            with patch("subprocess.run") as run_mock:
+                connected = await adapter.connect(profile)
+
+        self.assertFalse(connected)
+        instance = AlwaysFails.instances[-1]
+        self.assertEqual(len(instance.connect_calls), 1)
+        run_mock.assert_not_called()
+
     async def test_fake_asst_loads_connects_appends_starts_waits_and_stops(self):
         with tempfile.TemporaryDirectory() as directory:
             events = EventBus()

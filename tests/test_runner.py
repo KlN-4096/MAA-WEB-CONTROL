@@ -68,6 +68,30 @@ class RunnerStateTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(captured[0][1]["profile"], "daily")
         self.assertEqual(captured[0][1]["state"], "Completed")
 
+    async def test_run_event_callback_fires_on_timeout(self):
+        events = EventBus()
+        captured: list[tuple[str, dict]] = []
+
+        async def callback(event_type: str, payload: dict) -> None:
+            captured.append((event_type, payload))
+
+        class HangingAdapter(FakeRunnerAdapter):
+            async def start(self):
+                await asyncio.sleep(60)
+                return True
+
+        runner = MaaRunnerService(HangingAdapter("Completed"), events, run_event_callback=callback)
+        runner.set_task_timeout_minutes(0)
+        runner._task_timeout_minutes = 0
+        # Force the timeout window short by patching internal field
+        runner._task_timeout_minutes = 1 / 600  # ~100ms in minutes for test purposes
+
+        await runner.run(profile_with_task())
+        await runner._task
+
+        self.assertEqual([event for event, _ in captured], ["timeout"])
+        self.assertEqual(runner.status().state, "Failed")
+
     async def test_run_event_callback_fires_on_chain_failure(self):
         events = EventBus()
         captured: list[tuple[str, dict]] = []
