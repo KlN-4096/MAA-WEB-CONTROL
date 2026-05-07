@@ -285,8 +285,24 @@ def _map_fight(params: dict[str, Any]) -> None:
     _normalize_stage_plan(params)
     if "stage" in params:
         params["stage"] = _normalize_stage_str(str(params.get("stage", "")))
+    _apply_custom_annihilation(params)
     _map_fight_resources(params)
     _map_fight_reporting(params)
+
+
+def _apply_custom_annihilation(params: dict[str, Any]) -> None:
+    if not bool(params.pop("custom_annihilation", False)):
+        params.pop("annihilation_stage", None)
+        return
+    target = str(params.pop("annihilation_stage", "") or "").strip()
+    if not target or target == "Annihilation":
+        return
+    canonical = _normalize_stage_str(target)
+    if params.get("stage") == "Annihilation":
+        params["stage"] = canonical
+    plan = params.get("stage_plan")
+    if isinstance(plan, list):
+        params["stage_plan"] = [canonical if stage == "Annihilation" else stage for stage in plan]
 
 
 def _map_fight_resources(params: dict[str, Any]) -> None:

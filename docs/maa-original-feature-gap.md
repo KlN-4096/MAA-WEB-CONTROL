@@ -1,6 +1,6 @@
 # 原版 MAA 功能与当前 Web 项目缺口对比
 
-生成日期：2026-05-07（最近更新：2026-05-07，第四次）
+生成日期：2026-05-07（最近更新：2026-05-07，第五次）
 
 对照范围：
 
@@ -35,7 +35,7 @@
 | 远程控制协议 | 仅 UI | 设置页禁用展示，没有轮询获取任务、汇报任务、身份配置执行逻辑。 |
 | 外部通知 | 仅 UI | 只显示未实现提示，无 SMTP/ServerChan/Discord/DingTalk/Telegram/Bark/Qmsg/Gotify/Webhook 实现。 |
 | 更新/性能/背景/热键/成就/托盘 | 仅 UI 或未覆盖 | 多数为桌面端能力；当前 Web 只显示版本或占位，未实现实际功能。 |
-| 连接/ADB 实例选项 | 部分覆盖 | 支持地址、ADB 路径、连接配置、LD extras、ClientType；缺 TouchMode/AdbLite/KillAdbOnExit/DeploymentWithPause 等 MaaCore instance option。 |
+| 连接/ADB 实例选项 | 部分覆盖 | 支持地址、ADB 路径、连接配置、LD extras、ClientType、TouchMode、DeploymentWithPause、AdbLite、KillAdbOnExit；仍缺 MuMu 12 桥接、`RetryOnDisconnected`、`AllowADBRestart` 等。 |
 
 ## 核心任务逐项对比
 
@@ -94,10 +94,10 @@
 | `remaining_sanity_stage` | 剩余理智关卡名 | 已覆盖 | UI 高级设置有文本输入，mapper 用 `_normalize_stage_str` 规范化。 |
 | `report_to_yituliu` | 默认 `false` | 已覆盖 | UI 高级设置有专用开关；mapper 透传。 |
 | `yituliu_id` | 一图流 ID | 已覆盖 | UI 高级设置有输入框；mapper 透传。 |
-| `server` | 默认 `CN` | 部分覆盖 | mapper 支持；UI 未提供作战页专用选择，依赖 profile/default。 |
+| `server` | 默认 `CN` | 已覆盖 | UI 高级设置新增「服务器」下拉（CN/US/JP/KR）；mapper 透传。 |
 | `client_type` | 崩溃重启时用于回连 | 部分覆盖 | mapper 支持；Fight UI 未提供专用字段，依赖 profile/default。 |
 | `DrGrandet` | 节省碎石模式 | 已覆盖 | UI 字段 `dr_grandet`，mapper 转为 `DrGrandet`。 |
-| 自定义剿灭 `AnnihilationStage` | WPF 配置项 | 部分覆盖 | UI 有 `custom_annihilation`，但 mapper 未把它转换成具体 `stage`。 |
+| 自定义剿灭 `AnnihilationStage` | WPF 配置项 | 已覆盖 | UI 高级设置新增「剿灭子关卡」下拉（当期/切尔诺伯格/龙门外环/龙门市区）；mapper 在 `custom_annihilation=true` 时把 `stage`/`stage_plan` 中的 `Annihilation` 替换为指定子关卡。 |
 | 过期关卡重置 `StageResetMode` | WPF 配置项 | 仅 UI | UI 保存 `stage_reset`，mapper 未执行原版重置逻辑。 |
 | 每周计划 `WeeklySchedule` | WPF 每日开关 | 仅 UI | UI 只有 `weekly_schedule` 开关，没有周一至周日具体计划。 |
 | `UseStoneAllowSave/HideSeries/HideUnavailableStage/CustomStageCode` | WPF UI 行为配置 | 部分覆盖 | Web 有部分 UI 状态，主要影响前端显示，不完全等价原版 WPF 行为。 |
@@ -122,7 +122,7 @@
 | `recruitment_time` | 3/4/5/6 星时间 | 已覆盖 | UI 现已支持 3/4/5/6 星全部时间收集，mapper 写入 `recruitment_time["6"]`。 |
 | `report_to_penguin`/`penguin_id` | 企鹅物流上报 | 已覆盖 | UI 高级设置有「上报 PenguinStats」+ ID 输入框；mapper 透传。 |
 | `report_to_yituliu`/`yituliu_id` | 一图流上报 | 已覆盖 | UI 高级设置有「上报一图流」+ ID 输入框；mapper 透传。 |
-| `server` | `CN/US/JP/KR` | 部分覆盖 | mapper 支持；UI 无任务内控件。 |
+| `server` | `CN/US/JP/KR` | 已覆盖 | UI 高级设置新增「服务器」下拉，mapper 透传。 |
 | `reserve_level_1` | WPF/当前 UI 保留 1 星词条 | 已覆盖 | UI 收集；mapper 启用时从 `select`/`confirm` 中剔除 `1` 星，跳过该栏位。 |
 
 ### `Infrast`
@@ -500,6 +500,7 @@
 
 ## 高优先级缺口建议
 
+> 2026-05-07（第五次更新）：补齐 Fight/Recruit `server` 下拉、Fight `custom_annihilation + annihilation_stage` 子关卡映射、相应 mapper 单元测试。
 > 2026-05-07（第四次更新）：补齐 Recruit 上报/`set_time`/6 星时间/`reserve_level_1`、Fight 一图流上报与 `expiring_medicine` 数量、Roguelike 烧水/密文板/坍缩范式开关、Reclamation Fire 主题，以及 `UserDataUpdate.TriggerInterval`（含 `data/userdata_state.json` 周期跳过实现）。
 
 1. ✅ ~~先补”看起来已可用但参数未真正传递”的字段：Roguelike 投资/坍缩/密文板字段。~~ **已完成**

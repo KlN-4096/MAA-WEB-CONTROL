@@ -305,6 +305,12 @@ function renderFightAdvanced(p, escapeHtml) {
   return `
     <div class="maaParams wideForm">
       ${checkRow("custom_annihilation", "自定义剿灭关卡", p.custom_annihilation)}
+      <div class="subLine"><span>剿灭子关卡</span><select id="paramAnnihilationStage">${selectOptions([
+        { label: "当期剿灭", value: "Annihilation" },
+        { label: "切尔诺伯格", value: "Chernobog@Annihilation" },
+        { label: "龙门外环", value: "LungmenOutskirts@Annihilation" },
+        { label: "龙门市区", value: "LungmenDowntown@Annihilation" }
+      ], p.annihilation_stage || "Annihilation", escapeHtml)}</select></div>
       ${checkRow("dr_grandet", "饿朗台模式", p.dr_grandet)}
       ${checkRow("use_expiring_medicine", "无限吃 N 小时内过期的理智药", p.use_expiring_medicine ?? true)}
       <div class="subLine">└ <select id="paramMedicineExpireHours">${selectOptions(MEDICINE_EXPIRE_OPTIONS, p.medicine_expire_hours || "48h", escapeHtml)}</select></div>
@@ -326,6 +332,12 @@ function renderFightAdvanced(p, escapeHtml) {
       ${checkRow("auto_restart", "游戏掉线时自动重连", p.auto_restart ?? true)}
       ${checkRow("use_remaining_sanity_stage", "使用剩余理智执行指定关卡", p.use_remaining_sanity_stage)}
       <div class="subLine"><span>剩余理智关卡</span><input class="wideInput" id="paramRemainingSanityStage" placeholder="留空则同正常关卡" value="${escapeHtml(p.remaining_sanity_stage || "")}" /></div>
+      <span>服务器${hint("用于上报数据时区分服务器，默认 CN（官服/B服）", escapeHtml)}</span><select id="paramFightServer">${selectOptions([
+        { label: "官服 (CN)", value: "CN" },
+        { label: "国际服 (US)", value: "US" },
+        { label: "日服 (JP)", value: "JP" },
+        { label: "韩服 (KR)", value: "KR" }
+      ], p.server || "CN", escapeHtml)}</select>
     </div>
   `;
 }
@@ -383,6 +395,12 @@ function renderRecruitAdvanced(p, escapeHtml) {
       <div class="subLine"><span>企鹅物流 ID（留空自动）</span><input id="paramRecruitPenguinId" class="wideInput" value="${escapeHtml(p.penguin_id || "")}" /></div>
       ${checkRow("report_to_yituliu", "上报一图流", p.report_to_yituliu)}
       <div class="subLine"><span>一图流 ID（留空自动）</span><input id="paramRecruitYituliuId" class="wideInput" value="${escapeHtml(p.yituliu_id || "")}" /></div>
+      <span>服务器${hint("用于上报数据时区分服务器，默认 CN（官服/B服）", escapeHtml)}</span><select id="paramRecruitServer">${selectOptions([
+        { label: "官服 (CN)", value: "CN" },
+        { label: "国际服 (US)", value: "US" },
+        { label: "日服 (JP)", value: "JP" },
+        { label: "韩服 (KR)", value: "KR" }
+      ], p.server || "CN", escapeHtml)}</select>
     </div>
   `;
 }
@@ -657,6 +675,7 @@ function collectFightParams() {
   }
 
   addBool(params, "custom_annihilation", "custom_annihilation");
+  addValue(params, "annihilation_stage", "paramAnnihilationStage", "Annihilation");
   addBool(params, "dr_grandet", "dr_grandet");
   addBool(params, "use_expiring_medicine", "use_expiring_medicine");
   addValue(params, "medicine_expire_hours", "paramMedicineExpireHours", "48h");
@@ -676,6 +695,7 @@ function collectFightParams() {
   addBool(params, "auto_restart", "auto_restart");
   addBool(params, "use_remaining_sanity_stage", "use_remaining_sanity_stage");
   addValue(params, "remaining_sanity_stage", "paramRemainingSanityStage", "");
+  addValue(params, "server", "paramFightServer", "CN");
   return params;
 }
 
@@ -714,6 +734,7 @@ function collectRecruitParams() {
   addValue(params, "penguin_id", "paramRecruitPenguinId", "");
   addBool(params, "report_to_yituliu", "report_to_yituliu");
   addValue(params, "yituliu_id", "paramRecruitYituliuId", "");
+  addValue(params, "server", "paramRecruitServer", "CN");
   return params;
 }
 

@@ -540,6 +540,64 @@ class TaskMapperTest(unittest.TestCase):
             self.assertEqual(len(first), 1)
             self.assertEqual(len(second), 0)
 
+    def test_fight_custom_annihilation_replaces_stage(self):
+        task = TaskDefinition(
+            id="fight",
+            type="Fight",
+            params={
+                "stage": "Annihilation",
+                "stage_plan": ["Annihilation", "1-7"],
+                "custom_annihilation": True,
+                "annihilation_stage": "LungmenOutskirts@Annihilation",
+            },
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params["stage"], "LungmenOutskirts@Annihilation")
+        self.assertEqual(call.params["stage_plan"], ["LungmenOutskirts@Annihilation", "1-7"])
+        self.assertNotIn("custom_annihilation", call.params)
+        self.assertNotIn("annihilation_stage", call.params)
+
+    def test_fight_custom_annihilation_disabled_drops_overrides(self):
+        task = TaskDefinition(
+            id="fight",
+            type="Fight",
+            params={
+                "stage": "Annihilation",
+                "custom_annihilation": False,
+                "annihilation_stage": "LungmenOutskirts@Annihilation",
+            },
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params["stage"], "Annihilation")
+        self.assertNotIn("custom_annihilation", call.params)
+        self.assertNotIn("annihilation_stage", call.params)
+
+    def test_fight_server_passes_through(self):
+        task = TaskDefinition(
+            id="fight",
+            type="Fight",
+            params={"stage": "1-7", "server": "JP"},
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params["server"], "JP")
+
+    def test_recruit_server_passes_through(self):
+        task = TaskDefinition(
+            id="recruit",
+            type="Recruit",
+            params={"server": "US"},
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params["server"], "US")
+
     def test_profile_runs_userdata_update_every_time_when_set(self):
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "userdata.json"
