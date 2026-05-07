@@ -144,6 +144,8 @@ ROGUELIKE_STRATEGY_MODE_VALUES = {
 }
 RECLAMATION_THEME_VALUES = {
     "沙洲遗闻": "Tales",
+    "沙中之火": "Fire",
+    "沙中之火（活动未开放）": "Fire",
 }
 RECLAMATION_STRATEGY_MODE_VALUES = {
     "无存档": 0,
@@ -203,13 +205,66 @@ def task_to_append_call(task: TaskDefinition) -> AppendCall | None:
     return AppendCall(task_id=task.id, type=mapped_type, params=params)
 
 
-def profile_to_append_calls(profile: Profile) -> list[AppendCall]:
+def profile_to_append_calls(
+    profile: Profile,
+    *,
+    state_path: Path | None = None,
+) -> list[AppendCall]:
+    state = _load_interval_state(state_path) if state_path else {}
     calls: list[AppendCall] = []
+    today = datetime.now().date()
+    state_changed = False
     for task in profile.tasks:
         call = task_to_append_call(task)
-        if call is not None:
-            calls.append(call)
+        if call is None:
+            continue
+        if call.type == "UserDataUpdate":
+            interval = str(call.params.get("trigger_interval", "EveryTime"))
+            if state_path is not None and _interval_already_satisfied(state.get(task.id), interval, today):
+                continue
+            if state_path is not None:
+                state[task.id] = today.isoformat()
+                state_changed = True
+        calls.append(call)
+    if state_path is not None and state_changed:
+        _save_interval_state(state_path, state)
     return calls
+
+
+def _interval_already_satisfied(last_iso: Any, interval: str, today: Any) -> bool:
+    if not isinstance(last_iso, str) or not last_iso:
+        return False
+    try:
+        last_date = datetime.fromisoformat(last_iso).date()
+    except ValueError:
+        return False
+    if interval == "Daily":
+        return last_date == today
+    if interval == "Weekly":
+        return last_date.isocalendar()[:2] == today.isocalendar()[:2]
+    return False
+
+
+def _load_interval_state(path: Path) -> dict[str, str]:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, FileNotFoundError):
+        return {}
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): str(v) for k, v in data.items()}
+
+
+def _save_interval_state(path: Path, state: dict[str, str]) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def _normalize_common_fields(params: dict[str, Any]) -> None:
@@ -248,6 +303,12 @@ def _map_fight_resources(params: dict[str, Any]) -> None:
     params["series"] = int(params.get("series", 0))
     params["DrGrandet"] = bool(params.get("DrGrandet", params.get("dr_grandet", False)))
     params["medicine_expire_days"] = _medicine_expire_days(params)
+    if "expiring_medicine" in params:
+        params["expiring_medicine"] = _int_or_default(params.get("expiring_medicine"), 0)
+    elif params.get("use_expiring_medicine"):
+        count = _int_or_default(params.get("expiring_medicine_count"), 0)
+        if count > 0:
+            params["expiring_medicine"] = count
 
     drops = _build_drops(params)
     if drops:
@@ -259,6 +320,10 @@ def _map_fight_reporting(params: dict[str, Any]) -> None:
         params["report_to_penguin"] = bool(params.get("report_to_penguin", False))
     if "penguin_id" in params:
         params["penguin_id"] = str(params.get("penguin_id", ""))
+    if "report_to_yituliu" in params:
+        params["report_to_yituliu"] = bool(params.get("report_to_yituliu", False))
+    if "yituliu_id" in params:
+        params["yituliu_id"] = str(params.get("yituliu_id", ""))
     if "server" in params:
         params["server"] = str(params.get("server", "CN"))
     if "client_type" in params:
@@ -276,6 +341,9 @@ def _map_recruit(params: dict[str, Any]) -> None:
         confirm = _recruit_confirm_levels(params)
     if select is None:
         select = list(confirm)
+    if bool(params.pop("reserve_level_1", False)):
+        select = [level for level in select if level != 1]
+        confirm = [level for level in confirm if level != 1]
     params["select"] = select
     params["confirm"] = confirm
     params["first_tags"] = _split_tags(params.get("extra_tags", params.get("first_tags", [])))
@@ -291,6 +359,12 @@ def _map_recruit(params: dict[str, Any]) -> None:
         params["server"] = str(params.get("server", "CN"))
     if "report_to_penguin" in params:
         params["report_to_penguin"] = bool(params.get("report_to_penguin", False))
+    if "penguin_id" in params:
+        params["penguin_id"] = str(params.get("penguin_id", ""))
+    if "report_to_yituliu" in params:
+        params["report_to_yituliu"] = bool(params.get("report_to_yituliu", False))
+    if "yituliu_id" in params:
+        params["yituliu_id"] = str(params.get("yituliu_id", ""))
     params["recruitment_time"] = {
         str(level): _recruitment_minutes(params.get(f"time{level}", "09:00"))
         for level in (3, 4, 5, 6)
@@ -426,6 +500,18 @@ def _map_roguelike(params: dict[str, Any]) -> None:
         params["start_with_elite_two"] = bool(params.get("start_with_elite_two", False))
     if "only_start_with_elite_two" in params:
         params["only_start_with_elite_two"] = bool(params.get("only_start_with_elite_two", False))
+    if "collectible_mode_shopping" in params:
+        params["collectible_mode_shopping"] = bool(params.get("collectible_mode_shopping", False))
+    if "collectible_mode_squad" in params:
+        params["collectible_mode_squad"] = str(params.get("collectible_mode_squad", ""))
+    if "collectible_mode_start_list" in params:
+        val = params.get("collectible_mode_start_list", {})
+        if isinstance(val, dict):
+            params["collectible_mode_start_list"] = {str(k): bool(v) for k, v in val.items()}
+        elif isinstance(val, str):
+            params["collectible_mode_start_list"] = {item: True for item in _split_tags(val)}
+        elif isinstance(val, list):
+            params["collectible_mode_start_list"] = {str(item): True for item in val if str(item)}
 
     # CLP_PDS paradigms
     if "expected_collapsal_paradigms" in params:
@@ -433,6 +519,20 @@ def _map_roguelike(params: dict[str, Any]) -> None:
         params["expected_collapsal_paradigms"] = (
             _split_tags(val) if isinstance(val, str) else _normalize_string_list(val)
         )
+    if "check_collapsal_paradigms" in params:
+        params["check_collapsal_paradigms"] = bool(params.get("check_collapsal_paradigms", False))
+    if "double_check_collapsal_paradigms" in params:
+        params["double_check_collapsal_paradigms"] = bool(
+            params.get("double_check_collapsal_paradigms", False)
+        )
+
+    # Foldartal toggle (independent of first_floor_foldartal)
+    if "use_foldartal" in params:
+        params["use_foldartal"] = bool(params.get("use_foldartal", False))
+
+    # JieGarden 常乐节点 target
+    if "find_playTime_target" in params:
+        params["find_playTime_target"] = bool(params.get("find_playTime_target", False))
 
     # Refresh shop with dice
     if "refresh_trader_with_dice" in params:
@@ -468,9 +568,16 @@ def _map_closedown(params: dict[str, Any]) -> None:
         params["client_type"] = _normalize_client_type(params.get("client_type"))
 
 
+USERDATA_TRIGGER_INTERVALS = {"EveryTime", "Daily", "Weekly"}
+
+
 def _map_userdata_update(params: dict[str, Any]) -> None:
     params.setdefault("update_oper_box", bool(params.get("update_oper_box", True)))
     params.setdefault("update_depot", bool(params.get("update_depot", True)))
+    interval = str(params.get("trigger_interval", "EveryTime"))
+    if interval not in USERDATA_TRIGGER_INTERVALS:
+        interval = "EveryTime"
+    params["trigger_interval"] = interval
 
 
 def _map_custom(params: dict[str, Any]) -> None:

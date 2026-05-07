@@ -160,6 +160,7 @@ CAPABILITIES: dict[str, Any] = {
             "default_params": {
                 "update_oper_box": True,
                 "update_depot": True,
+                "trigger_interval": "EveryTime",
             },
         },
     },

@@ -1,6 +1,6 @@
 # 原版 MAA 功能与当前 Web 项目缺口对比
 
-生成日期：2026-05-07（最近更新：2026-05-07，第三次）
+生成日期：2026-05-07（最近更新：2026-05-07，第四次）
 
 对照范围：
 
@@ -24,10 +24,10 @@
 
 | 原版能力 | 当前项目状态 | 主要缺口 |
 |---|---|---|
-| 主任务链 `StartUp/Fight/Recruit/Infrast/Mall/Award/Roguelike/Reclamation/Custom/CloseDown/UserDataUpdate` | 部分覆盖 | 主链任务基本存在，但不少字段仅 mapper 支持或 UI 没有控件；`UserDataUpdate` 缺触发周期配置。 |
-| `Copilot` 自动战斗 | 部分覆盖 | Web 有自动战斗页和 `/api/copilot/run`，但只传 `filename/formation/loop_times`，缺多作业、助战、自动编队细项、理智药等。 |
-| `SSSCopilot` 保全作业 | 仅后端 | `mapper.py` 白名单可透传该任务类型；但 Web 保全 tab 仍共用 `/api/copilot/run`，实际按 `Copilot` append。 |
-| `ParadoxCopilot` 悖论模拟 | 未覆盖 | 有 UI tab，但后端没有 append `ParadoxCopilot`，也没有 `filename/list` 参数模型。 |
+| 主任务链 `StartUp/Fight/Recruit/Infrast/Mall/Award/Roguelike/Reclamation/Custom/CloseDown/UserDataUpdate` | 部分覆盖 | 主链任务基本存在，部分字段已补充 UI（企鹅+一图流上报/剩余理智/加急次数/`UserDataUpdate.TriggerInterval` 等）；少量原版字段（剿灭关卡映射/StageReset 重置语义）仍未实现。 |
+| `Copilot` 自动战斗 | 部分覆盖 | Web 有自动战斗页和 `/api/copilot/run`，支持单/多作业、自动编队、助战、理智药等；`copilot_list` 多作业已实现但仅限单次无循环；原版 stage_name/is_raid 等细项已传递。 |
+| `SSSCopilot` 保全作业 | 部分覆盖 | Web 保全 tab 正确按 `SSSCopilot` 发起，传递 `filename/loop_times`；原版更多细项参数未实现。 |
+| `ParadoxCopilot` 悖论模拟 | 部分覆盖 | Web 悖论 tab 按 `ParadoxCopilot` 发起，支持单文件 `filename` 和多作业 `list`；多作业仅限单次运行。 |
 | `SingleStep` | 未覆盖 | 无 UI/API/mapper 白名单。 |
 | `VideoRecognition` | 未覆盖 | 无 UI/API/mapper；原版核心协议仍保留该任务。 |
 | `Depot/OperBox/RecruitCalc` 工具 | 部分覆盖 | Depot/OperBox 结果解析和前端展示已实现；RecruitCalc 结果解析、持久化仍不完整。 |
@@ -83,7 +83,7 @@
 |---|---|---|---|
 | `stage` | 默认空；当前/上次关卡 | 已覆盖 | UI 支持下拉、候选关卡和手动值。 |
 | `medicine` | 最大使用理智药数量，默认 `0` | 已覆盖 | Web 用 `use_medicine + medicine` 控制。 |
-| `expiring_medicine` | 最大使用 48 小时内过期理智药数量 | 部分覆盖 | Web 支持 `use_expiring_medicine/medicine_expire_hours` 并映射到 `medicine_expire_days`，未直接支持原协议的 `expiring_medicine` 数量。 |
+| `expiring_medicine` | 最大使用 48 小时内过期理智药数量 | 已覆盖 | Web 支持 `use_expiring_medicine/medicine_expire_hours` 并映射到 `medicine_expire_days`；高级设置新增 `expiring_medicine_count`，mapper 输出原协议字段 `expiring_medicine`。 |
 | `stone` | 最大碎石数量，默认 `0` | 已覆盖 | Web 用 `use_stone + stone` 控制。 |
 | `times` | 作战次数，默认 `2147483647` | 已覆盖 | Web 用 `has_times_limited + times` 控制。 |
 | `series` | 连战次数 `-1..6` | 已覆盖 | UI 和 mapper 均支持。 |
@@ -92,8 +92,8 @@
 | `penguin_id` | 企鹅物流 ID | 已覆盖 | UI 高级设置有输入框；mapper 支持。 |
 | `use_remaining_sanity_stage` | 使用剩余理智执行指定关卡 | 已覆盖 | UI 高级设置有复选框，mapper `_map_fight_reporting` 处理。 |
 | `remaining_sanity_stage` | 剩余理智关卡名 | 已覆盖 | UI 高级设置有文本输入，mapper 用 `_normalize_stage_str` 规范化。 |
-| `report_to_yituliu` | 默认 `false` | 未覆盖 | mapper/UI 未处理。 |
-| `yituliu_id` | 一图流 ID | 未覆盖 | mapper/UI 未处理。 |
+| `report_to_yituliu` | 默认 `false` | 已覆盖 | UI 高级设置有专用开关；mapper 透传。 |
+| `yituliu_id` | 一图流 ID | 已覆盖 | UI 高级设置有输入框；mapper 透传。 |
 | `server` | 默认 `CN` | 部分覆盖 | mapper 支持；UI 未提供作战页专用选择，依赖 profile/default。 |
 | `client_type` | 崩溃重启时用于回连 | 部分覆盖 | mapper 支持；Fight UI 未提供专用字段，依赖 profile/default。 |
 | `DrGrandet` | 节省碎石模式 | 已覆盖 | UI 字段 `dr_grandet`，mapper 转为 `DrGrandet`。 |
@@ -115,15 +115,15 @@
 | `first_tags` | 3 星首选 Tag | 部分覆盖 | UI 是文本 `extra_tags`，mapper 拆分为 `first_tags`；没有独立列表管理。 |
 | `extra_tags_mode` | `0/1/2` 多选策略 | 已覆盖 | UI 下拉框三档选择（默认/优先合成玉/全选匹配），mapper 输出 `extra_tags_mode` 整型。 |
 | `times` | 招募次数 | 已覆盖 | UI `max_times`，mapper 输出 `times`。 |
-| `set_time` | 是否设置招募时限 | 部分覆盖 | mapper 固定支持；UI 没有开关。 |
+| `set_time` | 是否设置招募时限 | 已覆盖 | UI 高级设置新增开关；mapper 透传。 |
 | `expedite` | 是否使用加急许可 | 已覆盖 | UI `auto_expedited`。 |
 | `expedite_times` | 加急次数 | 已覆盖 | UI 高级设置有独立数字输入；mapper 支持。 |
 | `skip_robot` | 小车词条处理 | 已覆盖 | UI `skip_robot`。 |
-| `recruitment_time` | 3/4/5/6 星时间 | 部分覆盖 | UI 有 3/4/5 星；6 星时间禁用且未收集 `time6`。 |
-| `report_to_penguin`/`penguin_id` | 企鹅物流上报 | 部分覆盖 | mapper 支持；UI 无公招任务内专用控件。 |
-| `report_to_yituliu`/`yituliu_id` | 一图流上报 | 未覆盖 | mapper/UI 未处理。 |
+| `recruitment_time` | 3/4/5/6 星时间 | 已覆盖 | UI 现已支持 3/4/5/6 星全部时间收集，mapper 写入 `recruitment_time["6"]`。 |
+| `report_to_penguin`/`penguin_id` | 企鹅物流上报 | 已覆盖 | UI 高级设置有「上报 PenguinStats」+ ID 输入框；mapper 透传。 |
+| `report_to_yituliu`/`yituliu_id` | 一图流上报 | 已覆盖 | UI 高级设置有「上报一图流」+ ID 输入框；mapper 透传。 |
 | `server` | `CN/US/JP/KR` | 部分覆盖 | mapper 支持；UI 无任务内控件。 |
-| `reserve_level_1` | WPF/当前 UI 保留 1 星词条 | 仅 UI | 当前收集该字段，但 mapper 未用它生成 MaaCore 参数。 |
+| `reserve_level_1` | WPF/当前 UI 保留 1 星词条 | 已覆盖 | UI 收集；mapper 启用时从 `select`/`confirm` 中剔除 `1` 星，跳过该栏位。 |
 
 ### `Infrast`
 
@@ -202,17 +202,17 @@
 | `refresh_trader_with_dice` | 水月骰子刷商店 | 已覆盖 | UI 仅水月主题时显示复选框，mapper 支持。 |
 | `first_floor_foldartal` | 萨米第一层远见密文板 | 已覆盖 | UI 仅萨米主题时显示复选框，mapper 支持。 |
 | `start_foldartal_list` / `first_floor_foldartals` | 萨米生活队开局密文板列表 | 已覆盖 | UI 逗号分隔输入，mapper 接受 `first_floor_foldartals` 并转为 list；与原版 `start_foldartal_list` 字段名不同但语义覆盖。 |
-| `collectible_mode_start_list` | 凹开局奖励对象 | 未覆盖 | mapper/UI 未处理。 |
-| `use_foldartal` | 是否使用密文板 | 未覆盖 | mapper/UI 未处理。 |
-| `check_collapsal_paradigms` | 是否检测坍缩范式 | 未覆盖 | mapper/UI 未处理。 |
-| `double_check_collapsal_paradigms` | 防漏检测 | 未覆盖 | mapper/UI 未处理。 |
+| `collectible_mode_start_list` | 凹开局奖励对象 | 已覆盖 | UI 高级设置「凹开局/烧水」组，逗号分隔输入；mapper 转为 `{name: true}` dict 透传。 |
+| `use_foldartal` | 是否使用密文板 | 已覆盖 | UI 仅萨米主题显示复选框；mapper 透传。 |
+| `check_collapsal_paradigms` | 是否检测坍缩范式 | 已覆盖 | UI 仅萨卡兹主题显示复选框；mapper 透传。 |
+| `double_check_collapsal_paradigms` | 防漏检测 | 已覆盖 | UI 仅萨卡兹主题显示复选框；mapper 透传。 |
 | `expected_collapsal_paradigms` | 期望坍缩范式 | 已覆盖 | UI 仅萨卡兹主题时显示逗号分隔输入，mapper 和测试均覆盖。 |
 | `monthly_squad_auto_iterate` | 月度小队自动切换 | 仅后端 | mapper 支持；UI 无控件。 |
 | `monthly_squad_check_comms` | 月度通信作为切换依据 | 仅后端 | mapper 支持；UI 无控件。 |
 | `deep_exploration_auto_iterate` | 深入调查自动切换 | 仅后端 | mapper 支持；UI 无控件。 |
-| `collectible_mode_shopping` | 烧水启用购物 | 未覆盖 | mapper/UI 未处理。 |
-| `collectible_mode_squad` | 烧水分队 | 未覆盖 | mapper/UI 未处理。 |
-| `find_playTime_target` | 界园常乐节点目标 | 未覆盖 | mapper/UI 未处理。 |
+| `collectible_mode_shopping` | 烧水启用购物 | 已覆盖 | UI 高级设置「凹开局/烧水」组，复选框；mapper 透传。 |
+| `collectible_mode_squad` | 烧水分队 | 已覆盖 | UI 高级设置「凹开局/烧水」组，文本输入；mapper 透传。 |
+| `find_playTime_target` | 界园常乐节点目标 | 已覆盖 | UI 仅界园主题显示复选框；mapper 透传。 |
 | `start_with_seed`/`seed` | 固定种子刷钱 | 已覆盖 | UI 有布尔开关和种子文本输入框，mapper 支持 `seed` 字符串透传。 |
 | `delay_abort` | WPF 多任务共用停止延迟 | 仅 UI | UI 保存，mapper 未传递或转为 MaaCore instance option。 |
 
@@ -222,7 +222,7 @@
 
 | 原版字段/配置 | 默认/说明 | 当前状态 | 缺口 |
 |---|---|---|---|
-| `theme` | `Fire/Tales` | 部分覆盖 | mapper 支持；UI 列出“沙中之火（活动未开放）/沙洲遗闻”，当前仅映射 `Tales`。 |
+| `theme` | `Fire/Tales` | 已覆盖 | mapper 同时支持「沙中之火 → Fire」「沙洲遗闻 → Tales」；UI 选项已去除“（活动未开放）”后缀。 |
 | `mode` | `0/1` | 已覆盖 | UI 用策略文案推导。 |
 | `tools_to_craft` | 支援道具列表 | 部分覆盖 | UI 单输入 `tool_to_craft`，mapper 转 list；不支持多项编辑体验。 |
 | `increment_mode` | `0` 连点 / `1` 长按 | 已覆盖 | UI 和 mapper 支持。 |
@@ -245,7 +245,7 @@
 |---|---|---|---|
 | `UpdateOperBox` | 默认 `true` | 已覆盖 | UI 有独立复选框；mapper 设置默认值并透传。 |
 | `UpdateDepot` | 默认 `true` | 已覆盖 | UI 有独立复选框；mapper 设置默认值并透传。 |
-| `TriggerInterval` | `EveryTime/Daily/Weekly` | 未覆盖 | 当前无触发周期配置，也无按周期跳过执行逻辑。 |
+| `TriggerInterval` | `EveryTime/Daily/Weekly` | 已覆盖 | UI 下拉框三档；`profile_to_append_calls` 在 `data/userdata_state.json` 中按 `task.id` 记录最近执行日期，按 Daily/Weekly 跳过同周期内重复执行。 |
 
 ## 自动战斗与扩展任务
 
@@ -500,11 +500,12 @@
 
 ## 高优先级缺口建议
 
-> 2026-05-07 更新：已完成 Roguelike 投资/坍缩/密文板/种子 UI 字段补齐、`investment_with_more_score` 字段名 bug 修复、Depot/OperBox callback 解析与前端实时展示。
+> 2026-05-07（第四次更新）：补齐 Recruit 上报/`set_time`/6 星时间/`reserve_level_1`、Fight 一图流上报与 `expiring_medicine` 数量、Roguelike 烧水/密文板/坍缩范式开关、Reclamation Fire 主题，以及 `UserDataUpdate.TriggerInterval`（含 `data/userdata_state.json` 周期跳过实现）。
 
 1. ✅ ~~先补”看起来已可用但参数未真正传递”的字段：Roguelike 投资/坍缩/密文板字段。~~ **已完成**
-2. **仍待处理**：`Copilot` 多作业/自动编队细项（`copilot_list`、`formation_index`、`user_additional`）、`Recruit` extra tag 策略和上报字段。
-3. 连接层补齐 MaaCore instance option：`TouchMode`、`DeploymentWithPause`、`AdbLiteEnabled`、`KillAdbOnExit`，并明确哪些 Web 环境不支持。
+2. ✅ ~~`Recruit` extra tag 策略和上报字段~~ **已完成**（`set_time`、6 星时间、企鹅 + 一图流上报、`reserve_level_1` 已落地）。**仍待处理**：`Copilot` 自动战斗页多作业 UI 与后端的二次校准（`copilot_list` 已发送，但 `support_unit_usage`、`support_unit_name`、`user_additional` 与 raid 标记的端到端体验仍需细化）。
+3. 连接层补齐 MaaCore instance option：`TouchMode`、`DeploymentWithPause`、`AdbLiteEnabled`、`KillAdbOnExit` 已实现，剩 MuMu 12 桥接、`RetryOnDisconnected`、`AllowADBRestart` 等仍属仅 UI/未覆盖。
 4. ✅ ~~工具页补结果解析：`Depot`、`OperBox`、`RecruitCalc` callback 数据已落到前端状态。~~ **已完成**
-5. 自动战斗页按 task type 分流：主线 `Copilot`、保全 `SSSCopilot`、悖论 `ParadoxCopilot`，不要所有 tab 共用 `/api/copilot/run` 的简化模型。
+5. 自动战斗页按 task type 分流：主线 `Copilot`、保全 `SSSCopilot`、悖论 `ParadoxCopilot` 已分流到 `/api/copilot/start` 并按 `task_type` 走不同参数路径；`copilot_list` 多作业循环、`use_sanity_potion`、`add_trust` 等已发送，仍需补齐多作业循环次数与助战指定干员的端到端测试。
 6. 把设置页”禁用展示”的项目拆成三类：后端可实现、需要 native helper、纯桌面不适用，避免后续误认为已经接入。
+7. ✅ ~~`UserDataUpdate.TriggerInterval`~~ **已完成**（`data/userdata_state.json` 持久化周期）。

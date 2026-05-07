@@ -19,12 +19,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PROFILE_DIR = PROJECT_ROOT / "data" / "profiles"
 WEB_DIR = PROJECT_ROOT / "web"
 SCHEDULER_CONFIG = PROJECT_ROOT / "data" / "scheduler.json"
+USERDATA_STATE_PATH = PROJECT_ROOT / "data" / "userdata_state.json"
 
 event_bus = EventBus()
 log_service = MaaLogService(event_bus)
 profile_store = ProfileStore(PROFILE_DIR)
 profile_store.ensure_defaults(build_default_profiles())
-runner = MaaRunnerService(create_maa_adapter(PROJECT_ROOT, event_bus, log_service=log_service), event_bus, log_service)
+runner = MaaRunnerService(
+    create_maa_adapter(PROJECT_ROOT, event_bus, log_service=log_service),
+    event_bus,
+    log_service,
+    userdata_state_path=USERDATA_STATE_PATH,
+)
 
 
 async def _scheduler_run_callback(profile_name: str) -> None:

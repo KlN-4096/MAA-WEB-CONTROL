@@ -80,7 +80,7 @@ const ROGUELIKE_OPERATOR_OPTIONS = {
   "萨卡兹": ["", "维什戴尔", "焰影苇草", "凯尔希", "银灰", "锏", "假日威龙陈", "圣约送葬人", "怒潮凛冬", "百炼嘉维尔", "佩佩", "乌尔比安", "海沫", "丰川祥子", "山", "羽毛笔", "休谟斯", "仇白", "煌", "艾丽妮", "帕拉斯", "医生", "风丸", "号角", "古米", "石棉", "斑点", "新约能天使", "梅", "流星", "克洛丝", "令", "稀音", "苏苏洛", "嘉维尔", "安赛尔", "讯使", "芬", "圣聆初雪", "林", "蕾缪安", "提丰", "铅踝", "白雪", "锡人", "跃跃", "芳汀", "松果"],
   "界园": ["", "维什戴尔", "新约能天使", "电弧", "凯尔希", "银灰", "假日威龙陈", "圣约送葬人", "怒潮凛冬", "百炼嘉维尔", "锏", "佩佩", "乌尔比安", "海沫", "丰川祥子", "山", "羽毛笔", "休谟斯", "仇白", "煌", "艾丽妮", "帕拉斯", "风丸", "斩业星熊", "号角", "古米", "石棉", "斑点", "梅", "流星", "克洛丝", "令", "稀音", "苏苏洛", "嘉维尔", "清流", "安赛尔", "讯使", "芬", "圣聆初雪", "林", "蕾缪安", "提丰", "铅踝", "白雪", "罗小黑", "跃跃", "伊桑", "芳汀", "松果"]
 };
-const RECLAMATION_THEMES = ["沙中之火（活动未开放）", "沙洲遗闻"];
+const RECLAMATION_THEMES = ["沙中之火", "沙洲遗闻"];
 const RECLAMATION_STRATEGIES = ["无存档，通过进出关卡刷生息点数", "有存档，通过组装支援道具刷生息点数"];
 const RECLAMATION_INCREMENT_MODES = ["连点", "长按"];
 const FIGHT_TOOLTIPS = {
@@ -308,12 +308,15 @@ function renderFightAdvanced(p, escapeHtml) {
       ${checkRow("dr_grandet", "饿朗台模式", p.dr_grandet)}
       ${checkRow("use_expiring_medicine", "无限吃 N 小时内过期的理智药", p.use_expiring_medicine ?? true)}
       <div class="subLine">└ <select id="paramMedicineExpireHours">${selectOptions(MEDICINE_EXPIRE_OPTIONS, p.medicine_expire_hours || "48h", escapeHtml)}</select></div>
+      <div class="subLine"><span>过期理智药使用上限${hint("0 = 不限制；可单独限制即将过期理智药的最大使用数量。", escapeHtml)}</span><input id="paramExpiringMedicineCount" type="number" min="0" max="999" class="shortInput" value="${numberValue(p.expiring_medicine_count, 0)}" /></div>
       ${checkRow("use_activity_expire", "活动结束前 48H 吃当周过期理智药", p.use_activity_expire)}
       <div class="subLine disabled">└ 暂无活动</div>
       ${checkRow("hide_series", "隐藏代理倍率", p.hide_series)}
       ${checkRow("allow_stone_save", "允许使用源石保存状态", p.allow_stone_save)}
       ${checkRow("report_to_penguin", "上报 PenguinStats 掉落数据", p.report_to_penguin)}
       <div class="subLine"><span>企鹅物流 ID（留空自动）</span><input id="paramPenguinId" class="wideInput" value="${escapeHtml(p.penguin_id || "")}" /></div>
+      ${checkRow("report_to_yituliu", "上报一图流", p.report_to_yituliu)}
+      <div class="subLine"><span>一图流 ID（留空自动）</span><input id="paramYituliuId" class="wideInput" value="${escapeHtml(p.yituliu_id || "")}" /></div>
       ${checkRow("custom_stage_code", `手动输入关卡名${hint(FIGHT_TOOLTIPS.customStage, escapeHtml)}`, p.custom_stage_code)}
       <span>过期关卡重置为</span><select id="paramStageReset">${selectOptions([{ label: "当前/上次", value: "CurrentStage" }, "不切换"], normalizeStageValue(p.stage_reset), escapeHtml)}</select>
       ${checkRow("use_alternate_stage", "使用备选关卡", p.use_alternate_stage ?? true)}
@@ -363,6 +366,7 @@ function renderRecruitAdvanced(p, escapeHtml) {
       <span>高星 Tag 首选（分号分隔）</span>
       <input class="wideInput" id="paramExtraTags" value="${escapeHtml(p.extra_tags || "")}" />
       <span>最大加急次数（0 表示不限制）</span><input id="paramExpediteTimes" type="number" min="0" value="${numberValue(p.expedite_times, 0)}" />
+      ${checkRow("set_time", `自动设置招募时限${hint("关闭后将不会主动设置招募时长（可用于手动调整）", escapeHtml)}`, p.set_time ?? true)}
       ${checkRow("refresh", "自动刷新 3 星 Tags", p.refresh ?? true)}
       ${checkRow("skip_robot", "无招聘许可时继续尝试刷新 Tags", p.skip_robot ?? true)}
       ${checkRow("reserve_level_1", "保留 1 星词条并跳过该栏位", p.reserve_level_1 ?? true)}
@@ -372,7 +376,13 @@ function renderRecruitAdvanced(p, escapeHtml) {
       ${timeRow("time4", p.time4 || "09:00")}
       ${checkRow("confirm_5", "自动确认 5 星", p.confirm_5)}
       ${timeRow("time5", p.time5 || "09:00", true)}
-      ${checkRow("confirm_6", "自动确认 6 星", p.confirm_6, "mutedCheck", true)}
+      ${checkRow("confirm_6", "自动确认 6 星", p.confirm_6)}
+      ${timeRow("time6", p.time6 || "09:00", true)}
+      <strong class="sectionTitle">公招上报</strong>
+      ${checkRow("report_to_penguin", "上报 PenguinStats", p.report_to_penguin)}
+      <div class="subLine"><span>企鹅物流 ID（留空自动）</span><input id="paramRecruitPenguinId" class="wideInput" value="${escapeHtml(p.penguin_id || "")}" /></div>
+      ${checkRow("report_to_yituliu", "上报一图流", p.report_to_yituliu)}
+      <div class="subLine"><span>一图流 ID（留空自动）</span><input id="paramRecruitYituliuId" class="wideInput" value="${escapeHtml(p.yituliu_id || "")}" /></div>
     </div>
   `;
 }
@@ -481,6 +491,7 @@ function renderRoguelikeAdvanced(p) {
   const isMizuki = theme === "水月";
   const isSami = theme === "萨米";
   const isSarkaz = theme === "萨卡兹";
+  const isJieGarden = theme === "界园";
   const seedValue = escapeHtmlFallback(p.seed || "");
   const foldartalsValue = escapeHtmlFallback(
     Array.isArray(p.first_floor_foldartals) ? p.first_floor_foldartals.join(",") : (p.first_floor_foldartals || "")
@@ -488,6 +499,14 @@ function renderRoguelikeAdvanced(p) {
   const collapsal = escapeHtmlFallback(
     Array.isArray(p.expected_collapsal_paradigms) ? p.expected_collapsal_paradigms.join(",") : (p.expected_collapsal_paradigms || "")
   );
+  const collectibleStartList = escapeHtmlFallback(
+    p.collectible_mode_start_list && typeof p.collectible_mode_start_list === "object" && !Array.isArray(p.collectible_mode_start_list)
+      ? Object.keys(p.collectible_mode_start_list).filter((k) => p.collectible_mode_start_list[k]).join(",")
+      : Array.isArray(p.collectible_mode_start_list)
+        ? p.collectible_mode_start_list.join(",")
+        : (p.collectible_mode_start_list || "")
+  );
+  const collectibleSquad = escapeHtmlFallback(p.collectible_mode_squad || "");
   return `
     <div class="maaParams wideForm roguelikeAdvanced">
       <span>开始探索 N 次后停止任务</span><input id="paramRoguelikeStarts" type="number" min="0" max="99999" value="${numberValue(p.starts_count, 99999)}" />
@@ -502,11 +521,19 @@ function renderRoguelikeAdvanced(p) {
       ${checkRow("start_with_seed", "使用指定种子开局", p.start_with_seed)}
       <span>种子${hint("填写后「使用指定种子开局」自动启用", escapeHtmlFallback)}</span><input id="paramRoguelikeSeed" value="${seedValue}" placeholder="留空则不指定" />
       ${isMizuki ? checkRow("refresh_trader_with_dice", "水月：用骰子刷新商店", p.refresh_trader_with_dice) : ""}
-      ${isSami ? `${checkRow("first_floor_foldartal", "萨米：第一层使用远见密文板", p.first_floor_foldartal)}
+      ${isSami ? `${checkRow("use_foldartal", "萨米：使用密文板", p.use_foldartal)}
+      ${checkRow("first_floor_foldartal", "萨米：第一层使用远见密文板", p.first_floor_foldartal)}
       <span>萨米：生活队开局密文板${hint("逗号分隔，如：风声,感知,知识", escapeHtmlFallback)}</span><input id="paramRoguelikeFoldartals" value="${foldartalsValue}" placeholder="留空则不指定" />` : ""}
-      ${isSarkaz ? `<span>萨卡兹：期望坍缩范式${hint("逗号分隔，留空则不筛选", escapeHtmlFallback)}</span><input id="paramRoguelikeCollapsal" value="${collapsal}" placeholder="如：深化坚守,领域" />` : ""}
+      ${isSarkaz ? `${checkRow("check_collapsal_paradigms", "萨卡兹：检测坍缩范式", p.check_collapsal_paradigms)}
+      ${checkRow("double_check_collapsal_paradigms", "萨卡兹：防漏检测（多检一次）", p.double_check_collapsal_paradigms)}
+      <span>萨卡兹：期望坍缩范式${hint("逗号分隔，留空则不筛选", escapeHtmlFallback)}</span><input id="paramRoguelikeCollapsal" value="${collapsal}" placeholder="如：深化坚守,领域" />` : ""}
+      ${isJieGarden ? checkRow("find_playTime_target", "界园：寻找常乐节点目标", p.find_playTime_target) : ""}
+      <strong class="sectionTitle">凹开局/烧水（仅 mode=4 生效）</strong>
       ${checkRow("start_with_elite_two", "凹精二直升开局", p.start_with_elite_two)}
       ${p.start_with_elite_two ? checkRow("only_start_with_elite_two", "仅凹精二直升（不满足则重开）", p.only_start_with_elite_two) : ""}
+      ${checkRow("collectible_mode_shopping", "烧水启用购物（凹开局结算时进商店）", p.collectible_mode_shopping)}
+      <span>烧水分队${hint("覆盖默认分队，仅凹开局模式生效。留空使用主分队", escapeHtmlFallback)}</span><input id="paramRoguelikeCollectibleSquad" value="${collectibleSquad}" placeholder="留空则使用主分队" />
+      <span>凹开局奖励对象${hint("逗号分隔，例：理性,源石锭,赠物", escapeHtmlFallback)}</span><input id="paramRoguelikeCollectibleStart" value="${collectibleStartList}" placeholder="留空则不限定" />
       <strong class="sectionTitle">以下选项为多任务共用</strong>
       ${checkRow("delay_abort", "自动肉鸽在战斗结束前延迟「停止」动作", p.delay_abort ?? true)}
     </div>
@@ -549,10 +576,17 @@ function renderReclamationAdvanced(p, escapeHtml) {
 }
 
 function renderUserDataUpdateGeneral(p) {
+  const interval = p.trigger_interval || "EveryTime";
   return `
     <div class="maaParams wideForm">
       ${checkRow("update_oper_box", "更新干员箱数据", p.update_oper_box ?? true)}
       ${checkRow("update_depot", "更新仓库数据", p.update_depot ?? true)}
+      <span>触发周期${hint(escapeHtmlFallback("EveryTime: 每次任务都执行；Daily: 同一日仅执行一次；Weekly: 同一周仅执行一次。"), escapeHtmlFallback)}</span>
+      <select id="paramUserDataInterval">
+        <option value="EveryTime" ${interval === "EveryTime" ? "selected" : ""}>每次执行 (EveryTime)</option>
+        <option value="Daily" ${interval === "Daily" ? "selected" : ""}>每日一次 (Daily)</option>
+        <option value="Weekly" ${interval === "Weekly" ? "selected" : ""}>每周一次 (Weekly)</option>
+      </select>
     </div>
   `;
 }
@@ -561,6 +595,7 @@ function collectUserDataUpdateParams() {
   const params = {};
   addBool(params, "update_oper_box", "update_oper_box");
   addBool(params, "update_depot", "update_depot");
+  addValue(params, "trigger_interval", "paramUserDataInterval", "EveryTime");
   return params;
 }
 
@@ -630,6 +665,9 @@ function collectFightParams() {
   addBool(params, "allow_stone_save", "allow_stone_save");
   addBool(params, "report_to_penguin", "report_to_penguin");
   addValue(params, "penguin_id", "paramPenguinId", "");
+  addBool(params, "report_to_yituliu", "report_to_yituliu");
+  addValue(params, "yituliu_id", "paramYituliuId", "");
+  addNumber(params, "expiring_medicine_count", "paramExpiringMedicineCount", 0);
   addBool(params, "custom_stage_code", "custom_stage_code");
   addValue(params, "stage_reset", "paramStageReset", "CurrentStage");
   addBool(params, "use_alternate_stage", "use_alternate_stage");
@@ -660,6 +698,7 @@ function collectRecruitParams() {
   addNumber(params, "extra_tags_mode", "paramRecruitStrategy", 0);
   addValue(params, "extra_tags", "paramExtraTags", "");
   addNumber(params, "expedite_times", "paramExpediteTimes", 0);
+  addBool(params, "set_time", "set_time");
   addBool(params, "refresh", "refresh");
   addBool(params, "skip_robot", "skip_robot");
   addBool(params, "reserve_level_1", "reserve_level_1");
@@ -670,6 +709,11 @@ function collectRecruitParams() {
   addBool(params, "confirm_5", "confirm_5");
   addTime(params, "time5", "time5");
   addBool(params, "confirm_6", "confirm_6");
+  addTime(params, "time6", "time6");
+  addBool(params, "report_to_penguin", "report_to_penguin");
+  addValue(params, "penguin_id", "paramRecruitPenguinId", "");
+  addBool(params, "report_to_yituliu", "report_to_yituliu");
+  addValue(params, "yituliu_id", "paramRecruitYituliuId", "");
   return params;
 }
 
@@ -748,19 +792,33 @@ function collectRoguelikeParams() {
   addBool(params, "start_with_seed", "start_with_seed");
   addValue(params, "seed", "paramRoguelikeSeed", "");
   addBool(params, "refresh_trader_with_dice", "refresh_trader_with_dice");
+  addBool(params, "use_foldartal", "use_foldartal");
   addBool(params, "first_floor_foldartal", "first_floor_foldartal");
   const foldartalsEl = $("paramRoguelikeFoldartals");
   if (foldartalsEl) {
     const raw = foldartalsEl.value.trim();
     if (raw) params.first_floor_foldartals = raw.split(",").map((s) => s.trim()).filter(Boolean);
   }
+  addBool(params, "check_collapsal_paradigms", "check_collapsal_paradigms");
+  addBool(params, "double_check_collapsal_paradigms", "double_check_collapsal_paradigms");
   const collapsalEl = $("paramRoguelikeCollapsal");
   if (collapsalEl) {
     const raw = collapsalEl.value.trim();
     if (raw) params.expected_collapsal_paradigms = raw.split(",").map((s) => s.trim()).filter(Boolean);
   }
+  addBool(params, "find_playTime_target", "find_playTime_target");
   addBool(params, "start_with_elite_two", "start_with_elite_two");
   addBool(params, "only_start_with_elite_two", "only_start_with_elite_two");
+  addBool(params, "collectible_mode_shopping", "collectible_mode_shopping");
+  addValue(params, "collectible_mode_squad", "paramRoguelikeCollectibleSquad", "");
+  const collectibleStartEl = $("paramRoguelikeCollectibleStart");
+  if (collectibleStartEl) {
+    const raw = collectibleStartEl.value.trim();
+    if (raw) {
+      const items = raw.split(",").map((s) => s.trim()).filter(Boolean);
+      params.collectible_mode_start_list = Object.fromEntries(items.map((item) => [item, true]));
+    }
+  }
   addBool(params, "delay_abort", "delay_abort");
   return hasGeneralFields ? normalizeRoguelikeParams(params) : params;
 }

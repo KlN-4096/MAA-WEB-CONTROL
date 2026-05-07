@@ -399,6 +399,167 @@ class TaskMapperTest(unittest.TestCase):
 
         self.assertEqual(call.params["expected_collapsal_paradigms"], ["深化坚守", "领域"])
 
+    def test_recruit_reserve_level_1_strips_robot_tag(self):
+        task = TaskDefinition(
+            id="recruit",
+            type="Recruit",
+            params={
+                "select": [1, 3, 4],
+                "confirm": [1, 3, 4, 5],
+                "reserve_level_1": True,
+            },
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertNotIn(1, call.params["select"])
+        self.assertNotIn(1, call.params["confirm"])
+        self.assertNotIn("reserve_level_1", call.params)
+
+    def test_recruit_yituliu_reporting_passes_through(self):
+        task = TaskDefinition(
+            id="recruit",
+            type="Recruit",
+            params={
+                "report_to_penguin": True,
+                "penguin_id": "abc",
+                "report_to_yituliu": True,
+                "yituliu_id": "xyz",
+            },
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertTrue(call.params["report_to_penguin"])
+        self.assertEqual(call.params["penguin_id"], "abc")
+        self.assertTrue(call.params["report_to_yituliu"])
+        self.assertEqual(call.params["yituliu_id"], "xyz")
+
+    def test_fight_yituliu_reporting_passes_through(self):
+        task = TaskDefinition(
+            id="fight",
+            type="Fight",
+            params={
+                "stage": "1-7",
+                "report_to_yituliu": True,
+                "yituliu_id": "lol",
+            },
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertTrue(call.params["report_to_yituliu"])
+        self.assertEqual(call.params["yituliu_id"], "lol")
+
+    def test_fight_expiring_medicine_count_emits_field(self):
+        task = TaskDefinition(
+            id="fight",
+            type="Fight",
+            params={
+                "stage": "1-7",
+                "use_expiring_medicine": True,
+                "expiring_medicine_count": 5,
+            },
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params["expiring_medicine"], 5)
+
+    def test_reclamation_fire_theme_maps(self):
+        task = TaskDefinition(
+            id="recl",
+            type="Reclamation",
+            params={"theme": "沙中之火", "strategy": "无存档，通过进出关卡刷生息点数"},
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params["theme"], "Fire")
+
+    def test_roguelike_collectible_mode_fields_pass_through(self):
+        task = TaskDefinition(
+            id="roguelike",
+            type="Roguelike",
+            params={
+                "use_foldartal": True,
+                "check_collapsal_paradigms": True,
+                "double_check_collapsal_paradigms": True,
+                "collectible_mode_shopping": True,
+                "collectible_mode_squad": "矛头分队",
+                "collectible_mode_start_list": {"理性": True, "源石锭": True},
+                "find_playTime_target": True,
+            },
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertTrue(call.params["use_foldartal"])
+        self.assertTrue(call.params["check_collapsal_paradigms"])
+        self.assertTrue(call.params["double_check_collapsal_paradigms"])
+        self.assertTrue(call.params["collectible_mode_shopping"])
+        self.assertEqual(call.params["collectible_mode_squad"], "矛头分队")
+        self.assertEqual(call.params["collectible_mode_start_list"], {"理性": True, "源石锭": True})
+        self.assertTrue(call.params["find_playTime_target"])
+
+    def test_userdata_update_default_interval(self):
+        task = TaskDefinition(id="udu", type="UserDataUpdate", params={})
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params["trigger_interval"], "EveryTime")
+
+    def test_userdata_update_invalid_interval_falls_back(self):
+        task = TaskDefinition(
+            id="udu",
+            type="UserDataUpdate",
+            params={"trigger_interval": "Hourly"},
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params["trigger_interval"], "EveryTime")
+
+    def test_profile_skips_userdata_update_within_daily_interval(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "userdata.json"
+            profile = Profile(
+                name="daily",
+                tasks=[
+                    TaskDefinition(
+                        id="udu",
+                        type="UserDataUpdate",
+                        params={"trigger_interval": "Daily"},
+                    ),
+                ],
+            )
+
+            first = profile_to_append_calls(profile, state_path=state_path)
+            second = profile_to_append_calls(profile, state_path=state_path)
+
+            self.assertEqual(len(first), 1)
+            self.assertEqual(len(second), 0)
+
+    def test_profile_runs_userdata_update_every_time_when_set(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "userdata.json"
+            profile = Profile(
+                name="daily",
+                tasks=[
+                    TaskDefinition(
+                        id="udu",
+                        type="UserDataUpdate",
+                        params={"trigger_interval": "EveryTime"},
+                    ),
+                ],
+            )
+
+            first = profile_to_append_calls(profile, state_path=state_path)
+            second = profile_to_append_calls(profile, state_path=state_path)
+
+            self.assertEqual(len(first), 1)
+            self.assertEqual(len(second), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

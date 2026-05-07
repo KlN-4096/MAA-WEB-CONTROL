@@ -5,6 +5,7 @@ import platform
 import subprocess
 from contextlib import suppress
 from datetime import datetime
+from pathlib import Path
 from typing import Protocol
 
 from .events import EventBus
@@ -49,7 +50,14 @@ class DryRunMaaAdapter:
 
 
 class MaaRunnerService:
-    def __init__(self, adapter: MaaAdapter, events: EventBus, log_service: MaaLogService | None = None) -> None:
+    def __init__(
+        self,
+        adapter: MaaAdapter,
+        events: EventBus,
+        log_service: MaaLogService | None = None,
+        *,
+        userdata_state_path: Path | None = None,
+    ) -> None:
         self._adapter = adapter
         self._events = events
         self._logs = log_service or MaaLogService(events)
@@ -58,6 +66,7 @@ class MaaRunnerService:
         self._task: asyncio.Task[None] | None = None
         self._stop_requested = False
         self._post_action: PostAction = PostAction()
+        self._userdata_state_path = userdata_state_path
 
     def status(self) -> RunnerStatus:
         return self._status.model_copy()
@@ -120,7 +129,7 @@ class MaaRunnerService:
 
     async def _run_profile(self, profile: Profile) -> None:
         try:
-            calls = profile_to_append_calls(profile)
+            calls = profile_to_append_calls(profile, state_path=self._userdata_state_path)
             await self._connect(profile)
             await self._append_tasks(calls)
             await self._start_and_finish()
