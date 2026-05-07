@@ -1,6 +1,6 @@
 # 原版 MAA 功能与当前 Web 项目缺口对比
 
-生成日期：2026-05-07（最近更新：2026-05-07）
+生成日期：2026-05-07（最近更新：2026-05-07，第二次）
 
 对照范围：
 
@@ -111,7 +111,7 @@
 | `select` | 会点击的 Tag 等级 | 部分覆盖 | mapper 支持直接 list；UI 没有逐等级 `select` 控件，而是由 confirm 推导。 |
 | `confirm` | 会确认的 Tag 等级 | 已覆盖 | UI 提供 3/4/5/6 星确认。 |
 | `first_tags` | 3 星首选 Tag | 部分覆盖 | UI 是文本 `extra_tags`，mapper 拆分为 `first_tags`；没有独立列表管理。 |
-| `extra_tags_mode` | `0/1/2` 多选策略 | 部分覆盖 | mapper 支持；UI 目前策略 select 只有占位选项，未真正选择 `1/2`。 |
+| `extra_tags_mode` | `0/1/2` 多选策略 | 已覆盖 | UI 下拉框三档选择（默认/优先合成玉/全选匹配），mapper 输出 `extra_tags_mode` 整型。 |
 | `times` | 招募次数 | 已覆盖 | UI `max_times`，mapper 输出 `times`。 |
 | `set_time` | 是否设置招募时限 | 部分覆盖 | mapper 固定支持；UI 没有开关。 |
 | `expedite` | 是否使用加急许可 | 已覆盖 | UI `auto_expedited`。 |
@@ -314,7 +314,7 @@
 
 | 原版工具/配置 | 当前状态 | 缺口 |
 |---|---|---|
-| 公招识别 `RecruitCalc` | 部分覆盖 | 后端 append `RecruitCalc`；UI 可配置星级/时间/潜能显示，但结果解析、潜能联动、历史数据不完整。 |
+| 公招识别 `RecruitCalc` | 已覆盖 | 后端 append `RecruitCalc` 并传星级/时间参数；识别结果通过 `maa.tools.recruit_calc` EventBus 事件推送，前端实时展示 Tags 及高稀有度标记。潜能联动和历史记录仍未实现。 |
 | 干员识别 `OperBox` | 已覆盖 | 后端解析 `OperBoxInfo` callback，EventBus 广播 `maa.tools.operbox` 事件；前端实时展示已拥有/未拥有列表，支持文本导出。持久化跨会话仍未实现。 |
 | 仓库识别 `Depot` | 已覆盖 | 后端解析 `Depot` callback，EventBus 广播 `maa.tools.depot` 事件；前端实时展示物品网格，支持 arkplanner/lolicon JSON 格式导出。持久化跨会话仍未实现。 |
 | 抽卡 `GachaOnce/GachaTenTimes` | 部分覆盖 | 后端用 `Custom.task_names` 发起；免责声明“下次不再提示”和成就联动未完整实现。 |
@@ -503,6 +503,6 @@
 1. ✅ ~~先补”看起来已可用但参数未真正传递”的字段：Roguelike 投资/坍缩/密文板字段。~~ **已完成**
 2. **仍待处理**：`Copilot` 多作业/自动编队细项（`copilot_list`、`formation_index`、`user_additional`）、`Recruit` extra tag 策略和上报字段。
 3. 连接层补齐 MaaCore instance option：`TouchMode`、`DeploymentWithPause`、`AdbLiteEnabled`、`KillAdbOnExit`，并明确哪些 Web 环境不支持。
-4. ✅ ~~工具页补结果解析：`Depot`、`OperBox` callback 数据已落到前端状态。~~ **已完成**；`RecruitCalc` 结果解析仍待处理。
+4. ✅ ~~工具页补结果解析：`Depot`、`OperBox`、`RecruitCalc` callback 数据已落到前端状态。~~ **已完成**
 5. 自动战斗页按 task type 分流：主线 `Copilot`、保全 `SSSCopilot`、悖论 `ParadoxCopilot`，不要所有 tab 共用 `/api/copilot/run` 的简化模型。
 6. 把设置页”禁用展示”的项目拆成三类：后端可实现、需要 native helper、纯桌面不适用，避免后续误认为已经接入。

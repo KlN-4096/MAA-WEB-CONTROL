@@ -350,7 +350,13 @@ function renderRecruitGeneral(p) {
 function renderRecruitAdvanced(p, escapeHtml) {
   return `
     <div class="maaParams wideForm">
-      <span>公招多选 Tag 的策略</span><select id="paramRecruitStrategy"><option>默认不选择额外 Tag</option></select>
+      <span>公招多选 Tag 的策略</span>
+      <select id="paramRecruitStrategy">
+        <option value="0" ${(p.extra_tags_mode ?? 0) == 0 ? "selected" : ""}>默认（不选择额外 Tag）</option>
+        <option value="1" ${p.extra_tags_mode == 1 ? "selected" : ""}>优先合成玉（自动选含合成玉 Tag 组合）</option>
+        <option value="2" ${p.extra_tags_mode == 2 ? "selected" : ""}>全选满足条件的组合</option>
+      </select>
+      <span>高星 Tag 首选（分号分隔）</span>
       <input class="wideInput" id="paramExtraTags" value="${escapeHtml(p.extra_tags || "")}" />
       ${checkRow("refresh", "自动刷新 3 星 Tags", p.refresh ?? true)}
       ${checkRow("skip_robot", "无招聘许可时继续尝试刷新 Tags", p.skip_robot ?? true)}
@@ -633,6 +639,7 @@ function collectRecruitParams() {
   const params = {};
   addBool(params, "auto_expedited", "auto_expedited");
   addNumber(params, "max_times", "paramRecruitTimes", 99);
+  addNumber(params, "extra_tags_mode", "paramRecruitStrategy", 0);
   addValue(params, "extra_tags", "paramExtraTags", "");
   addBool(params, "refresh", "refresh");
   addBool(params, "skip_robot", "skip_robot");

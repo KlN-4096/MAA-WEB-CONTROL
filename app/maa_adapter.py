@@ -450,6 +450,10 @@ class OfficialMaaAdapter:
             ls.append(f"公招识别结果:\n{tag_text}", color_key="InfoLogBrush", split_mode="Before",
                       thumbnail={"capture": True, "placeholder": True},
                       tooltip={"kind": "recruit_tags", "tags": tags}, raw=raw_detail)
+            self._publish_callback_event(EventRecord.now(
+                "maa.tools.recruit_calc", "公招识别", level="info",
+                detail={"what": "tags_detected", "tags": tags},
+            ))
             return
 
         if extra_what == "RecruitResult":
@@ -475,8 +479,13 @@ class OfficialMaaAdapter:
             return
 
         if extra_what == "RecruitSpecialTag":
-            ls.append(f"高稀有度 Tag: {d.get('tag', '')}", color_key="RareOperatorLogBrush",
+            tag = d.get("tag", "")
+            ls.append(f"高稀有度 Tag: {tag}", color_key="RareOperatorLogBrush",
                       weight="Bold", raw=raw_detail)
+            self._publish_callback_event(EventRecord.now(
+                "maa.tools.recruit_calc", "高稀有度Tag", level="info",
+                detail={"what": "special_tag", "tag": tag},
+            ))
             return
 
         if extra_what == "RecruitRobotTag":

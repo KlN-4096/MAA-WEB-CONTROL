@@ -89,6 +89,9 @@ const TOOLS_STATE = {
   operOwnList: [],
   operNotOwnList: [],
   operDone: false,
+  recruitTags: [],
+  recruitSpecialTag: "",
+  recruitSyncTime: "",
   ...restoreToolsState()
 };
 
@@ -169,10 +172,18 @@ function renderToolTab() {
 }
 
 function renderRecruitTool() {
+  const hasTags = TOOLS_STATE.recruitTags.length > 0;
+  const tagsSection = hasTags ? `
+    <div class="recruitTagResult">
+      <div class="recruitTagRow">${TOOLS_STATE.recruitTags.map((t) => `<span class="recruitTag">${escapeHtml(t)}</span>`).join("")}</div>
+      ${TOOLS_STATE.recruitSpecialTag ? `<div class="recruitSpecialTag">⭐ 高稀有度 Tag: ${escapeHtml(TOOLS_STATE.recruitSpecialTag)}</div>` : ""}
+      ${TOOLS_STATE.recruitSyncTime ? `<p class="syncLine">识别时间: ${escapeHtml(TOOLS_STATE.recruitSyncTime)}</p>` : ""}
+    </div>` : "";
   return `
     <div class="toolsGrid recruitTool">
       <div class="toolsScroll">
         <p class="toolsInfo recruitInfo">${escapeHtml(TOOLS_STATE.recruitInfo)}</p>
+        ${tagsSection}
       </div>
       <div class="recruitBottom">
         <div class="recruitLeft">
@@ -412,7 +423,12 @@ function runToolsAction(action, payload = {}) {
 
 function runToolAction(action) {
   if (toolActionRequiresBackend(action) && toolsUnavailable()) return;
-  if (action === "startRecruit") TOOLS_STATE.recruitInfo = "正在识别……";
+  if (action === "startRecruit") {
+    TOOLS_STATE.recruitInfo = "正在识别……";
+    TOOLS_STATE.recruitTags = [];
+    TOOLS_STATE.recruitSpecialTag = "";
+    TOOLS_STATE.recruitSyncTime = "";
+  }
   if (action === "startOper") TOOLS_STATE.operInfo = "正在识别……";
   if (action === "startDepot") TOOLS_STATE.depotInfo = "正在识别……";
   if (action === "copyOper") {
@@ -523,12 +539,24 @@ const TOOL_BACKEND_MAP = {
   gachaTen: "gacha_ten",
 };
 
+function buildRecruitCalcParams() {
+  const select = [3, 4, 5, 6].filter((l) => TOOLS_STATE.levels[l]);
+  const recruitmentTime = {};
+  [3, 4, 5].forEach((l) => {
+    const [h, m] = TOOLS_STATE.times[l] || ["09", "00"];
+    recruitmentTime[String(l)] = parseInt(h, 10) * 60 + parseInt(m, 10);
+  });
+  recruitmentTime["6"] = 540;
+  return { select, confirm: [], times: 0, set_time: TOOLS_STATE.autoTime, recruitment_time: recruitmentTime };
+}
+
 function fireToolBackend(action) {
   const toolName = TOOL_BACKEND_MAP[action];
   if (!toolName || typeof api !== "function") return;
+  const params = action === "startRecruit" ? buildRecruitCalcParams() : {};
   api("/api/tools/run", {
     method: "POST",
-    body: JSON.stringify({ tool: toolName, params: {} })
+    body: JSON.stringify({ tool: toolName, params })
   }).then((result) => {
     if (result.ok) {
       if (action === "startRecruit") TOOLS_STATE.recruitInfo = "识别请求已发送，等待结果……";
@@ -552,6 +580,24 @@ function fireToolBackend(action) {
 
 function handleToolEvent(event) {
   if (!event || !event.type) return;
+  if (event.type === "maa.tools.recruit_calc") {
+    const detail = event.detail || {};
+    if (detail.what === "tags_detected") {
+      TOOLS_STATE.recruitTags = Array.isArray(detail.tags) ? detail.tags : [];
+      TOOLS_STATE.recruitSyncTime = new Date().toLocaleTimeString();
+      TOOLS_STATE.recruitInfo = TOOLS_STATE.recruitTags.length
+        ? `识别到 ${TOOLS_STATE.recruitTags.length} 个 Tag`
+        : "识别完成（无 Tags）";
+    }
+    if (detail.what === "special_tag" && detail.tag) {
+      TOOLS_STATE.recruitSpecialTag = detail.tag;
+      TOOLS_STATE.recruitInfo = `识别到 ${TOOLS_STATE.recruitTags.length} 个 Tag ⭐ 含高稀有度`;
+    }
+    if (typeof state !== "undefined" && state.currentView === "tools" && TOOLS_STATE.tab === 0) {
+      renderToolsView();
+    }
+    return;
+  }
   if (event.type === "maa.tools.depot") {
     const detail = event.detail || {};
     TOOLS_STATE.depotItems = Array.isArray(detail.items) ? detail.items : [];
