@@ -228,7 +228,7 @@ function builtinDefaultParams(type) {
   if (type === "Award") return { daily: true, orundum: true };
   if (type === "Roguelike") return { theme: "萨卡兹", difficulty: "MAX (18)", strategy: ROGUELIKE_STRATEGIES[0], squad: "指挥分队", roles: "稳扎稳打（重装、术师、狙击）", starts_count: 99999, investment_enabled: true, delay_abort: true };
   if (type === "Reclamation") return { theme: "沙洲遗闻", strategy: RECLAMATION_STRATEGIES[1], tool_to_craft: "荧光棒", increment_mode: "连点", max_craft_count: 16 };
-  if (type === "UserDataUpdate") return {};
+  if (type === "UserDataUpdate") return { update_oper_box: true, update_depot: true };
   return {};
 }
 
@@ -264,7 +264,7 @@ function renderGeneral(task, escapeHtml) {
   if (task.type === "Award") return renderAwardGeneral(p);
   if (task.type === "Roguelike") return renderRoguelikeGeneral(p, escapeHtml);
   if (task.type === "Reclamation") return renderReclamationGeneral(p, escapeHtml);
-  if (task.type === "UserDataUpdate") return renderUserDataUpdateGeneral();
+  if (task.type === "UserDataUpdate") return renderUserDataUpdateGeneral(p);
   return renderJsonParams(p, escapeHtml);
 }
 
@@ -289,7 +289,7 @@ function renderFightGeneral(p, escapeHtml) {
       ${checkNumberRow("use_medicine", `使用药剂${hint(FIGHT_TOOLTIPS.onceAsNull, escapeHtml)}`, "paramMedicine", p.use_medicine, p.medicine, 999)}
       ${checkNumberRow("use_stone", `使用源石*${hint(FIGHT_TOOLTIPS.once, escapeHtml)}`, "paramStone", p.use_stone, p.stone, 999)}
       ${checkNumberRow("has_times_limited", `指定次数${hint(FIGHT_TOOLTIPS.onceAsNull, escapeHtml)}`, "paramTimes", p.has_times_limited, p.times, 6)}
-      <div class="paramRow"><label class="checkLabel"><input id="paramUseDrops" type="checkbox" ${checked(p.use_drops)} />指定材料${hint(FIGHT_TOOLTIPS.drops, escapeHtml)}</label><select id="paramDrops">${selectOptions(dropOptions(), normalizeDropValue(p.drop), escapeHtml)}</select></div>
+      <div class="paramRow"><label class="checkLabel"><input id="paramUseDrops" type="checkbox" ${checked(p.use_drops)} />指定材料${hint(FIGHT_TOOLTIPS.drops, escapeHtml)}</label><select id="paramDrops">${selectOptions(dropOptions(), normalizeDropValue(p.drop), escapeHtml)}</select><input id="paramDropCount" type="number" min="1" max="999" class="shortInput" value="${p.drop_count ?? 1}" /></div>
       <div class="paramRow"><span>代理倍率${hint(FIGHT_TOOLTIPS.series, escapeHtml)}</span><select id="paramSeries">${seriesOptions(p.series, escapeHtml)}</select></div>
       <div class="stageBlock">
         <div class="stageLabel"><span>${useAlternate ? "候选关卡" : "关卡指定"}</span>${addButton}</div>
@@ -312,6 +312,8 @@ function renderFightAdvanced(p, escapeHtml) {
       <div class="subLine disabled">└ 暂无活动</div>
       ${checkRow("hide_series", "隐藏代理倍率", p.hide_series)}
       ${checkRow("allow_stone_save", "允许使用源石保存状态", p.allow_stone_save)}
+      ${checkRow("report_to_penguin", "上报 PenguinStats 掉落数据", p.report_to_penguin)}
+      <div class="subLine"><span>企鹅物流 ID（留空自动）</span><input id="paramPenguinId" class="wideInput" value="${escapeHtml(p.penguin_id || "")}" /></div>
       ${checkRow("custom_stage_code", `手动输入关卡名${hint(FIGHT_TOOLTIPS.customStage, escapeHtml)}`, p.custom_stage_code)}
       <span>过期关卡重置为</span><select id="paramStageReset">${selectOptions([{ label: "当前/上次", value: "CurrentStage" }, "不切换"], normalizeStageValue(p.stage_reset), escapeHtml)}</select>
       ${checkRow("use_alternate_stage", "使用备选关卡", p.use_alternate_stage ?? true)}
@@ -319,6 +321,8 @@ function renderFightAdvanced(p, escapeHtml) {
       ${checkRow("weekly_schedule", "启用周计划", p.weekly_schedule)}
       <strong class="sectionTitle">以下选项为多任务共用</strong>
       ${checkRow("auto_restart", "游戏掉线时自动重连", p.auto_restart ?? true)}
+      ${checkRow("use_remaining_sanity_stage", "使用剩余理智执行指定关卡", p.use_remaining_sanity_stage)}
+      <div class="subLine"><span>剩余理智关卡</span><input class="wideInput" id="paramRemainingSanityStage" placeholder="留空则同正常关卡" value="${escapeHtml(p.remaining_sanity_stage || "")}" /></div>
     </div>
   `;
 }
@@ -358,6 +362,7 @@ function renderRecruitAdvanced(p, escapeHtml) {
       </select>
       <span>高星 Tag 首选（分号分隔）</span>
       <input class="wideInput" id="paramExtraTags" value="${escapeHtml(p.extra_tags || "")}" />
+      <span>最大加急次数（0 表示不限制）</span><input id="paramExpediteTimes" type="number" min="0" value="${numberValue(p.expedite_times, 0)}" />
       ${checkRow("refresh", "自动刷新 3 星 Tags", p.refresh ?? true)}
       ${checkRow("skip_robot", "无招聘许可时继续尝试刷新 Tags", p.skip_robot ?? true)}
       ${checkRow("reserve_level_1", "保留 1 星词条并跳过该栏位", p.reserve_level_1 ?? true)}
@@ -543,12 +548,20 @@ function renderReclamationAdvanced(p, escapeHtml) {
   `;
 }
 
-function renderUserDataUpdateGeneral() {
+function renderUserDataUpdateGeneral(p) {
   return `
     <div class="maaParams wideForm">
-      <p class="formNote">更新数据：触发 MAA 从服务器拉取最新用户数据（掉落统计、企鹅物流等）。无需配置参数。</p>
+      ${checkRow("update_oper_box", "更新干员箱数据", p.update_oper_box ?? true)}
+      ${checkRow("update_depot", "更新仓库数据", p.update_depot ?? true)}
     </div>
   `;
+}
+
+function collectUserDataUpdateParams() {
+  const params = {};
+  addBool(params, "update_oper_box", "update_oper_box");
+  addBool(params, "update_depot", "update_depot");
+  return params;
 }
 
 function renderJsonParams(p, escapeHtml) {
@@ -584,7 +597,7 @@ function collectParams(type) {
   if (type === "Award") return collectAwardParams();
   if (type === "Roguelike") return collectRoguelikeParams();
   if (type === "Reclamation") return collectReclamationParams();
-  if (type === "UserDataUpdate") return {};
+  if (type === "UserDataUpdate") return collectUserDataUpdateParams();
   return $("taskParamsInput") ? parseJsonField("taskParamsInput") : {};
 }
 
@@ -599,6 +612,7 @@ function collectFightParams() {
   addBool(params, "has_times_limited", "has_times_limited");
   addBool(params, "use_drops", "paramUseDrops");
   addValue(params, "drop", "paramDrops", "");
+  addNumber(params, "drop_count", "paramDropCount", 1);
   const stagePlan = valuesByName("paramStagePlan")
     .map((stage) => normalizeStageValue(stage.trim()))
     .filter(Boolean);
@@ -614,12 +628,16 @@ function collectFightParams() {
   addBool(params, "use_activity_expire", "use_activity_expire");
   addBool(params, "hide_series", "hide_series");
   addBool(params, "allow_stone_save", "allow_stone_save");
+  addBool(params, "report_to_penguin", "report_to_penguin");
+  addValue(params, "penguin_id", "paramPenguinId", "");
   addBool(params, "custom_stage_code", "custom_stage_code");
   addValue(params, "stage_reset", "paramStageReset", "CurrentStage");
   addBool(params, "use_alternate_stage", "use_alternate_stage");
   addBool(params, "hide_unavailable_stage", "hide_unavailable_stage");
   addBool(params, "weekly_schedule", "weekly_schedule");
   addBool(params, "auto_restart", "auto_restart");
+  addBool(params, "use_remaining_sanity_stage", "use_remaining_sanity_stage");
+  addValue(params, "remaining_sanity_stage", "paramRemainingSanityStage", "");
   return params;
 }
 
@@ -641,6 +659,7 @@ function collectRecruitParams() {
   addNumber(params, "max_times", "paramRecruitTimes", 99);
   addNumber(params, "extra_tags_mode", "paramRecruitStrategy", 0);
   addValue(params, "extra_tags", "paramExtraTags", "");
+  addNumber(params, "expedite_times", "paramExpediteTimes", 0);
   addBool(params, "refresh", "refresh");
   addBool(params, "skip_robot", "skip_robot");
   addBool(params, "reserve_level_1", "reserve_level_1");

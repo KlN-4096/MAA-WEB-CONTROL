@@ -1,6 +1,6 @@
 # 原版 MAA 功能与当前 Web 项目缺口对比
 
-生成日期：2026-05-07（最近更新：2026-05-07，第二次）
+生成日期：2026-05-07（最近更新：2026-05-07，第三次）
 
 对照范围：
 
@@ -87,9 +87,11 @@
 | `stone` | 最大碎石数量，默认 `0` | 已覆盖 | Web 用 `use_stone + stone` 控制。 |
 | `times` | 作战次数，默认 `2147483647` | 已覆盖 | Web 用 `has_times_limited + times` 控制。 |
 | `series` | 连战次数 `-1..6` | 已覆盖 | UI 和 mapper 均支持。 |
-| `drops` | 指定掉落 `{item_id: count}` | 部分覆盖 | UI 只支持单材料；mapper 可接受 dict 或列表，但 UI 不支持多材料目标。 |
-| `report_to_penguin` | 默认 `false` | 部分覆盖 | mapper 支持；UI 未提供作战页专用开关，默认 profile 可携带。 |
-| `penguin_id` | 企鹅物流 ID | 部分覆盖 | mapper 支持；UI 未提供作战页专用输入。 |
+| `drops` | 指定掉落 `{item_id: count}` | 部分覆盖 | UI 只支持单材料但已支持 `drop_count` 数量输入；mapper 可接受 dict 或列表，但 UI 不支持多材料目标。 |
+| `report_to_penguin` | 默认 `false` | 已覆盖 | UI 高级设置有专用开关；mapper 映射。 |
+| `penguin_id` | 企鹅物流 ID | 已覆盖 | UI 高级设置有输入框；mapper 支持。 |
+| `use_remaining_sanity_stage` | 使用剩余理智执行指定关卡 | 已覆盖 | UI 高级设置有复选框，mapper `_map_fight_reporting` 处理。 |
+| `remaining_sanity_stage` | 剩余理智关卡名 | 已覆盖 | UI 高级设置有文本输入，mapper 用 `_normalize_stage_str` 规范化。 |
 | `report_to_yituliu` | 默认 `false` | 未覆盖 | mapper/UI 未处理。 |
 | `yituliu_id` | 一图流 ID | 未覆盖 | mapper/UI 未处理。 |
 | `server` | 默认 `CN` | 部分覆盖 | mapper 支持；UI 未提供作战页专用选择，依赖 profile/default。 |
@@ -115,7 +117,7 @@
 | `times` | 招募次数 | 已覆盖 | UI `max_times`，mapper 输出 `times`。 |
 | `set_time` | 是否设置招募时限 | 部分覆盖 | mapper 固定支持；UI 没有开关。 |
 | `expedite` | 是否使用加急许可 | 已覆盖 | UI `auto_expedited`。 |
-| `expedite_times` | 加急次数 | 部分覆盖 | mapper 支持；UI 无独立加急次数输入。 |
+| `expedite_times` | 加急次数 | 已覆盖 | UI 高级设置有独立数字输入；mapper 支持。 |
 | `skip_robot` | 小车词条处理 | 已覆盖 | UI `skip_robot`。 |
 | `recruitment_time` | 3/4/5/6 星时间 | 部分覆盖 | UI 有 3/4/5 星；6 星时间禁用且未收集 `time6`。 |
 | `report_to_penguin`/`penguin_id` | 企鹅物流上报 | 部分覆盖 | mapper 支持；UI 无公招任务内专用控件。 |
@@ -241,8 +243,8 @@
 
 | 原版字段/配置 | 默认/说明 | 当前状态 | 缺口 |
 |---|---|---|---|
-| `UpdateOperBox` | 默认 `true` | 部分覆盖 | capabilities/mapper 有默认值；UI 显示“无需配置参数”，没有控件。 |
-| `UpdateDepot` | 默认 `true` | 部分覆盖 | 同上。 |
+| `UpdateOperBox` | 默认 `true` | 已覆盖 | UI 有独立复选框；mapper 设置默认值并透传。 |
+| `UpdateDepot` | 默认 `true` | 已覆盖 | UI 有独立复选框；mapper 设置默认值并透传。 |
 | `TriggerInterval` | `EveryTime/Daily/Weekly` | 未覆盖 | 当前无触发周期配置，也无按周期跳过执行逻辑。 |
 
 ## 自动战斗与扩展任务
@@ -350,10 +352,10 @@
 | `Connect.RetryOnDisconnected` | 断连重试 | 未覆盖 | 无 UI/API/runner 逻辑。 |
 | `Connect.AllowADBRestart` | 连接失败重启 ADB server | 仅 UI | UI 禁用展示，后端未实现。 |
 | `Connect.AllowADBHardRestart` | 重启 ADB 进程 | 仅 UI | UI 禁用展示，后端未实现。 |
-| `Connect.AdbLiteEnabled` / instance option `4` | 使用 AdbLite | 仅 UI | UI 禁用展示，official adapter 未设置 option。 |
-| `Connect.KillAdbOnExit` / instance option `5` | 退出释放 ADB | 仅 UI | UI 禁用展示，official adapter 未设置 option。 |
-| `Connect.TouchMode` / instance option `2` | `minitouch/maatouch/adb/MaaFwAdb` | 部分覆盖 | UI 有触控模式，mapper 放 task params；official adapter 未设置 instance option。 |
-| instance option `3 DeploymentWithPause` | 自动战斗/肉鸽/保全暂停下干员 | 仅 UI | 运行设置显示禁用，后端未设置。 |
+| `Connect.AdbLiteEnabled` / instance option `4` | 使用 AdbLite | 已覆盖 | UI 保存 `adb_lite_enabled`；`_set_instance_options` 在连接时设置 option 4。 |
+| `Connect.KillAdbOnExit` / instance option `5` | 退出释放 ADB | 已覆盖 | UI 保存 `kill_adb_on_exit`；`_set_instance_options` 在连接时设置 option 5。 |
+| `Connect.TouchMode` / instance option `2` | `minitouch/maatouch/adb/MaaFwAdb` | 已覆盖 | UI 保存触控模式；`_set_instance_options` 用 `TOUCH_MODE_ALIASES` 规范化后设置 option 2。 |
+| instance option `3 DeploymentWithPause` | 自动战斗/肉鸽/保全暂停下干员 | 已覆盖 | UI 保存 `deployment_with_pause`；`_set_instance_options` 在连接时设置 option 3。 |
 | instance option `6 ClientType` | 连接前设置客户端类型 | 已覆盖 | official adapter 设置 `CLIENT_TYPE_OPTION=6`。 |
 | AttachWindow `UseAttachWindow/ScreencapMethod/MouseMethod/KeyboardMethod` | PC 附加窗口 | Web 不适用 | 当前无 native helper。 |
 

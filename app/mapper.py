@@ -265,6 +265,8 @@ def _map_fight_reporting(params: dict[str, Any]) -> None:
         params["client_type"] = _normalize_client_type(params.get("client_type"))
     if "use_remaining_sanity_stage" in params:
         params["use_remaining_sanity_stage"] = bool(params.get("use_remaining_sanity_stage", False))
+    if "remaining_sanity_stage" in params:
+        params["remaining_sanity_stage"] = _normalize_stage_str(str(params.get("remaining_sanity_stage", "")))
 
 
 def _map_recruit(params: dict[str, Any]) -> None:
