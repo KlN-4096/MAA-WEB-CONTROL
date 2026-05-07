@@ -44,6 +44,9 @@ const SETTINGS_PERSISTED_FIELDS = [
   "adbAddress",
   "adbPath",
   "touchMode",
+  "deploymentWithPause",
+  "adbLiteEnabled",
+  "killAdbOnExit",
   "autoDetectConnection",
   "detectEveryTime",
   "ldExtrasEnabled",
@@ -84,6 +87,9 @@ const SETTINGS_STATE = {
   adbAddress: "127.0.0.1:5555",
   adbPath: "adb",
   touchMode: "Minitouch（默认）",
+  deploymentWithPause: false,
+  adbLiteEnabled: false,
+  killAdbOnExit: false,
   autoDetectConnection: false,
   detectEveryTime: true,
   ldExtrasEnabled: true,
@@ -150,6 +156,9 @@ function restoreSettingsState() {
     "enablePenguin",
     "autoDetectConnection",
     "detectEveryTime",
+    "deploymentWithPause",
+    "adbLiteEnabled",
+    "killAdbOnExit",
     "ldExtrasEnabled",
     "ldManualIndex",
     "mumuExtrasEnabled",
@@ -343,8 +352,8 @@ function renderGameSection() {
     ${fieldRow("客户端类型", selectBox(clientOptions, clientType, "clientType"))}
     ${yostarTip}
     ${overseasTip}
+    ${checkLine("划火柴模式（自动战斗相关）（不稳定，暂不推荐开启）", false, "", "deploymentWithPause")}
     <p class="settingsGlobalTip">以下选项暂未接入 Web 版：</p>
-    ${checkLine("划火柴模式（自动战斗相关）（不稳定，暂不推荐开启）", false, "", "", true)}
     ${fieldRow("开始前脚本", textBox("Example: \"C:\\\\1.cmd\" -minimized", "settingsControlXL", "", " disabled"))}
     ${fieldRow("结束后脚本", textBox("Example: \"C:\\\\1.cmd\" -noWindow", "settingsControlXL", "", " disabled"))}
     <div class="settingsInlinePair">${checkLine("自动战斗时启用上述脚本", false, "", "", true)}${checkLine("手动暂停时启用上述脚本", false, "", "", true)}</div>
@@ -381,7 +390,7 @@ function renderConnectionSection() {
     ${isMumu ? checkLine("MuMu 网络桥接模式", false, "", "mumuBridge", true) : ""}
     ${isMumu && SETTINGS_STATE.mumuBridge ? fieldRow("MuMu 实例编号", numberBox("0", "settingsControlS", "", " disabled")) : ""}
     ${fieldRow("触控模式", selectBox(["Minitouch（默认）", "MaaTouch（实验功能）", "ADB Input（不推荐使用）", "MaaFramework（实验功能）"], SETTINGS_STATE.touchMode, "touchMode"))}
-    <div class="settingsInlinePair">${checkLine("退出时释放 ADB", true, "", "", true)}${checkLine("使用 ADB Lite（实验性功能）", false, "", "", true)}</div>
+    <div class="settingsInlinePair">${checkLine("退出时释放 ADB", false, "", "killAdbOnExit")}${checkLine("使用 ADB Lite（实验性功能）", false, "", "adbLiteEnabled")}</div>
     <p class="settingsGlobalTip">以下选项暂未接入 Web 版：</p>
     ${checkLine("ADB 连接失败时尝试启动模拟器", true, "连接失败后自动启动模拟器。", "", true)}
     ${checkLine("连接失败后尝试重启 ADB Server", true, "", "", true)}
@@ -816,6 +825,10 @@ function syncSettingsFromProfile() {
     : (adb.client_type || SETTINGS_STATE.clientType);
   SETTINGS_STATE.adbAddress = adb.address || SETTINGS_STATE.adbAddress;
   SETTINGS_STATE.adbPath = adb.adb_path || SETTINGS_STATE.adbPath;
+  SETTINGS_STATE.touchMode = adb.touch_mode || SETTINGS_STATE.touchMode;
+  SETTINGS_STATE.deploymentWithPause = Boolean(adb.deployment_with_pause);
+  SETTINGS_STATE.adbLiteEnabled = Boolean(adb.adb_lite_enabled);
+  SETTINGS_STATE.killAdbOnExit = Boolean(adb.kill_adb_on_exit);
   SETTINGS_STATE.connectConfig = profileConnectPreset(adb.connect_config) || SETTINGS_STATE.connectConfig;
   const ld = adb.ld_player_extras;
   if (ld && typeof ld === "object") {
@@ -827,7 +840,7 @@ function syncSettingsFromProfile() {
   if (startup) {
     SETTINGS_STATE.autoDetectConnection = startup.auto_detect ?? SETTINGS_STATE.autoDetectConnection;
     SETTINGS_STATE.detectEveryTime = startup.detect_every_time ?? SETTINGS_STATE.detectEveryTime;
-    SETTINGS_STATE.touchMode = startup.touch_mode || SETTINGS_STATE.touchMode;
+    if (!adb.touch_mode) SETTINGS_STATE.touchMode = startup.touch_mode || SETTINGS_STATE.touchMode;
   }
 }
 
@@ -849,6 +862,10 @@ function applySettingsToProfile() {
   state.profile.adb.client_type = clientType;
   state.profile.adb.address = SETTINGS_STATE.adbAddress;
   state.profile.adb.adb_path = SETTINGS_STATE.adbPath;
+  state.profile.adb.touch_mode = SETTINGS_STATE.touchMode;
+  state.profile.adb.deployment_with_pause = Boolean(SETTINGS_STATE.deploymentWithPause);
+  state.profile.adb.adb_lite_enabled = Boolean(SETTINGS_STATE.adbLiteEnabled);
+  state.profile.adb.kill_adb_on_exit = Boolean(SETTINGS_STATE.killAdbOnExit);
   state.profile.adb.connect_config = { preset: SETTINGS_STATE.connectConfig };
   state.profile.adb.ld_player_extras = {
     enabled: SETTINGS_STATE.ldExtrasEnabled,

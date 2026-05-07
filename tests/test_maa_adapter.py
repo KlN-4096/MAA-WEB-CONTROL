@@ -220,6 +220,10 @@ class OfficialMaaAdapterTest(unittest.IsolatedAsyncioTestCase):
                     address="127.0.0.1:5555",
                     adb_path="adb",
                     connect_config={"preset": "ProfileConfig"},
+                    touch_mode="maatouch",
+                    deployment_with_pause=True,
+                    adb_lite_enabled=True,
+                    kill_adb_on_exit=True,
                 ),
             )
 
@@ -235,7 +239,13 @@ class OfficialMaaAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(started)
         self.assertTrue(stopped)
         self.assertEqual(FakeAsst.load_calls[0][0], Path("D:/MAA"))
-        self.assertEqual(fake.instance_option_calls, [(6, "Official")])
+        self.assertEqual(fake.instance_option_calls, [
+            (2, "maatouch"),
+            (3, "1"),
+            (4, "1"),
+            (5, "1"),
+            (6, "Official"),
+        ])
         self.assertEqual(fake.connect_calls, [("adb", "127.0.0.1:5555", "ProfileConfig")])
         self.assertEqual(fake.append_calls, [("Award", {"enable": True})])
         self.assertEqual(fake.start_calls, 1)

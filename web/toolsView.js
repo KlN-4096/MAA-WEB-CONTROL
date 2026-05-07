@@ -84,6 +84,11 @@ const TOOLS_STATE = {
   secretEvent: "",
   miniRunning: false,
   miniDropdownOpen: false,
+  depotItems: [],
+  depotDone: false,
+  operOwnList: [],
+  operNotOwnList: [],
+  operDone: false,
   ...restoreToolsState()
 };
 
@@ -214,17 +219,44 @@ function renderOperBoxTool() {
 }
 
 function renderOperTabs() {
+  const own = TOOLS_STATE.operOwnList;
+  const notOwn = TOOLS_STATE.operNotOwnList;
+  if (!own.length && !notOwn.length) {
+    return `<section class="nestedToolPanel emptyResultPanel" aria-label="干员识别结果"></section>`;
+  }
+  const list = TOOLS_STATE.operListTab === "have" ? own : notOwn;
+  const tabs = [
+    { key: "have", label: `已拥有 (${own.length})` },
+    { key: "notHave", label: `未拥有 (${notOwn.length})` },
+  ];
+  const tabButtons = tabs.map(({ key, label }) =>
+    `<button class="nestedTab${TOOLS_STATE.operListTab === key ? " active" : ""}" type="button" data-tools-oper-tab="${key}">${escapeHtml(label)}</button>`
+  ).join("");
+  const rows = list.slice(0, 200).map((op) => {
+    const star = "★".repeat(Math.max(0, (op.rarity ?? 0) + 1));
+    const elite = op.elite != null ? `精${op.elite}` : "";
+    const lv = op.level != null ? `Lv${op.level}` : "";
+    return `<div class="operRow"><span class="operName">${escapeHtml(op.name || "")}</span><span class="operMeta">${escapeHtml([star, elite, lv].filter(Boolean).join(" "))}</span></div>`;
+  }).join("");
+  const overflow = list.length > 200 ? `<p class="overflowNote">...仅显示前 200 项，共 ${list.length} 项</p>` : "";
   return `
-    <section class="nestedToolPanel emptyResultPanel" aria-label="干员识别结果"></section>
+    <section class="nestedToolPanel" aria-label="干员识别结果">
+      <div class="nestedTabs">${tabButtons}</div>
+      <div class="operList">${rows}${overflow}</div>
+    </section>
   `;
 }
 
 function renderDepotTool() {
+  const items = TOOLS_STATE.depotItems;
+  const depotGrid = items.length
+    ? `<div class="cardGrid depotGrid" aria-label="仓库识别结果">${items.map(renderDepotItem).join("")}</div>`
+    : `<div class="cardGrid depotGrid emptyResultPanel" aria-label="仓库识别结果"></div>`;
   return `
     <div class="toolsGrid resultTool">
       ${syncLine("上次同步时间", TOOLS_STATE.depotSyncTime)}
       <p class="toolsInfo centered">${escapeHtml(TOOLS_STATE.depotInfo)}</p>
-      <div class="cardGrid depotGrid emptyResultPanel" aria-label="仓库识别结果"></div>
+      ${depotGrid}
       <div class="toolButtonRow wide">
         <button class="toolBigButton" type="button" data-tools-action="exportArkplanner"${unavailableAttr("tools")}>导出至企鹅物流刷图规划</button>
         <button class="toolBigButton" type="button" data-tools-action="exportLolicon"${unavailableAttr("tools")}>导出至明日方舟工具箱</button>
@@ -232,6 +264,12 @@ function renderDepotTool() {
       </div>
     </div>
   `;
+}
+
+function renderDepotItem(item) {
+  const name = escapeHtml(item.itemName || item.itemId || "未知");
+  const count = item.count != null ? item.count : 0;
+  return `<div class="depotItem"><span class="depotItemName">${name}</span><span class="depotItemCount">${count}</span></div>`;
 }
 
 function renderGachaTool() {
@@ -377,8 +415,28 @@ function runToolAction(action) {
   if (action === "startRecruit") TOOLS_STATE.recruitInfo = "正在识别……";
   if (action === "startOper") TOOLS_STATE.operInfo = "正在识别……";
   if (action === "startDepot") TOOLS_STATE.depotInfo = "正在识别……";
-  if (action === "copyOper") TOOLS_STATE.operInfo = "已复制到剪切板";
-  if (action === "exportArkplanner" || action === "exportLolicon") TOOLS_STATE.depotInfo = "已复制到剪切板";
+  if (action === "copyOper") {
+    const list = TOOLS_STATE.operListTab === "have" ? TOOLS_STATE.operOwnList : TOOLS_STATE.operNotOwnList;
+    const text = list.map((op) => op.name || "").filter(Boolean).join("\n");
+    if (navigator.clipboard?.writeText && text) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+    TOOLS_STATE.operInfo = text ? "已复制到剪切板" : "暂无数据，请先识别";
+  }
+  if (action === "exportArkplanner") {
+    const text = buildDepotExportText("arkplanner");
+    if (navigator.clipboard?.writeText && text) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+    TOOLS_STATE.depotInfo = text ? "已复制（企鹅物流格式）" : "暂无数据，请先识别";
+  }
+  if (action === "exportLolicon") {
+    const text = buildDepotExportText("lolicon");
+    if (navigator.clipboard?.writeText && text) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+    TOOLS_STATE.depotInfo = text ? "已复制（明日方舟工具箱格式）" : "暂无数据，请先识别";
+  }
   if (action === "agreeGacha") TOOLS_STATE.gachaDisclaimer = false;
   if (action === "gachaOnce" || action === "gachaTen") TOOLS_STATE.gachaInfo = GACHA_TIPS[Math.floor(Math.random() * GACHA_TIPS.length)];
   if (action === "togglePeep") { TOOLS_STATE.peeping = !TOOLS_STATE.peeping; managePeepConnection(); }
@@ -490,6 +548,53 @@ function fireToolBackend(action) {
     if (action === "startDepot") TOOLS_STATE.depotInfo = msg;
     renderToolsView();
   });
+}
+
+function handleToolEvent(event) {
+  if (!event || !event.type) return;
+  if (event.type === "maa.tools.depot") {
+    const detail = event.detail || {};
+    TOOLS_STATE.depotItems = Array.isArray(detail.items) ? detail.items : [];
+    TOOLS_STATE.depotDone = Boolean(detail.done);
+    TOOLS_STATE.depotSyncTime = new Date().toLocaleTimeString();
+    TOOLS_STATE.depotInfo = TOOLS_STATE.depotDone
+      ? `识别完成，共 ${TOOLS_STATE.depotItems.length} 种物品`
+      : "识别中…";
+    if (typeof state !== "undefined" && state.currentView === "tools" && TOOLS_STATE.tab === 2) {
+      renderToolsView();
+    }
+    return;
+  }
+  if (event.type === "maa.tools.operbox") {
+    const detail = event.detail || {};
+    TOOLS_STATE.operOwnList = Array.isArray(detail.own_oper) ? detail.own_oper : [];
+    TOOLS_STATE.operNotOwnList = Array.isArray(detail.not_own_oper) ? detail.not_own_oper : [];
+    TOOLS_STATE.operDone = Boolean(detail.done);
+    TOOLS_STATE.operSyncTime = new Date().toLocaleTimeString();
+    TOOLS_STATE.operInfo = TOOLS_STATE.operDone
+      ? `识别完成，已拥有 ${TOOLS_STATE.operOwnList.length} 人`
+      : "识别中…";
+    if (typeof state !== "undefined" && state.currentView === "tools" && TOOLS_STATE.tab === 1) {
+      renderToolsView();
+    }
+    return;
+  }
+}
+
+function buildDepotExportText(format) {
+  const items = TOOLS_STATE.depotItems;
+  if (!items.length) return "";
+  if (format === "arkplanner") {
+    const obj = {};
+    items.forEach((item) => { if (item.itemId) obj[item.itemId] = item.count || 0; });
+    return JSON.stringify(obj);
+  }
+  if (format === "lolicon") {
+    const obj = { items: {} };
+    items.forEach((item) => { if (item.itemId) obj.items[item.itemId] = item.count || 0; });
+    return JSON.stringify(obj);
+  }
+  return "";
 }
 
 function managePeepConnection() {

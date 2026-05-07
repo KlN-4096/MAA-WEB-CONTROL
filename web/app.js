@@ -657,6 +657,8 @@ function addLogItem(item) {
   if (rawLogExpanded) renderRawLogs();
   if (event.type?.startsWith("maa.log.")) {
     handleMaaLogEvent(event);
+  } else if (event.type?.startsWith("maa.tools.") && typeof handleToolEvent === "function") {
+    handleToolEvent(event);
   } else if (!shouldUseCardLog()) {
     renderLogs();
   }

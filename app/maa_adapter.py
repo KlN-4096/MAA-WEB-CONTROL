@@ -19,6 +19,10 @@ from .runner import DryRunMaaAdapter, MaaAdapter
 
 
 DEFAULT_MAA_PYTHON_DIR = Path(r"E:\Project\C\MaaAssistantArknights\src\Python")
+TOUCH_MODE_OPTION = 2
+DEPLOYMENT_WITH_PAUSE_OPTION = 3
+ADB_LITE_ENABLED_OPTION = 4
+KILL_ADB_ON_EXIT_OPTION = 5
 CLIENT_TYPE_OPTION = 6
 SCREENSHOT_BUFFER_SIZE = 32 * 1024 * 1024
 LOG_THUMBNAIL_CAPTURE_DELAY = 0.4
@@ -160,7 +164,7 @@ class OfficialMaaAdapter:
             self._log_service.set_thumbnail_callback(self._schedule_thumbnail_capture)
         try:
             self._set_connection_extras(profile, asst_cls)
-            self._set_client_type_option(profile)
+            self._set_instance_options(profile)
             return bool(
                 self._asst.connect(
                     profile.adb.adb_path,
@@ -183,13 +187,20 @@ class OfficialMaaAdapter:
         extras: dict[str, Any] = {"path": ld.path, "index": index, "pid": pid}
         set_extras("LDPlayer", extras)
 
-    def _set_client_type_option(self, profile: Profile) -> None:
-        client_type = _normalize_client_type(profile.adb.client_type)
+    def _set_instance_options(self, profile: Profile) -> None:
         setter = getattr(self._asst, "set_instance_option", None)
         if not callable(setter):
             raise RuntimeError("MaaCore set_instance_option is not available.")
-        if setter(CLIENT_TYPE_OPTION, client_type) is False:
-            raise RuntimeError(f"MaaCore rejected client type: {client_type}")
+        options = [
+            (TOUCH_MODE_OPTION, _normalize_touch_mode(profile.adb.touch_mode), "touch mode"),
+            (DEPLOYMENT_WITH_PAUSE_OPTION, _bool_option(profile.adb.deployment_with_pause), "deployment with pause"),
+            (ADB_LITE_ENABLED_OPTION, _bool_option(profile.adb.adb_lite_enabled), "ADB Lite"),
+            (KILL_ADB_ON_EXIT_OPTION, _bool_option(profile.adb.kill_adb_on_exit), "kill ADB on exit"),
+            (CLIENT_TYPE_OPTION, _normalize_client_type(profile.adb.client_type), "client type"),
+        ]
+        for key, value, label in options:
+            if setter(key, value) is False:
+                raise RuntimeError(f"MaaCore rejected {label}: {value}")
 
     def _load_resources(self, asst_cls: type[Any], profile: Profile) -> bool:
         if not asst_cls.load(self._core_dir, user_dir=self._user_dir):
@@ -393,8 +404,44 @@ class OfficialMaaAdapter:
                       color_key="InfoLogBrush", raw=raw_detail)
             return
 
-        if extra_what in {"SanityBeforeStage", "FightTimes", "PenguinId", "Depot", "OperBox"}:
-            return  # data-only or handled elsewhere, no log entry
+        if extra_what in {"SanityBeforeStage", "FightTimes", "PenguinId"}:
+            return  # data-only, no log entry
+
+        if extra_what == "Depot":
+            items = d.get("items") or []
+            done = bool(d.get("done", False))
+            if items:
+                lines = [
+                    f"{item.get('itemName') or item.get('itemId') or '未知'} × {item.get('count', 0)}"
+                    for item in items
+                ]
+                preview = lines[:30]
+                text = "仓库识别完成:\n" + "\n".join(preview)
+                if len(items) > 30:
+                    text += f"\n...共 {len(items)} 种"
+            else:
+                text = "仓库识别完成（无物品）" if done else "仓库识别中…"
+            ls.append(text, color_key="InfoLogBrush", split_mode="Before",
+                      tooltip={"kind": "depot", "items": items, "done": done}, raw=raw_detail)
+            self._publish_callback_event(EventRecord.now(
+                "maa.tools.depot", "仓库识别完成", level="info",
+                detail={"done": done, "items": items},
+            ))
+            return
+
+        if extra_what == "OperBox":
+            own = d.get("own_oper") or []
+            not_own = d.get("not_own_oper") or []
+            done = bool(d.get("done", False))
+            text = f"干员识别完成: 已拥有 {len(own)} 人，未拥有 {len(not_own)} 人" if done else "干员识别中…"
+            ls.append(text, color_key="InfoLogBrush", split_mode="Before",
+                      tooltip={"kind": "operbox", "own_count": len(own), "not_own_count": len(not_own), "done": done},
+                      raw=raw_detail)
+            self._publish_callback_event(EventRecord.now(
+                "maa.tools.operbox", "干员识别完成", level="info",
+                detail={"done": done, "own_oper": own, "not_own_oper": not_own},
+            ))
+            return
 
         # ── 公招 ──────────────────────────────────────────────────────────────
         if extra_what == "RecruitTagsDetected":
@@ -767,6 +814,25 @@ def _decode_callback_details(details: Any) -> Any:
 
 def _normalize_client_type(value: Any) -> str:
     return normalize_client_type(value)
+
+
+TOUCH_MODE_ALIASES = {
+    "Minitouch（默认）": "minitouch",
+    "MaaTouch（实验功能）": "maatouch",
+    "ADB Input（不推荐使用）": "adb",
+    "MaaFramework（实验功能）": "MaaFwAdb",
+    "maaframework": "MaaFwAdb",
+    "maafwadb": "MaaFwAdb",
+}
+
+
+def _normalize_touch_mode(value: Any) -> str:
+    text = str(value or "minitouch").strip()
+    return TOUCH_MODE_ALIASES.get(text, TOUCH_MODE_ALIASES.get(text.lower(), text or "minitouch"))
+
+
+def _bool_option(value: Any) -> str:
+    return "1" if bool(value) else "0"
 
 
 def _callback_what(details: Any) -> str:

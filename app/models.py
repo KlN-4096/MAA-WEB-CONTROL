@@ -29,6 +29,10 @@ class AdbConfig(BaseModel):
     address: str = "127.0.0.1:5555"
     adb_path: str = "adb"
     client_type: str = "Official"
+    touch_mode: str = "minitouch"
+    deployment_with_pause: bool = False
+    adb_lite_enabled: bool = False
+    kill_adb_on_exit: bool = False
     connect_config: dict[str, Any] = Field(default_factory=dict)
     ld_player_extras: LdPlayerExtras = Field(default_factory=LdPlayerExtras)
 
@@ -136,6 +140,36 @@ class CopilotJob(BaseModel):
     path: str = ""
     formation: int = 0
     loop_times: int = 1
+
+
+class CopilotListItem(BaseModel):
+    filename: str
+    stage_name: str = ""
+    is_raid: bool = False
+
+
+class UserAdditionalOperator(BaseModel):
+    name: str
+    skill: int = 1
+
+
+class CopilotStartRequest(BaseModel):
+    name: str = ""
+    task_type: Literal["Copilot", "SSSCopilot", "ParadoxCopilot"] = "Copilot"
+    filename: str = ""
+    copilot_list: list[CopilotListItem] = Field(default_factory=list)
+    paradox_list: list[str] = Field(default_factory=list, alias="list")
+    loop_times: int = 1
+    use_sanity_potion: bool = False
+    formation: bool = False
+    formation_index: int = 0
+    add_trust: bool = False
+    ignore_requirements: bool = False
+    support_unit_usage: int = 0
+    support_unit_name: str = ""
+    user_additional: list[UserAdditionalOperator] = Field(default_factory=list)
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ToolRequest(BaseModel):

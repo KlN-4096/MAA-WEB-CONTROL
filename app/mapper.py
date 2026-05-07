@@ -370,8 +370,11 @@ def _map_roguelike(params: dict[str, Any]) -> None:
         params["investments_count"] = _int_or_default(
             params.get("investments_count", params.get("invest_count")), 999
         )
-    if "invest_with_more_score" in params:
-        params["invest_with_more_score"] = bool(params.get("invest_with_more_score", False))
+    if "investment_with_more_score" in params or "invest_with_more_score" in params:
+        params["investment_with_more_score"] = bool(
+            params.get("investment_with_more_score", params.get("invest_with_more_score", False))
+        )
+        params.pop("invest_with_more_score", None)
     if "stop_when_investment_full" in params or "stop_when_deposit_full" in params:
         params["stop_when_investment_full"] = bool(
             params.get("stop_when_investment_full", params.get("stop_when_deposit_full", False))

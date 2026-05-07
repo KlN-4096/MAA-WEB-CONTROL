@@ -1,6 +1,6 @@
 # 原版 MAA 功能与当前 Web 项目缺口对比
 
-生成日期：2026-05-06
+生成日期：2026-05-07（最近更新：2026-05-07）
 
 对照范围：
 
@@ -30,7 +30,7 @@
 | `ParadoxCopilot` 悖论模拟 | 未覆盖 | 有 UI tab，但后端没有 append `ParadoxCopilot`，也没有 `filename/list` 参数模型。 |
 | `SingleStep` | 未覆盖 | 无 UI/API/mapper 白名单。 |
 | `VideoRecognition` | 未覆盖 | 无 UI/API/mapper；原版核心协议仍保留该任务。 |
-| `Depot/OperBox/RecruitCalc` 工具 | 部分覆盖 | 后端能 append 工具任务，但结果解析、导出、持久化和 UI 展示基本缺失。 |
+| `Depot/OperBox/RecruitCalc` 工具 | 部分覆盖 | Depot/OperBox 结果解析和前端展示已实现；RecruitCalc 结果解析、持久化仍不完整。 |
 | `Gacha/MiniGame/Peep` 工具 | 部分覆盖 | Gacha/MiniGame 通过 `Custom` 发起；MiniGame 列表硬编码，缺原版动态活动列表；Peep 有截图流但不是完整原版工具数据流。 |
 | 远程控制协议 | 仅 UI | 设置页禁用展示，没有轮询获取任务、汇报任务、身份配置执行逻辑。 |
 | 外部通知 | 仅 UI | 只显示未实现提示，无 SMTP/ServerChan/Discord/DingTalk/Telegram/Bark/Qmsg/Gotify/Webhook 实现。 |
@@ -186,32 +186,32 @@
 | `roles` | 开局职业组 | 已覆盖 | UI 和 mapper 支持。 |
 | `core_char` | 开局干员 | 已覆盖 | UI `operator`，mapper 转 `core_char`。 |
 | `use_support` | 开局干员助战 | 已覆盖 | UI `use_support_unit`，mapper 转 `use_support`。 |
-| `use_nonfriend_support` | 非好友助战 | 仅后端 | mapper 支持；UI 无控件。 |
+| `use_nonfriend_support` | 非好友助战 | 已覆盖 | UI 有复选框，mapper 支持。 |
 | `starts_count` | 探索次数 | 已覆盖 | UI 和 mapper 支持。 |
 | `difficulty` | 难度 | 已覆盖 | UI 和 mapper 支持。 |
 | `stop_at_final_boss` | 五层 BOSS 前暂停 | 已覆盖 | UI 和 mapper 支持。 |
 | `stop_at_max_level` | 满级停止 | 已覆盖 | UI 和 mapper 支持。 |
 | `investment_enabled` | 投资源石锭 | 已覆盖 | UI 和 mapper 支持。 |
-| `investments_count` | 投资次数 | 仅后端 | mapper 支持；UI 无输入。 |
-| `stop_when_investment_full` | 投资满停止 | 仅后端 | mapper 支持；UI 无控件。 |
-| `investment_with_more_score` | 投资后购物 | 仅后端/字段名偏差 | mapper 支持 `invest_with_more_score`，但原版字段是 `investment_with_more_score`；UI 无控件。 |
-| `start_with_elite_two` | 凹开局精二直升 | 仅后端 | mapper 支持；UI 无控件。 |
-| `only_start_with_elite_two` | 只凹精二直升 | 仅后端 | mapper 支持；UI 无控件。 |
-| `refresh_trader_with_dice` | 水月骰子刷商店 | 仅后端 | mapper 支持；UI 无控件。 |
-| `first_floor_foldartal` | 萨米第一层远见密文板 | 仅后端 | mapper 支持；UI 无控件。 |
-| `start_foldartal_list` | 萨米生活队开局密文板列表 | 未覆盖 | mapper 支持的是 `first_floor_foldartals/sami_first_floor_foldartals`，与原版 `start_foldartal_list` 不一致。 |
+| `investments_count` | 投资次数 | 已覆盖 | UI 有数字输入，mapper 支持。 |
+| `stop_when_investment_full` | 投资满停止 | 已覆盖 | UI 有复选框，mapper 支持。 |
+| `investment_with_more_score` | 投资后购物 | 已覆盖 | mapper 已修正字段名为 `investment_with_more_score`（原 bug：`invest_with_more_score`）；UI 有复选框。 |
+| `start_with_elite_two` | 凹开局精二直升 | 已覆盖 | UI 有复选框，mapper 支持。 |
+| `only_start_with_elite_two` | 只凹精二直升 | 已覆盖 | UI 有条件显示的复选框（仅 start_with_elite_two 启用时展示），mapper 支持。 |
+| `refresh_trader_with_dice` | 水月骰子刷商店 | 已覆盖 | UI 仅水月主题时显示复选框，mapper 支持。 |
+| `first_floor_foldartal` | 萨米第一层远见密文板 | 已覆盖 | UI 仅萨米主题时显示复选框，mapper 支持。 |
+| `start_foldartal_list` / `first_floor_foldartals` | 萨米生活队开局密文板列表 | 已覆盖 | UI 逗号分隔输入，mapper 接受 `first_floor_foldartals` 并转为 list；与原版 `start_foldartal_list` 字段名不同但语义覆盖。 |
 | `collectible_mode_start_list` | 凹开局奖励对象 | 未覆盖 | mapper/UI 未处理。 |
 | `use_foldartal` | 是否使用密文板 | 未覆盖 | mapper/UI 未处理。 |
 | `check_collapsal_paradigms` | 是否检测坍缩范式 | 未覆盖 | mapper/UI 未处理。 |
 | `double_check_collapsal_paradigms` | 防漏检测 | 未覆盖 | mapper/UI 未处理。 |
-| `expected_collapsal_paradigms` | 期望坍缩范式 | 仅后端 | mapper 支持；UI 无控件。 |
+| `expected_collapsal_paradigms` | 期望坍缩范式 | 已覆盖 | UI 仅萨卡兹主题时显示逗号分隔输入，mapper 和测试均覆盖。 |
 | `monthly_squad_auto_iterate` | 月度小队自动切换 | 仅后端 | mapper 支持；UI 无控件。 |
 | `monthly_squad_check_comms` | 月度通信作为切换依据 | 仅后端 | mapper 支持；UI 无控件。 |
 | `deep_exploration_auto_iterate` | 深入调查自动切换 | 仅后端 | mapper 支持；UI 无控件。 |
 | `collectible_mode_shopping` | 烧水启用购物 | 未覆盖 | mapper/UI 未处理。 |
 | `collectible_mode_squad` | 烧水分队 | 未覆盖 | mapper/UI 未处理。 |
 | `find_playTime_target` | 界园常乐节点目标 | 未覆盖 | mapper/UI 未处理。 |
-| `start_with_seed`/`seed` | 固定种子刷钱 | 部分覆盖 | UI 只有布尔开关；mapper 可接受 `seed` 字符串，但 UI 无种子输入，且字段语义需统一。 |
+| `start_with_seed`/`seed` | 固定种子刷钱 | 已覆盖 | UI 有布尔开关和种子文本输入框，mapper 支持 `seed` 字符串透传。 |
 | `delay_abort` | WPF 多任务共用停止延迟 | 仅 UI | UI 保存，mapper 未传递或转为 MaaCore instance option。 |
 
 ### `Reclamation`
@@ -315,8 +315,8 @@
 | 原版工具/配置 | 当前状态 | 缺口 |
 |---|---|---|
 | 公招识别 `RecruitCalc` | 部分覆盖 | 后端 append `RecruitCalc`；UI 可配置星级/时间/潜能显示，但结果解析、潜能联动、历史数据不完整。 |
-| 干员识别 `OperBox` | 部分覆盖 | 后端 append `OperBox`；UI 没有真正解析 `OperBoxInfo` 为已拥有/未拥有列表，也没有持久化/导出等原版数据流。 |
-| 仓库识别 `Depot` | 部分覆盖 | 后端 append `Depot`；UI 没有解析仓库结果，导出企鹅物流刷图规划/明日方舟工具箱目前是本地提示。 |
+| 干员识别 `OperBox` | 已覆盖 | 后端解析 `OperBoxInfo` callback，EventBus 广播 `maa.tools.operbox` 事件；前端实时展示已拥有/未拥有列表，支持文本导出。持久化跨会话仍未实现。 |
+| 仓库识别 `Depot` | 已覆盖 | 后端解析 `Depot` callback，EventBus 广播 `maa.tools.depot` 事件；前端实时展示物品网格，支持 arkplanner/lolicon JSON 格式导出。持久化跨会话仍未实现。 |
 | 抽卡 `GachaOnce/GachaTenTimes` | 部分覆盖 | 后端用 `Custom.task_names` 发起；免责声明“下次不再提示”和成就联动未完整实现。 |
 | Peep/牛牛监控 | 部分覆盖 | 当前有 `/api/peep` 截图流和 FPS；原版相关状态、工具联动、截图输入能力未完整对齐。 |
 | MiniGame | 部分覆盖 | 后端用 `Custom.task_names` 发起；列表硬编码，缺原版 `StageManager.MiniGameEntries` 动态活动解析；`SecretFront` 参数拼接语义也不完全一致。 |
@@ -498,8 +498,11 @@
 
 ## 高优先级缺口建议
 
-1. 先补“看起来已可用但参数未真正传递”的字段：`Copilot` 多作业/自动编队细项、`Recruit` extra tag 策略和上报字段、`Roguelike` 投资/坍缩/密文板字段。
-2. 连接层补齐 MaaCore instance option：`TouchMode`、`DeploymentWithPause`、`AdbLiteEnabled`、`KillAdbOnExit`，并明确哪些 Web 环境不支持。
-3. 工具页补结果解析：`RecruitCalc`、`Depot`、`OperBox` callback 数据应落到前端状态和持久化数据，而不是只显示“请求已发送”。
-4. 自动战斗页按 task type 分流：主线 `Copilot`、保全 `SSSCopilot`、悖论 `ParadoxCopilot`，不要所有 tab 共用 `/api/copilot/run` 的简化模型。
-5. 把设置页“禁用展示”的项目拆成三类：后端可实现、需要 native helper、纯桌面不适用，避免后续误认为已经接入。
+> 2026-05-07 更新：已完成 Roguelike 投资/坍缩/密文板/种子 UI 字段补齐、`investment_with_more_score` 字段名 bug 修复、Depot/OperBox callback 解析与前端实时展示。
+
+1. ✅ ~~先补”看起来已可用但参数未真正传递”的字段：Roguelike 投资/坍缩/密文板字段。~~ **已完成**
+2. **仍待处理**：`Copilot` 多作业/自动编队细项（`copilot_list`、`formation_index`、`user_additional`）、`Recruit` extra tag 策略和上报字段。
+3. 连接层补齐 MaaCore instance option：`TouchMode`、`DeploymentWithPause`、`AdbLiteEnabled`、`KillAdbOnExit`，并明确哪些 Web 环境不支持。
+4. ✅ ~~工具页补结果解析：`Depot`、`OperBox` callback 数据已落到前端状态。~~ **已完成**；`RecruitCalc` 结果解析仍待处理。
+5. 自动战斗页按 task type 分流：主线 `Copilot`、保全 `SSSCopilot`、悖论 `ParadoxCopilot`，不要所有 tab 共用 `/api/copilot/run` 的简化模型。
+6. 把设置页”禁用展示”的项目拆成三类：后端可实现、需要 native helper、纯桌面不适用，避免后续误认为已经接入。

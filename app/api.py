@@ -19,6 +19,7 @@ from .models import (
     AdapterConfig,
     AppendCall,
     CopilotJob,
+    CopilotStartRequest,
     PostAction,
     Profile,
     RedroidStatus,
@@ -288,24 +289,13 @@ def create_api_router(
 
     # ── Copilot ────────────────────────────────────────────────────
 
+    @router.post("/copilot/start")
+    async def start_copilot(request: CopilotStartRequest):
+        return await _start_copilot(runner, request)
+
     @router.post("/copilot/run")
     async def run_copilot(job: CopilotJob):
-        adapter = runner.adapter
-        copilot_params: dict[str, Any] = {"filename": job.path}
-        if job.formation:
-            copilot_params["formation"] = job.formation
-
-        try:
-            for _ in range(max(1, job.loop_times)):
-                task_id = await adapter.append_task(AppendCall(
-                    task_id=f"copilot-{job.name}",
-                    type="Copilot",
-                    params=copilot_params,
-                ))
-            started = await adapter.start()
-            return {"ok": started, "name": job.name, "loop_times": job.loop_times}
-        except Exception as exc:
-            return {"ok": False, "message": str(exc)}
+        return await _start_copilot(runner, _legacy_copilot_request(job))
 
     @router.post("/copilot/stop")
     async def stop_copilot():
@@ -349,6 +339,107 @@ async def adapter_stop_safe(runner: MaaRunnerService) -> None:
         await runner.adapter.stop()
     except Exception:
         pass
+
+
+async def _start_copilot(runner: MaaRunnerService, request: CopilotStartRequest) -> dict[str, Any]:
+    try:
+        call = _copilot_append_call(request)
+        task_id = await runner.adapter.append_task(call)
+        started = await runner.adapter.start()
+        return {
+            "ok": started,
+            "name": request.name,
+            "task_type": call.type,
+            "task_id": task_id,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        return {"ok": False, "message": str(exc), "task_type": request.task_type}
+
+
+def _legacy_copilot_request(job: CopilotJob) -> CopilotStartRequest:
+    return CopilotStartRequest(
+        name=job.name,
+        filename=job.path,
+        loop_times=max(1, job.loop_times),
+        formation=job.formation > 0,
+        formation_index=job.formation if job.formation > 0 else 0,
+    )
+
+
+def _copilot_append_call(request: CopilotStartRequest) -> AppendCall:
+    params = _copilot_params(request)
+    task_name = request.name or request.filename or request.task_type
+    return AppendCall(task_id=f"copilot-{task_name}", type=request.task_type, params=params)
+
+
+def _copilot_params(request: CopilotStartRequest) -> dict[str, Any]:
+    if request.task_type == "Copilot":
+        return _regular_copilot_params(request)
+    if request.task_type == "SSSCopilot":
+        return _sss_copilot_params(request)
+    if request.task_type == "ParadoxCopilot":
+        return _paradox_copilot_params(request)
+    raise ValueError(f"Unsupported copilot task type: {request.task_type}")
+
+
+def _regular_copilot_params(request: CopilotStartRequest) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    if request.copilot_list:
+        params["copilot_list"] = [_compact_dict(item.model_dump(mode="json")) for item in request.copilot_list]
+    elif request.filename:
+        params["filename"] = request.filename
+    else:
+        raise ValueError("Copilot requires filename or copilot_list.")
+    _add_loop_times(params, request.loop_times)
+    if request.use_sanity_potion:
+        params["use_sanity_potion"] = True
+    if request.formation:
+        params["formation"] = True
+        _add_positive_int(params, "formation_index", request.formation_index)
+    if request.add_trust:
+        params["add_trust"] = True
+    if request.ignore_requirements:
+        params["ignore_requirements"] = True
+    _add_positive_int(params, "support_unit_usage", request.support_unit_usage)
+    if request.support_unit_name:
+        params["support_unit_name"] = request.support_unit_name
+    if request.user_additional:
+        params["user_additional"] = [
+            _compact_dict(item.model_dump(mode="json")) for item in request.user_additional
+        ]
+    return params
+
+
+def _sss_copilot_params(request: CopilotStartRequest) -> dict[str, Any]:
+    if not request.filename:
+        raise ValueError("SSSCopilot requires filename.")
+    params: dict[str, Any] = {"filename": request.filename}
+    _add_loop_times(params, request.loop_times)
+    return params
+
+
+def _paradox_copilot_params(request: CopilotStartRequest) -> dict[str, Any]:
+    if request.paradox_list:
+        return {"list": request.paradox_list}
+    if request.filename:
+        return {"filename": request.filename}
+    raise ValueError("ParadoxCopilot requires filename or list.")
+
+
+def _add_positive_int(params: dict[str, Any], key: str, value: int) -> None:
+    if value > 0:
+        params[key] = value
+
+
+def _add_loop_times(params: dict[str, Any], value: int) -> None:
+    if value > 1:
+        params["loop_times"] = value
+
+
+def _compact_dict(value: dict[str, Any]) -> dict[str, Any]:
+    return {key: item for key, item in value.items() if item not in ("", None, [], {})}
 
 
 def _resolve_run_profile(request: RunRequest, store: ProfileStore) -> Profile:

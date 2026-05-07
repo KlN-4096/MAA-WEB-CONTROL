@@ -13,6 +13,31 @@ from app.storage import ProfileStore
 
 
 class ProfileApiTest(unittest.TestCase):
+    def test_put_profile_persists_adb_instance_options(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store, client = self._client(Path(directory))
+
+            response = client.put("/api/profiles/daily", json={
+                "name": "daily",
+                "adb": {
+                    "address": "127.0.0.1:5555",
+                    "adb_path": "adb",
+                    "client_type": "Official",
+                    "touch_mode": "maatouch",
+                    "deployment_with_pause": True,
+                    "adb_lite_enabled": True,
+                    "kill_adb_on_exit": True,
+                },
+                "tasks": [],
+            })
+            loaded = store.load("daily")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(loaded.adb.touch_mode, "maatouch")
+        self.assertTrue(loaded.adb.deployment_with_pause)
+        self.assertTrue(loaded.adb.adb_lite_enabled)
+        self.assertTrue(loaded.adb.kill_adb_on_exit)
+
     def test_get_profile_keeps_builtin_disabled_tasks_visible(self):
         with tempfile.TemporaryDirectory() as directory:
             store, client = self._client(Path(directory))

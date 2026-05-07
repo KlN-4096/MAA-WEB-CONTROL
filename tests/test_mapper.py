@@ -366,5 +366,39 @@ class TaskMapperTest(unittest.TestCase):
         self.assertEqual([call.task_id for call in calls], ["startup", "award"])
 
 
+    def test_roguelike_invest_with_more_score_outputs_correct_field(self):
+        """invest_with_more_score (UI alias) must be renamed to investment_with_more_score for MaaCore."""
+        task_alias = TaskDefinition(
+            id="roguelike",
+            type="Roguelike",
+            params={"invest_with_more_score": True},
+        )
+        task_official = TaskDefinition(
+            id="roguelike",
+            type="Roguelike",
+            params={"investment_with_more_score": True},
+        )
+
+        call_alias = task_to_append_call(task_alias)
+        call_official = task_to_append_call(task_official)
+
+        self.assertIn("investment_with_more_score", call_alias.params)
+        self.assertNotIn("invest_with_more_score", call_alias.params)
+        self.assertTrue(call_alias.params["investment_with_more_score"])
+        self.assertIn("investment_with_more_score", call_official.params)
+        self.assertTrue(call_official.params["investment_with_more_score"])
+
+    def test_roguelike_expected_collapsal_paradigms_passes_through(self):
+        task = TaskDefinition(
+            id="roguelike",
+            type="Roguelike",
+            params={"expected_collapsal_paradigms": ["深化坚守", "领域"]},
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params["expected_collapsal_paradigms"], ["深化坚守", "领域"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -466,14 +466,36 @@ function renderRoguelikeGeneral(p, escapeHtml) {
 }
 
 function renderRoguelikeAdvanced(p) {
+  const theme = ROGUELIKE_THEMES.includes(p.theme) ? p.theme : "萨卡兹";
+  const isMizuki = theme === "水月";
+  const isSami = theme === "萨米";
+  const isSarkaz = theme === "萨卡兹";
+  const seedValue = escapeHtmlFallback(p.seed || "");
+  const foldartalsValue = escapeHtmlFallback(
+    Array.isArray(p.first_floor_foldartals) ? p.first_floor_foldartals.join(",") : (p.first_floor_foldartals || "")
+  );
+  const collapsal = escapeHtmlFallback(
+    Array.isArray(p.expected_collapsal_paradigms) ? p.expected_collapsal_paradigms.join(",") : (p.expected_collapsal_paradigms || "")
+  );
   return `
     <div class="maaParams wideForm roguelikeAdvanced">
       <span>开始探索 N 次后停止任务</span><input id="paramRoguelikeStarts" type="number" min="0" max="99999" value="${numberValue(p.starts_count, 99999)}" />
       ${checkRow("investment_enabled", "投资源石锭", p.investment_enabled ?? true)}
+      <span>最大投资次数${hint("0 = 不限制", escapeHtmlFallback)}</span><input id="paramRoguelikeInvestCount" type="number" min="0" max="99999" value="${numberValue(p.investments_count, 0)}" />
+      ${checkRow("stop_when_investment_full", "投资满后停止探索", p.stop_when_investment_full)}
+      ${checkRow("investment_with_more_score", `投资后顺带购物${hint("仅刷源石锭策略有效", escapeHtmlFallback)}`, p.investment_with_more_score ?? p.invest_with_more_score)}
       ${checkRow("use_support_unit", `「开局干员」使用助战${hint("需先填写「开局干员」", escapeHtmlFallback)}`, p.use_support_unit, "mutedCheck", true)}
+      ${checkRow("use_nonfriend_support", "允许使用非好友助战", p.use_nonfriend_support)}
       ${checkRow("stop_at_final_boss", "在第五层 BOSS 前暂停", p.stop_at_final_boss)}
       ${checkRow("stop_at_max_level", "满级后自动停止", p.stop_at_max_level)}
       ${checkRow("start_with_seed", "使用指定种子开局", p.start_with_seed)}
+      <span>种子${hint("填写后「使用指定种子开局」自动启用", escapeHtmlFallback)}</span><input id="paramRoguelikeSeed" value="${seedValue}" placeholder="留空则不指定" />
+      ${isMizuki ? checkRow("refresh_trader_with_dice", "水月：用骰子刷新商店", p.refresh_trader_with_dice) : ""}
+      ${isSami ? `${checkRow("first_floor_foldartal", "萨米：第一层使用远见密文板", p.first_floor_foldartal)}
+      <span>萨米：生活队开局密文板${hint("逗号分隔，如：风声,感知,知识", escapeHtmlFallback)}</span><input id="paramRoguelikeFoldartals" value="${foldartalsValue}" placeholder="留空则不指定" />` : ""}
+      ${isSarkaz ? `<span>萨卡兹：期望坍缩范式${hint("逗号分隔，留空则不筛选", escapeHtmlFallback)}</span><input id="paramRoguelikeCollapsal" value="${collapsal}" placeholder="如：深化坚守,领域" />` : ""}
+      ${checkRow("start_with_elite_two", "凹精二直升开局", p.start_with_elite_two)}
+      ${p.start_with_elite_two ? checkRow("only_start_with_elite_two", "仅凹精二直升（不满足则重开）", p.only_start_with_elite_two) : ""}
       <strong class="sectionTitle">以下选项为多任务共用</strong>
       ${checkRow("delay_abort", "自动肉鸽在战斗结束前延迟「停止」动作", p.delay_abort ?? true)}
     </div>
@@ -541,7 +563,9 @@ function syncProfileClientFromStartup(task) {
   const clientType = canonicalClientType(task.params?.client_type);
   state.profile.adb = state.profile.adb || {};
   state.profile.adb.client_type = clientType;
+  if (task.params?.touch_mode) state.profile.adb.touch_mode = task.params.touch_mode;
   if (typeof SETTINGS_STATE !== "undefined") SETTINGS_STATE.clientType = clientType;
+  if (typeof SETTINGS_STATE !== "undefined" && task.params?.touch_mode) SETTINGS_STATE.touchMode = task.params.touch_mode;
 }
 
 function collectParams(type) {
@@ -688,10 +712,29 @@ function collectRoguelikeParams() {
   addValue(params, "operator", "paramRoguelikeOperator", "");
   addNumber(params, "starts_count", "paramRoguelikeStarts", 99999);
   addBool(params, "investment_enabled", "investment_enabled");
+  addNumber(params, "investments_count", "paramRoguelikeInvestCount", 0);
+  addBool(params, "stop_when_investment_full", "stop_when_investment_full");
+  addBool(params, "investment_with_more_score", "investment_with_more_score");
   addBool(params, "use_support_unit", "use_support_unit");
+  addBool(params, "use_nonfriend_support", "use_nonfriend_support");
   addBool(params, "stop_at_final_boss", "stop_at_final_boss");
   addBool(params, "stop_at_max_level", "stop_at_max_level");
   addBool(params, "start_with_seed", "start_with_seed");
+  addValue(params, "seed", "paramRoguelikeSeed", "");
+  addBool(params, "refresh_trader_with_dice", "refresh_trader_with_dice");
+  addBool(params, "first_floor_foldartal", "first_floor_foldartal");
+  const foldartalsEl = $("paramRoguelikeFoldartals");
+  if (foldartalsEl) {
+    const raw = foldartalsEl.value.trim();
+    if (raw) params.first_floor_foldartals = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  const collapsalEl = $("paramRoguelikeCollapsal");
+  if (collapsalEl) {
+    const raw = collapsalEl.value.trim();
+    if (raw) params.expected_collapsal_paradigms = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  addBool(params, "start_with_elite_two", "start_with_elite_two");
+  addBool(params, "only_start_with_elite_two", "only_start_with_elite_two");
   addBool(params, "delay_abort", "delay_abort");
   return hasGeneralFields ? normalizeRoguelikeParams(params) : params;
 }

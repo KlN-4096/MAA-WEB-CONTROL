@@ -50,8 +50,10 @@ const COPILOT_PERSISTED_FIELDS = [
   "ignoreRequirements",
   "useSupportUnit",
   "supportUsage",
+  "supportUnitName",
   "addTrust",
   "addUserAdditional",
+  "userAdditional",
   "useCopilotList",
   "useSanityPotion",
   "loop",
@@ -71,8 +73,10 @@ const COPILOT_STATE = {
   ignoreRequirements: false,
   useSupportUnit: false,
   supportUsage: "1",
+  supportUnitName: "",
   addTrust: false,
   addUserAdditional: false,
+  userAdditional: "",
   useCopilotList: false,
   useSanityPotion: false,
   loop: false,
@@ -95,7 +99,7 @@ function restoreCopilotState() {
   if (!parsed) return {};
   const restored = {};
   if (Number.isInteger(parsed.tab) && parsed.tab >= 0 && parsed.tab < COPILOT_TABS.length) restored.tab = parsed.tab;
-  ["filename", "formationIndex", "supportUsage", "taskName"].forEach((field) => MaaStorage.copyString(parsed, restored, field));
+  ["filename", "formationIndex", "supportUsage", "supportUnitName", "userAdditional", "taskName"].forEach((field) => MaaStorage.copyString(parsed, restored, field));
   [
     "form",
     "useFormation",
@@ -234,9 +238,11 @@ function renderCopilotOptions() {
   const tab = COPILOT_STATE.tab;
   const formVisible = tab === 0 || tab === 3;
   const listEnabled = tab === 0 || tab === 2;
+  const sss = tab === 1;
   return `
     <div class="copilotOptions">
       ${formVisible ? check("form", "自动编队", COPILOT_STATE.form, "自动编队可能无法识别带有「特别关注」标记的干员") : ""}
+      ${sss ? check("form", "自动编队", false, "保全派驻的自动编队当前不可用", true) : ""}
       ${formVisible && COPILOT_STATE.form ? renderFormationOptions() : ""}
       ${check("useCopilotList", "多作业模式", COPILOT_STATE.useCopilotList, USE_COPILOT_LIST_TIP, !listEnabled)}
       ${COPILOT_STATE.useCopilotList && tab === 0 ? check("useSanityPotion", "使用药剂", COPILOT_STATE.useSanityPotion) : ""}
@@ -251,10 +257,12 @@ function renderFormationOptions() {
     ${check("ignoreRequirements", "忽略干员属性要求", COPILOT_STATE.ignoreRequirements, "勾选此项将跳过技能等级、模组等检查，但可能导致作业无法正常运行")}
     <div class="copilotSupportBlock">
       ${check("useSupportUnit", "借助战", COPILOT_STATE.useSupportUnit, "缺一个还能用用，缺两个以上还是换份作业吧")}
-      ${COPILOT_STATE.useSupportUnit ? `<div class="copilotSupportSelect">${select("supportUsage", [{ label: "补漏", value: "1" }, { label: "随机", value: "3" }], COPILOT_STATE.supportUsage)}</div>` : ""}
+      ${COPILOT_STATE.useSupportUnit ? `<div class="copilotSupportSelect">${select("supportUsage", [{ label: "补漏", value: "1" }, { label: "指定", value: "2" }, { label: "随机", value: "3" }], COPILOT_STATE.supportUsage)}</div>` : ""}
+      ${COPILOT_STATE.useSupportUnit ? `<input class="copilotTextInput" data-copilot-field="supportUnitName" value="${escapeHtml(COPILOT_STATE.supportUnitName)}" placeholder="指定助战干员（可选）" />` : ""}
     </div>
     ${check("addTrust", "补充低信赖干员", COPILOT_STATE.addTrust)}
     ${check("addUserAdditional", "追加自定干员", COPILOT_STATE.addUserAdditional, "以英文「;」为分隔符，英文「,」分隔干员名与技能，例: 史尔特尔,3;艾雅法拉,1")}
+    ${COPILOT_STATE.addUserAdditional ? `<input class="copilotTextInput" data-copilot-field="userAdditional" value="${escapeHtml(COPILOT_STATE.userAdditional)}" placeholder="史尔特尔,3;艾雅法拉,1" />` : ""}
   `;
 }
 
@@ -464,6 +472,7 @@ function setCopilotTab(tab) {
 function normalizeCopilotState() {
   if (COPILOT_STATE.useCopilotList) COPILOT_STATE.form = true;
   if (COPILOT_STATE.tab === 1 || COPILOT_STATE.tab === 3) COPILOT_STATE.useCopilotList = false;
+  if (COPILOT_STATE.tab === 1) COPILOT_STATE.form = false;
 }
 
 function addCopilotTask(raid) {
@@ -505,13 +514,8 @@ function copilotUnavailable() {
 
 function fireCopilotStart() {
   if (typeof api !== "function") return;
-  const job = {
-    name: COPILOT_STATE.taskName || basenameWithoutExt(COPILOT_STATE.filename) || "copilot",
-    path: COPILOT_STATE.filename,
-    formation: COPILOT_STATE.useFormation ? (Number(COPILOT_STATE.formationIndex) || 1) : 0,
-    loop_times: COPILOT_STATE.loop ? Math.max(1, Number(COPILOT_STATE.loopTimes) || 1) : 1
-  };
-  api("/api/copilot/run", {
+  const job = copilotStartPayload();
+  api("/api/copilot/start", {
     method: "POST",
     body: JSON.stringify(job)
   }).then((result) => {
@@ -523,6 +527,75 @@ function fireCopilotStart() {
     COPILOT_STATE.idle = true;
     renderCopilotView();
   });
+}
+
+function copilotStartPayload() {
+  const payload = {
+    name: COPILOT_STATE.taskName || basenameWithoutExt(COPILOT_STATE.filename) || "copilot",
+    task_type: copilotTaskType(),
+    filename: COPILOT_STATE.filename
+  };
+  if (payload.task_type === "Copilot") addRegularCopilotPayload(payload);
+  if (payload.task_type === "SSSCopilot") addSssCopilotPayload(payload);
+  if (payload.task_type === "ParadoxCopilot") addParadoxCopilotPayload(payload);
+  return payload;
+}
+
+function copilotTaskType() {
+  if (COPILOT_STATE.tab === 1) return "SSSCopilot";
+  if (COPILOT_STATE.tab === 2) return "ParadoxCopilot";
+  return "Copilot";
+}
+
+function addRegularCopilotPayload(payload) {
+  if (COPILOT_STATE.useCopilotList) {
+    delete payload.filename;
+    payload.copilot_list = checkedCopilotTasks().map((task) => ({
+      filename: task.path,
+      stage_name: task.name,
+      is_raid: Boolean(task.raid)
+    }));
+    payload.use_sanity_potion = Boolean(COPILOT_STATE.useSanityPotion);
+  }
+  if (!COPILOT_STATE.useCopilotList && COPILOT_STATE.loop) {
+    payload.loop_times = Math.max(1, Number(COPILOT_STATE.loopTimes) || 1);
+  }
+  if (COPILOT_STATE.form) {
+    payload.formation = true;
+    if (COPILOT_STATE.useFormation) payload.formation_index = Number(COPILOT_STATE.formationIndex) || 1;
+    payload.ignore_requirements = Boolean(COPILOT_STATE.ignoreRequirements);
+    payload.add_trust = Boolean(COPILOT_STATE.addTrust);
+    if (COPILOT_STATE.useSupportUnit) {
+      payload.support_unit_usage = Number(COPILOT_STATE.supportUsage) || 0;
+      if (COPILOT_STATE.supportUnitName) payload.support_unit_name = COPILOT_STATE.supportUnitName;
+    }
+    if (COPILOT_STATE.addUserAdditional) payload.user_additional = parseUserAdditional(COPILOT_STATE.userAdditional);
+  }
+}
+
+function addSssCopilotPayload(payload) {
+  if (COPILOT_STATE.loop) payload.loop_times = Math.max(1, Number(COPILOT_STATE.loopTimes) || 1);
+}
+
+function addParadoxCopilotPayload(payload) {
+  if (!COPILOT_STATE.useCopilotList) return;
+  delete payload.filename;
+  payload.list = checkedCopilotTasks().map((task) => task.path);
+}
+
+function checkedCopilotTasks() {
+  return COPILOT_STATE.tasks.filter((task) => task.checked !== false && task.path);
+}
+
+function parseUserAdditional(text) {
+  return String(text || "").split(";")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [name, skill] = entry.split(",").map((part) => part.trim());
+      return { name, skill: Number(skill) || 1 };
+    })
+    .filter((entry) => entry.name);
 }
 
 function fireCopilotStop() {
