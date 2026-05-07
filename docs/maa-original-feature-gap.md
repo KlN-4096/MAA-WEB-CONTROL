@@ -1,6 +1,6 @@
 # 原版 MAA 功能与当前 Web 项目缺口对比
 
-生成日期：2026-05-07（最近更新：2026-05-07，第五次）
+生成日期：2026-05-07（最近更新：2026-05-07，第六次）
 
 对照范围：
 
@@ -33,7 +33,7 @@
 | `Depot/OperBox/RecruitCalc` 工具 | 部分覆盖 | Depot/OperBox 结果解析和前端展示已实现；RecruitCalc 结果解析、持久化仍不完整。 |
 | `Gacha/MiniGame/Peep` 工具 | 部分覆盖 | Gacha/MiniGame 通过 `Custom` 发起；MiniGame 列表硬编码，缺原版动态活动列表；Peep 有截图流但不是完整原版工具数据流。 |
 | 远程控制协议 | 仅 UI | 设置页禁用展示，没有轮询获取任务、汇报任务、身份配置执行逻辑。 |
-| 外部通知 | 仅 UI | 只显示未实现提示，无 SMTP/ServerChan/Discord/DingTalk/Telegram/Bark/Qmsg/Gotify/Webhook 实现。 |
+| 外部通知 | 部分覆盖 | Webhook（POST/PUT JSON）通道已实现，runner 完成/失败/停止时按配置触发；剩余 SMTP/ServerChan/Discord/DingTalk/Telegram/Bark/Qmsg/Gotify 等专用渠道未接入。 |
 | 更新/性能/背景/热键/成就/托盘 | 仅 UI 或未覆盖 | 多数为桌面端能力；当前 Web 只显示版本或占位，未实现实际功能。 |
 | 连接/ADB 实例选项 | 部分覆盖 | 支持地址、ADB 路径、连接配置、LD extras、ClientType、TouchMode、DeploymentWithPause、AdbLite、KillAdbOnExit；仍缺 MuMu 12 桥接、`RetryOnDisconnected`、`AllowADBRestart` 等。 |
 
@@ -453,20 +453,20 @@
 
 | 原版配置 | 当前状态 | 缺口 |
 |---|---|---|
-| `ExternalNotification.Enabled` | 仅 UI | 设置页显示“未实现”，无后端发送。 |
-| `ExternalNotification.SendWhenComplete` | 未覆盖 | 无触发逻辑。 |
-| `ExternalNotification.EnableDetails` | 未覆盖 | 无通知详情拼装。 |
-| `ExternalNotification.SendWhenError` | 未覆盖 | 无触发逻辑。 |
-| `ExternalNotification.SendWhenTimeout` | 未覆盖 | runner 无 timeout 通知。 |
+| `ExternalNotification.Enabled` | 已覆盖 | UI 总开关；后端 `NotificationService` 控制是否调用 webhook。 |
+| `ExternalNotification.SendWhenComplete` | 已覆盖 | UI 复选框；runner 在 `_start_and_finish` 完成路径触发 `complete` 事件。 |
+| `ExternalNotification.EnableDetails` | 已覆盖 | UI 复选框；通知 JSON 是否附加 `details` 字段（profile/state/task counts/last_error）。 |
+| `ExternalNotification.SendWhenError` | 已覆盖 | UI 复选框；runner `error` 事件触发。 |
+| `ExternalNotification.SendWhenTimeout` | 未覆盖 | runner 无 timeout 检测；当前与 `error` 合流。 |
 | SMTP `Server/Port/User/Password/UseSsl/RequiresAuthentication/From/To` | 未覆盖 | 无 UI/API/发送器。 |
 | ServerChan `SendKey` | 未覆盖 | 无。 |
-| Discord `BotToken/UserId/WebhookUrl` | 未覆盖 | 无。 |
+| Discord `BotToken/UserId/WebhookUrl` | 部分覆盖 | 仅可通过通用 Webhook URL 转发；专用字段未实现。 |
 | DingTalk `AccessToken/Secret` | 未覆盖 | 无。 |
 | Telegram `BotToken/ChatId/TopicId` | 未覆盖 | 无。 |
 | Bark `SendKey/Server` | 未覆盖 | 无。 |
 | Qmsg `Server/Key/User/Bot` | 未覆盖 | 无。 |
 | Gotify `Server/Token` | 未覆盖 | 无。 |
-| CustomWebhook `Url/Body` | 未覆盖 | 无。 |
+| CustomWebhook `Url/Body` | 已覆盖 | UI 配置 URL/Method/自定义 Header；`/api/notifications/test` 支持发送测试。 |
 
 ### 更新/性能/问题反馈/关于
 
@@ -500,6 +500,7 @@
 
 ## 高优先级缺口建议
 
+> 2026-05-07（第六次更新）：实现外部通知 Webhook 通道——新增 `NotificationConfig`/`WebhookNotificationConfig` 模型、`NotificationService`（持久化到 `data/notifications.json`、支持 POST/PUT JSON、自定义 Header）、`/api/notifications` GET/PUT 与 `/api/notifications/test` 端点、设置页「外部通知」全功能 UI；`MaaRunnerService` 增加 `run_event_callback`，在完成/失败/停止路径自动派发 webhook。
 > 2026-05-07（第五次更新）：补齐 Fight/Recruit `server` 下拉、Fight `custom_annihilation + annihilation_stage` 子关卡映射、相应 mapper 单元测试。
 > 2026-05-07（第四次更新）：补齐 Recruit 上报/`set_time`/6 星时间/`reserve_level_1`、Fight 一图流上报与 `expiring_medicine` 数量、Roguelike 烧水/密文板/坍缩范式开关、Reclamation Fire 主题，以及 `UserDataUpdate.TriggerInterval`（含 `data/userdata_state.json` 周期跳过实现）。
 

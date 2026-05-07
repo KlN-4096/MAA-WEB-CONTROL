@@ -10,6 +10,7 @@ from .default_profiles import build_default_profiles
 from .events import EventBus
 from .logs import MaaLogService
 from .maa_adapter import create_maa_adapter
+from .notifications import NotificationService
 from .runner import MaaRunnerService
 from .scheduler import SchedulerService
 from .storage import ProfileStore
@@ -20,16 +21,19 @@ PROFILE_DIR = PROJECT_ROOT / "data" / "profiles"
 WEB_DIR = PROJECT_ROOT / "web"
 SCHEDULER_CONFIG = PROJECT_ROOT / "data" / "scheduler.json"
 USERDATA_STATE_PATH = PROJECT_ROOT / "data" / "userdata_state.json"
+NOTIFICATION_CONFIG = PROJECT_ROOT / "data" / "notifications.json"
 
 event_bus = EventBus()
 log_service = MaaLogService(event_bus)
 profile_store = ProfileStore(PROFILE_DIR)
 profile_store.ensure_defaults(build_default_profiles())
+notification_service = NotificationService(NOTIFICATION_CONFIG, event_bus)
 runner = MaaRunnerService(
     create_maa_adapter(PROJECT_ROOT, event_bus, log_service=log_service),
     event_bus,
     log_service,
     userdata_state_path=USERDATA_STATE_PATH,
+    run_event_callback=notification_service.dispatch_run_event,
 )
 
 
@@ -44,7 +48,15 @@ async def _scheduler_run_callback(profile_name: str) -> None:
 scheduler = SchedulerService(event_bus, SCHEDULER_CONFIG, run_callback=_scheduler_run_callback)
 
 app = FastAPI(title="MAA Web Control", version="0.2.0")
-app.include_router(create_api_router(profile_store, runner, event_bus, log_service, scheduler, project_root=PROJECT_ROOT))
+app.include_router(create_api_router(
+    profile_store,
+    runner,
+    event_bus,
+    log_service,
+    scheduler,
+    project_root=PROJECT_ROOT,
+    notifications=notification_service,
+))
 
 
 @app.on_event("startup")

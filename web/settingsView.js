@@ -68,7 +68,8 @@ const SETTINGS_PERSISTED_FIELDS = [
   "timers",
   "emulatorLaunchEnabled",
   "emulatorLaunchCommand",
-  "emulatorLaunchWait"
+  "emulatorLaunchWait",
+  "notification"
 ];
 const SETTINGS_AUTO_SCROLL_SUPPRESS_MS = 120;
 const SETTINGS_SMOOTH_SCROLL_SUPPRESS_MS = 1200;
@@ -124,7 +125,9 @@ const SETTINGS_STATE = {
   })),
   emulatorLaunchEnabled: false,
   emulatorLaunchCommand: "",
-  emulatorLaunchWait: 60
+  emulatorLaunchWait: 60,
+  notification: null,
+  notificationStatus: ""
 };
 
 Object.assign(SETTINGS_STATE, restoreSettingsState());
@@ -177,6 +180,9 @@ function restoreSettingsState() {
   MaaStorage.copyString(parsed, restored, "emulatorLaunchCommand");
   if (Number.isFinite(parsed.emulatorLaunchWait)) {
     restored.emulatorLaunchWait = Math.max(0, Math.min(300, Math.round(parsed.emulatorLaunchWait)));
+  }
+  if (parsed.notification && typeof parsed.notification === "object" && !Array.isArray(parsed.notification)) {
+    restored.notification = mergeNotificationState(parsed.notification);
   }
   return restored;
 }
@@ -501,10 +507,63 @@ function renderBackgroundSection() {
 }
 
 function renderNotificationSection() {
+  const notif = SETTINGS_STATE.notification || defaultNotificationState();
+  const webhook = notif.webhook || {};
+  const status = SETTINGS_STATE.notificationStatus || "";
+  const headersText = formatHeadersForInput(webhook.headers);
   return settingsColumn(`
-    <p class="settingsGlobalTip">外部通知功能暂未实现。</p>
-    ${fieldRow("通知渠道", `${selectBox(["（未实现）", "Server酱", "Telegram", "Discord"], 0, "", "settingsControlL", " disabled")}<button class="settingsButtonSmall" type="button" disabled>发送测试</button>`)}
+    <p class="settingsGlobalTip">仅支持 Webhook（POST/PUT JSON）。MaaCore 任务结束、失败、被停止时由后端自动调用。</p>
+    ${checkLine("启用外部通知", notif.enabled, "全局开关；关闭时即使运行结束也不发送。", "notification.enabled")}
+    ${checkLine("任务完成时通知", notif.send_on_complete, "", "notification.send_on_complete")}
+    ${checkLine("任务失败时通知", notif.send_on_error, "", "notification.send_on_error")}
+    ${checkLine("任务被停止时通知", notif.send_on_stopped, "默认关闭：手动停止通常不需要通知。", "notification.send_on_stopped")}
+    ${checkLine("附带任务详情", notif.include_details, "在 JSON 内附 details（profile/state/task counts/last_error）。", "notification.include_details")}
+    ${checkLine("启用 Webhook", webhook.enabled, "", "notification.webhook.enabled")}
+    ${fieldRow("Webhook URL", textBox(webhook.url || "", "settingsControlL", "notification.webhook.url"))}
+    ${fieldRow("HTTP 方法", selectBox([
+      { label: "POST", value: "POST" },
+      { label: "PUT", value: "PUT" }
+    ], webhook.method || "POST", "notification.webhook.method", "settingsControlS"))}
+    ${fieldRow("自定义请求头", `<textarea class="settingsControlL settingsTextarea" data-settings-field="notification.webhook.headers" placeholder="Authorization: Bearer xxx&#10;X-Custom: foo">${escapeHtml(headersText)}</textarea>`, "每行 一个 Header。格式：Key: Value")}
+    <div class="settingsInlinePair">
+      <button class="settingsButtonSmall" type="button" data-settings-action="saveNotification">保存通知配置</button>
+      <button class="settingsButtonSmall" type="button" data-settings-action="testNotification">发送测试</button>
+    </div>
+    ${status ? `<p class="settingsLineText">${escapeHtml(status)}</p>` : ""}
   `);
+}
+
+function defaultNotificationState() {
+  return {
+    enabled: false,
+    send_on_complete: true,
+    send_on_error: true,
+    send_on_stopped: false,
+    include_details: true,
+    webhook: { enabled: false, url: "", method: "POST", headers: {} }
+  };
+}
+
+function formatHeadersForInput(headers) {
+  if (!headers || typeof headers !== "object") return "";
+  return Object.entries(headers)
+    .filter(([k, v]) => k && v !== undefined && v !== null)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join("\n");
+}
+
+function parseHeadersFromInput(text) {
+  const map = {};
+  String(text || "").split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    const idx = trimmed.indexOf(":");
+    if (idx <= 0) return;
+    const key = trimmed.slice(0, idx).trim();
+    const value = trimmed.slice(idx + 1).trim();
+    if (key) map[key] = value;
+  });
+  return map;
 }
 
 function renderHotkeySection() {
@@ -686,6 +745,14 @@ function onSettingsClick(event) {
   }
   if (event.target.closest("[data-settings-action='applyAdapter']")) {
     applyAdapterConfig();
+    return;
+  }
+  if (event.target.closest("[data-settings-action='saveNotification']")) {
+    saveNotificationConfig();
+    return;
+  }
+  if (event.target.closest("[data-settings-action='testNotification']")) {
+    testNotificationConfig();
   }
 }
 
@@ -947,6 +1014,9 @@ function updateSettingsField(target) {
   const field = target.dataset.settingsField;
   if (!field) return false;
   if (isSettingsEditingLocked()) return true;
+  if (field.startsWith("notification.")) {
+    return updateNotificationField(field, target);
+  }
   SETTINGS_STATE[field] = target.type === "checkbox"
     ? target.checked
     : field === "logThumbnailMax"
@@ -955,6 +1025,27 @@ function updateSettingsField(target) {
   persistSettingsState();
   saveSettingsProfile();
   if (SETTINGS_CONDITIONAL_FIELDS.has(field)) renderSettingsView();
+  return true;
+}
+
+function updateNotificationField(field, target) {
+  if (!SETTINGS_STATE.notification) SETTINGS_STATE.notification = defaultNotificationState();
+  const path = field.split(".").slice(1);
+  let node = SETTINGS_STATE.notification;
+  for (let i = 0; i < path.length - 1; i++) {
+    const key = path[i];
+    if (!node[key] || typeof node[key] !== "object") node[key] = {};
+    node = node[key];
+  }
+  const leaf = path[path.length - 1];
+  if (leaf === "headers") {
+    node.headers = parseHeadersFromInput(target.value);
+  } else if (target.type === "checkbox") {
+    node[leaf] = target.checked;
+  } else {
+    node[leaf] = target.value;
+  }
+  persistSettingsState();
   return true;
 }
 
@@ -1132,6 +1223,70 @@ async function applyAdapterConfig() {
   } catch (e) {
     if (statusEl) statusEl.textContent = `失败：${e.message}`;
   }
+}
+
+async function loadNotificationConfig() {
+  if (typeof api !== "function") return;
+  try {
+    const data = await api("/api/notifications");
+    if (data && typeof data === "object") {
+      SETTINGS_STATE.notification = mergeNotificationState(data);
+      if (typeof state !== "undefined" && state.currentView === "settings") renderSettingsView();
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function mergeNotificationState(data) {
+  const base = defaultNotificationState();
+  if (!data || typeof data !== "object") return base;
+  return {
+    enabled: Boolean(data.enabled),
+    send_on_complete: data.send_on_complete !== false,
+    send_on_error: data.send_on_error !== false,
+    send_on_stopped: Boolean(data.send_on_stopped),
+    include_details: data.include_details !== false,
+    webhook: {
+      enabled: Boolean(data.webhook?.enabled),
+      url: typeof data.webhook?.url === "string" ? data.webhook.url : "",
+      method: data.webhook?.method === "PUT" ? "PUT" : "POST",
+      headers: data.webhook?.headers && typeof data.webhook.headers === "object" ? { ...data.webhook.headers } : {}
+    }
+  };
+}
+
+async function saveNotificationConfig() {
+  if (typeof api !== "function") return;
+  const config = SETTINGS_STATE.notification || defaultNotificationState();
+  SETTINGS_STATE.notificationStatus = "正在保存……";
+  renderSettingsView();
+  try {
+    const result = await api("/api/notifications", {
+      method: "PUT",
+      body: JSON.stringify(config)
+    });
+    if (result && typeof result === "object") SETTINGS_STATE.notification = mergeNotificationState(result);
+    SETTINGS_STATE.notificationStatus = "已保存";
+  } catch (e) {
+    SETTINGS_STATE.notificationStatus = `保存失败：${e.message || "请求错误"}`;
+  }
+  renderSettingsView();
+}
+
+async function testNotificationConfig() {
+  if (typeof api !== "function") return;
+  SETTINGS_STATE.notificationStatus = "正在发送测试……";
+  renderSettingsView();
+  try {
+    const config = SETTINGS_STATE.notification || defaultNotificationState();
+    const result = await api("/api/notifications/test", {
+      method: "POST",
+      body: JSON.stringify({ config })
+    });
+    SETTINGS_STATE.notificationStatus = result?.ok ? "测试已发送" : "测试失败：请检查 Webhook URL 与请求头";
+  } catch (e) {
+    SETTINGS_STATE.notificationStatus = `测试失败：${e.message || "请求错误"}`;
+  }
+  renderSettingsView();
 }
 
 async function runSettingsScreenshotTest() {

@@ -6,12 +6,15 @@ import subprocess
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Awaitable, Callable, Protocol
 
 from .events import EventBus
 from .logs import MaaLogService
 from .mapper import TaskMappingError, profile_to_append_calls
 from .models import AppendCall, EventRecord, PostAction, Profile, RunnerStatus
+
+
+RunEventCallback = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 
 class MaaAdapter(Protocol):
@@ -57,6 +60,7 @@ class MaaRunnerService:
         log_service: MaaLogService | None = None,
         *,
         userdata_state_path: Path | None = None,
+        run_event_callback: RunEventCallback | None = None,
     ) -> None:
         self._adapter = adapter
         self._events = events
@@ -67,6 +71,10 @@ class MaaRunnerService:
         self._stop_requested = False
         self._post_action: PostAction = PostAction()
         self._userdata_state_path = userdata_state_path
+        self._run_event_callback = run_event_callback
+
+    def set_run_event_callback(self, callback: RunEventCallback | None) -> None:
+        self._run_event_callback = callback
 
     def status(self) -> RunnerStatus:
         return self._status.model_copy()
@@ -135,8 +143,10 @@ class MaaRunnerService:
             await self._start_and_finish()
         except RunStopped as exc:
             self._stop(str(exc))
+            await self._fire_run_event("stopped", str(exc))
         except (RuntimeError, TaskMappingError) as exc:
             self._fail(str(exc))
+            await self._fire_run_event("error", str(exc))
         finally:
             await self._execute_post_action()
 
@@ -169,18 +179,22 @@ class MaaRunnerService:
             raise RuntimeError("MaaCore start failed.")
         if self._stop_requested:
             self._stop("Run stopped.")
+            await self._fire_run_event("stopped", "Run stopped.")
             return
         final_status = self._adapter.task_chain_status or "Completed"
         if final_status == "Failed":
             self._fail("MaaCore task chain failed.")
+            await self._fire_run_event("error", "MaaCore task chain failed.")
             return
         if final_status == "Stopped":
             self._stop("MaaCore task chain stopped.")
+            await self._fire_run_event("stopped", "MaaCore task chain stopped.")
             return
         self._status.state = "Completed"
         self._status.current_task = None
         self._logs.complete_run(f"任务已全部完成！\n(用时 {self._logs.elapsed_text()})")
         self._events.publish(EventRecord.now("runner.completed", "Run completed."))
+        await self._fire_run_event("complete", "Run completed.")
 
     def _stop(self, message: str) -> None:
         self._status.state = "Stopped"
@@ -195,6 +209,30 @@ class MaaRunnerService:
         if not self._logs.has_last_content_prefix("任务出错"):
             self._logs.append(f"任务出错: {message}", color_key="ErrorLogBrush", weight="Bold", split_mode="Both")
         self._events.publish(EventRecord.now("runner.failed", message, level="error"))
+
+    async def _fire_run_event(self, event_type: str, message: str) -> None:
+        callback = self._run_event_callback
+        if callback is None:
+            return
+        payload = {
+            "profile": self._profile.name if self._profile else None,
+            "message": message,
+            "state": self._status.state,
+            "total_tasks": self._status.total_tasks,
+            "appended_tasks": self._status.appended_tasks,
+            "current_task": self._status.current_task,
+            "last_error": self._status.last_error,
+        }
+        try:
+            await callback(event_type, payload)
+        except Exception as exc:
+            self._events.publish(
+                EventRecord.now(
+                    "runner.notification.error",
+                    f"Notification callback failed: {exc}",
+                    level="error",
+                )
+            )
 
 
     async def _execute_post_action(self) -> None:

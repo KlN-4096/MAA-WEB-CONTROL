@@ -180,3 +180,23 @@ class ToolRequest(BaseModel):
 class AdapterConfig(BaseModel):
     adapter: str = ""
     core_dir: str = ""
+
+
+class WebhookNotificationConfig(BaseModel):
+    enabled: bool = False
+    url: str = ""
+    method: Literal["POST", "PUT"] = "POST"
+    headers: dict[str, str] = Field(default_factory=dict)
+
+
+class NotificationConfig(BaseModel):
+    enabled: bool = False
+    send_on_complete: bool = True
+    send_on_error: bool = True
+    send_on_stopped: bool = False
+    include_details: bool = True
+    webhook: WebhookNotificationConfig = Field(default_factory=WebhookNotificationConfig)
+
+
+class NotificationTestRequest(BaseModel):
+    config: NotificationConfig | None = None

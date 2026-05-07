@@ -53,6 +53,35 @@ class RunnerStateTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(runner.status().state, "Completed")
         self.assertEqual(events.recent()[-1].type, "runner.completed")
 
+    async def test_run_event_callback_fires_on_complete(self):
+        events = EventBus()
+        captured: list[tuple[str, dict]] = []
+
+        async def callback(event_type: str, payload: dict) -> None:
+            captured.append((event_type, payload))
+
+        runner = MaaRunnerService(FakeRunnerAdapter("Completed"), events, run_event_callback=callback)
+        await runner.run(profile_with_task())
+        await runner._task
+
+        self.assertEqual(captured, [("complete", captured[0][1])])
+        self.assertEqual(captured[0][1]["profile"], "daily")
+        self.assertEqual(captured[0][1]["state"], "Completed")
+
+    async def test_run_event_callback_fires_on_chain_failure(self):
+        events = EventBus()
+        captured: list[tuple[str, dict]] = []
+
+        async def callback(event_type: str, payload: dict) -> None:
+            captured.append((event_type, payload))
+
+        runner = MaaRunnerService(FakeRunnerAdapter("Failed"), events, run_event_callback=callback)
+        await runner.run(profile_with_task())
+        await runner._task
+
+        self.assertEqual([event for event, _ in captured], ["error"])
+        self.assertEqual(captured[0][1]["state"], "Failed")
+
     async def test_error_callback_status_finishes_failed(self):
         events = EventBus()
         runner = MaaRunnerService(FakeRunnerAdapter("Failed"), events)

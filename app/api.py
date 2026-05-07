@@ -20,6 +20,8 @@ from .models import (
     AppendCall,
     CopilotJob,
     CopilotStartRequest,
+    NotificationConfig,
+    NotificationTestRequest,
     PostAction,
     Profile,
     RedroidStatus,
@@ -27,6 +29,7 @@ from .models import (
     SchedulerConfig,
     ToolRequest,
 )
+from .notifications import NotificationService
 from .options import build_ui_options
 from .runner import MaaRunnerService
 from .scheduler import SchedulerService
@@ -40,6 +43,7 @@ def create_api_router(
     log_service: MaaLogService | None = None,
     scheduler: SchedulerService | None = None,
     project_root: Path | None = None,
+    notifications: NotificationService | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api")
     logs = log_service or runner.log_service
@@ -317,6 +321,27 @@ def create_api_router(
         updated = scheduler.update_config(config)
         runner.set_post_action(updated.post_action)
         return updated
+
+    # ── Notifications ──────────────────────────────────────────────
+
+    @router.get("/notifications")
+    async def get_notifications():
+        if notifications is None:
+            return NotificationConfig()
+        return notifications.config
+
+    @router.put("/notifications")
+    async def put_notifications(config: NotificationConfig):
+        if notifications is None:
+            raise HTTPException(status_code=501, detail="Notifications not initialized")
+        return notifications.update_config(config)
+
+    @router.post("/notifications/test")
+    async def post_notifications_test(request: NotificationTestRequest | None = None):
+        if notifications is None:
+            raise HTTPException(status_code=501, detail="Notifications not initialized")
+        override = request.config if request is not None else None
+        return await notifications.dispatch_test(override)
 
     # ── Post Action ────────────────────────────────────────────────
 
