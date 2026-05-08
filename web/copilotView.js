@@ -156,11 +156,11 @@ function renderCopilotView() {
       <div class="copilotTop">
         <div class="copilotTabs">${COPILOT_TABS.map(copilotTabButton).join("")}</div>
         ${renderCopilotPathRow()}
+        ${renderCopilotInfoBlock()}
       </div>
       <div class="copilotBody">
         <div class="copilotRunColumn">
           ${renderCopilotRunButton()}
-          ${renderCopilotInfoBlock()}
           ${renderCopilotOptions()}
         </div>
         ${copilotListVisible() ? renderCopilotList() : ""}
@@ -242,39 +242,24 @@ function renderCopilotRunButton() {
 
 function renderCopilotInfoBlock() {
   if (COPILOT_STATE.resolveBusy) {
-    return '<div class="copilotInfoBlock loading">正在解析作业……</div>';
+    return '<div class="copilotInfoLine loading">正在解析作业……</div>';
   }
   if (COPILOT_STATE.resolveError) {
-    return `<div class="copilotInfoBlock error">${escapeHtml(COPILOT_STATE.resolveError)}</div>`;
+    return `<div class="copilotInfoLine error">${escapeHtml(COPILOT_STATE.resolveError)}</div>`;
   }
   const info = COPILOT_STATE.resolvedInfo;
   if (!info) return "";
   const opers = Array.isArray(info.opers) ? info.opers : [];
-  const operText = opers.length
-    ? opers.slice(0, 8).map((op) => `${escapeHtml(op.name || "")}${op.skill ? `·${op.skill}` : ""}`).join("、") +
-      (opers.length > 8 ? `… 共 ${opers.length}` : "")
-    : "无";
   const sourceLabel = info.source === "prts.plus" ? `prts.plus #${info.upstream_id ?? "?"}` : "本地";
-  const titleLine = info.title ? `<strong>${escapeHtml(info.title)}</strong>` : "";
-  const detailsLine = info.details ? `<p class="copilotInfoDetails">${escapeHtml(truncate(info.details, 120))}</p>` : "";
-  const ratingLine = Number.isInteger(info.rating_level) ? `<span>评级 ${info.rating_level}</span>` : "";
-  const uploaderLine = info.uploader ? `<span>by ${escapeHtml(info.uploader)}</span>` : "";
-  return `
-    <div class="copilotInfoBlock ok">
-      ${titleLine}
-      <div class="copilotInfoMeta">
-        <span>关卡 ${escapeHtml(info.stage_name || "—")}</span>
-        <span>干员 ${opers.length}</span>
-        <span>分组 ${info.group_count || 0}</span>
-        <span>动作 ${info.action_count || 0}</span>
-        ${ratingLine}
-        ${uploaderLine}
-        <span class="copilotInfoSource">${escapeHtml(sourceLabel)}</span>
-      </div>
-      <div class="copilotInfoOpers">${operText}</div>
-      ${detailsLine}
-    </div>
-  `;
+  const segments = [
+    info.stage_name ? `关卡 ${escapeHtml(info.stage_name)}` : "",
+    info.title ? escapeHtml(truncate(info.title, 28)) : "",
+    `干员 ${opers.length}`,
+    info.action_count ? `动作 ${info.action_count}` : "",
+    Number.isInteger(info.rating_level) ? `评级 ${info.rating_level}` : "",
+    info.uploader ? `by ${escapeHtml(info.uploader)}` : "",
+  ].filter(Boolean);
+  return `<div class="copilotInfoLine ok"><span class="copilotInfoMain">${segments.join(" · ")}</span><span class="copilotInfoSource">${escapeHtml(sourceLabel)}</span></div>`;
 }
 
 function truncate(text, max) {
@@ -527,13 +512,13 @@ async function triggerCopilotResolve(text) {
 }
 
 function refreshCopilotInfoBlock() {
-  const column = document.querySelector(".copilotRunColumn");
-  if (!column) {
+  const top = document.querySelector(".copilotTop");
+  if (!top) {
     renderCopilotView();
     return;
   }
   const html = renderCopilotInfoBlock();
-  let block = column.querySelector(".copilotInfoBlock");
+  let block = top.querySelector(".copilotInfoLine");
   if (!html) {
     if (block) block.remove();
     return;
@@ -541,9 +526,9 @@ function refreshCopilotInfoBlock() {
   if (block) {
     block.outerHTML = html;
   } else {
-    const startButton = column.querySelector(".copilotStartButton");
-    if (startButton) startButton.insertAdjacentHTML("afterend", html);
-    else column.insertAdjacentHTML("afterbegin", html);
+    const pathRow = top.querySelector(".copilotPathRow");
+    if (pathRow) pathRow.insertAdjacentHTML("afterend", html);
+    else top.insertAdjacentHTML("beforeend", html);
   }
 }
 
