@@ -1,6 +1,6 @@
 # 原版 MAA 功能与当前 Web 项目缺口对比
 
-生成日期：2026-05-07（最近更新：2026-05-08，第八次）
+生成日期：2026-05-07（最近更新：2026-05-08，第九次）
 
 对照范围：
 
@@ -25,9 +25,9 @@
 | 原版能力 | 当前项目状态 | 主要缺口 |
 |---|---|---|
 | 主任务链 `StartUp/Fight/Recruit/Infrast/Mall/Award/Roguelike/Reclamation/Custom/CloseDown/UserDataUpdate` | 部分覆盖 | 主链任务基本存在，部分字段已补充 UI（企鹅+一图流上报/剩余理智/加急次数/`UserDataUpdate.TriggerInterval` 等）；少量原版字段（剿灭关卡映射/StageReset 重置语义）仍未实现。 |
-| `Copilot` 自动战斗 | 部分覆盖 | Web 有自动战斗页和 `/api/copilot/run`，支持单/多作业、自动编队、助战、理智药等；`copilot_list` 多作业已实现但仅限单次无循环；原版 stage_name/is_raid 等细项已传递。 |
-| `SSSCopilot` 保全作业 | 部分覆盖 | Web 保全 tab 正确按 `SSSCopilot` 发起，传递 `filename/loop_times`；原版更多细项参数未实现。 |
-| `ParadoxCopilot` 悖论模拟 | 部分覆盖 | Web 悖论 tab 按 `ParadoxCopilot` 发起，支持单文件 `filename` 和多作业 `list`；多作业仅限单次运行。 |
+| `Copilot` 自动战斗 | 已覆盖（核心字段） | `/api/copilot/start` + UI 端到端打通 `filename / copilot_list (filename+stage_name+is_raid) / loop_times / use_sanity_potion / formation / formation_index / add_trust / ignore_requirements / support_unit_usage / support_unit_name / user_additional`；剩余 prts.plus 神秘代码自动下载、作业内容预览、作业评分上报暂未实现。 |
+| `SSSCopilot` 保全作业 | 已覆盖（核心字段） | Web 保全 tab 按 `SSSCopilot` 发起，传递 `filename / loop_times`；原版核心协议这两个字段即全部，更多细项是作业 JSON 内部字段。 |
+| `ParadoxCopilot` 悖论模拟 | 已覆盖（核心字段） | Web 悖论 tab 按 `ParadoxCopilot` 发起，支持单文件 `filename` 与多作业 `list`。 |
 | `SingleStep` | 未覆盖 | 无 UI/API/mapper 白名单。 |
 | `VideoRecognition` | 未覆盖 | 无 UI/API/mapper；原版核心协议仍保留该任务。 |
 | `Depot/OperBox/RecruitCalc` 工具 | 部分覆盖 | Depot/OperBox 结果解析和前端展示已实现；RecruitCalc 结果解析、持久化仍不完整。 |
@@ -251,42 +251,47 @@
 
 ### `Copilot`
 
-原版证据：`integration.md:714`、`AsstCopilotTask.cs:27`。当前证据：`web/copilotView.js:1`、`web/copilotView.js:506`、`app/api.py:291`、`app/models.py:134`。
+原版证据：`integration.md:714`、`AsstCopilotTask.cs:27`。当前证据：`web/copilotView.js:516`-`web/copilotView.js:599`、`app/api.py:387`-`app/api.py:412`、`app/models.py:138`-`app/models.py:172`、`tests/test_api_copilot.py`。
 
 | 原版字段/配置 | 默认/说明 | 当前状态 | 缺口 |
 |---|---|---|---|
-| `filename` | 单作业路径，与 `copilot_list` 二选一 | 已覆盖 | Web 输入路径，API append `Copilot.filename`。 |
-| `copilot_list[].filename` | 多作业文件 | 仅 UI | UI 可维护任务列表，但 `/api/copilot/run` 不发送 `copilot_list`。 |
-| `copilot_list[].stage_name` | 多作业关卡名 | 仅 UI | UI 有任务名输入，但后端不使用。 |
-| `copilot_list[].is_raid` | 突袭难度 | 仅 UI | UI 右键添加 raid，但后端不使用。 |
-| `loop_times` | 单作业循环次数 | 已覆盖 | API 支持。 |
-| `use_sanity_potion` | 理智不足时吃药 | 仅 UI | UI 仅在多作业模式显示，API 不发送。 |
-| `formation` | 自动编队 | 部分覆盖 | API 发送 `formation`，但用数值承载，未完整遵循 boolean + `formation_index` 语义。 |
-| `formation_index` | 编队栏位 `0..4` | 部分覆盖 | UI 有 `formationIndex`，API 没有按原字段发送。 |
-| `user_additional[]` | 自定义追加干员 | 仅 UI | UI 有开关提示，无输入解析和 API 参数。 |
-| `user_additional[].name` | 干员名 | 未覆盖 | 无参数模型。 |
-| `user_additional[].skill` | 技能 | 未覆盖 | 无参数模型。 |
-| `add_trust` | 低信赖补位 | 仅 UI | UI 有开关，API 不发送。 |
-| `ignore_requirements` | 忽略属性要求 | 仅 UI | UI 有开关，API 不发送。 |
-| `support_unit_usage` | 助战使用模式 `0..3` | 仅 UI | UI 只提供补漏/随机，API 不发送。 |
-| `support_unit_name` | 指定助战干员 | 未覆盖 | 无 UI/API。 |
+| `filename` | 单作业路径，与 `copilot_list` 二选一 | 已覆盖 | Web 输入路径，`/api/copilot/start` append `Copilot.filename`。 |
+| `copilot_list[].filename` | 多作业文件 | 已覆盖 | 多作业模式启用后 API 发送 `copilot_list`，每项含 filename。 |
+| `copilot_list[].stage_name` | 多作业关卡名 | 已覆盖 | UI 任务名映射到 `stage_name`。 |
+| `copilot_list[].is_raid` | 突袭难度 | 已覆盖 | 添加任务时左键普通 / 右键 raid，标记一并随 `copilot_list` 发送。 |
+| `loop_times` | 单作业循环次数 | 已覆盖 | API + UI 支持；`>1` 时透传。 |
+| `use_sanity_potion` | 理智不足时吃药 | 已覆盖 | 多作业模式 UI 勾选后 API 透传 `use_sanity_potion=true`。 |
+| `formation` | 自动编队 | 已覆盖 | UI「自动编队」总开关 → boolean，独立于 `formation_index`。 |
+| `formation_index` | 编队栏位 `0..4` | 已覆盖 | UI「使用编队」+ 1/2/3/4 下拉，按原协议字段发送（仅 >0 时携带）。 |
+| `user_additional[]` | 自定义追加干员 | 已覆盖 | UI 文本「干员,技能;干员,技能」解析为 `[{name, skill}]`，API 透传。 |
+| `user_additional[].name` | 干员名 | 已覆盖 | 同上。 |
+| `user_additional[].skill` | 技能 | 已覆盖 | 缺值默认 `1`。 |
+| `add_trust` | 低信赖补位 | 已覆盖 | UI 复选框，API 透传。 |
+| `ignore_requirements` | 忽略属性要求 | 已覆盖 | UI 复选框，API 透传。 |
+| `support_unit_usage` | 助战使用模式 `0..3` | 已覆盖 | UI 三选项「补漏 / 指定 / 随机」对应 1/2/3，API 透传整型。 |
+| `support_unit_name` | 指定助战干员 | 已覆盖 | UI 文本输入，API 透传。 |
+| 神秘代码下载（`maa://12345`） | 粘贴神秘代码自动从 prts.plus 下载作业 | 未覆盖 | 当前粘贴只把字符串当文件路径填入。 |
+| 作业内容预览 | 选中后展示 stage_name / operators / actions | 未覆盖 | 当前不读取 JSON 内容。 |
+| 作业评分上报 | 战斗后向 prts.plus 评分 | 未覆盖 | 无对应 API。 |
+| 文件拖拽 | 桌面端拖拽 .json 入窗 | Web 不适用 | Web 仅支持 file picker。 |
 
 ### `SSSCopilot`
 
-原版证据：`integration.md:809`、`sss-schema.md:15`。当前证据：`web/copilotView.js:1`、`app/mapper.py:23`。
+原版证据：`integration.md:809`、`sss-schema.md:15`。当前证据：`web/copilotView.js:540`-`web/copilotView.js:580`、`app/api.py:415`-`app/api.py:420`、`tests/test_api_copilot.py`。
 
 | 原版字段 | 默认/说明 | 当前状态 | 缺口 |
 |---|---|---|---|
-| `filename` | 保全作业 JSON 路径 | 仅后端 | `mapper.py` 可透传 `SSSCopilot.filename`；Web 保全 tab/API 未按 `SSSCopilot` 发起。 |
-| `loop_times` | 循环次数 | 未覆盖 | UI 循环次数存在，但 API 仍按 `Copilot`。 |
+| `filename` | 保全作业 JSON 路径 | 已覆盖 | Web 保全 tab 选中后 `/api/copilot/start` 按 `task_type=SSSCopilot` 发起。 |
+| `loop_times` | 循环次数 | 已覆盖 | 保全 tab 不在多作业模式时显示循环次数；API 透传。 |
 
 ### `ParadoxCopilot`
 
-原版证据：`integration.md:838`、`AsstParadoxCopilotTask.cs:21`。当前证据：`web/copilotView.js:1`。
+原版证据：`integration.md:838`、`AsstParadoxCopilotTask.cs:21`。当前证据：`web/copilotView.js:580`-`web/copilotView.js:585`、`app/api.py:423`-`app/api.py:428`、`tests/test_api_copilot.py`。
 
 | 原版字段 | 默认/说明 | 当前状态 | 缺口 |
 |---|---|---|---|
-| `filename` | 单个悖论作业路径 | 未覆盖 | Web 有悖论 tab，但 API 不 append `ParadoxCopilot`。 |
+| `filename` | 单个悖论作业路径 | 已覆盖 | 悖论 tab 单作业模式 API 按 `ParadoxCopilot.filename` 发起。 |
+| `list` | 悖论作业列表 | 已覆盖 | 多作业模式发送 `list`，与原版 `ParadoxCopilot.list` 字段一致。 |
 | `list` | 悖论作业列表 | 未覆盖 | UI 多作业状态未转为 `ParadoxCopilot.list`。 |
 
 ### `SingleStep`
@@ -500,6 +505,7 @@
 
 ## 高优先级缺口建议
 
+> 2026-05-08（第九次更新，文档校对）：自动战斗 Copilot/SSSCopilot/ParadoxCopilot 三张表格与代码状态对齐。前几轮已经把 `copilot_list (filename+stage_name+is_raid) / use_sanity_potion / formation / formation_index / add_trust / ignore_requirements / support_unit_usage / support_unit_name / user_additional` 全部端到端打通（参见 `tests/test_api_copilot.py`），但表格仍写「仅 UI / 未覆盖」造成误读，现已修正；同时补齐「神秘代码自动下载 / 作业内容预览 / 作业评分上报 / 文件拖拽」四条真实未实现的差距条目。
 > 2026-05-08（第八次更新）：补齐 Ubuntu 后台 + redroid 静默运行所需的最后一段闭环：`PostAction.type` 新增 `run_command`（`asyncio.create_subprocess_shell` + 可配置超时，stdout/stderr 进入日志），`/api/redroid/status` 改用 `docker inspect --format` 真实查询（区分 running / exited / 不存在 / docker 未安装），主区「完成后」下拉新增「自定义命令…」+ 命令/超时输入。新增 6 条单测覆盖 run_command 成功/失败/空命令与 redroid 状态三种分支；新增 `docs/deployment-redroid-ubuntu.md` 部署手册。
 > 2026-05-07（第七次更新）：实现 ADB 连接失败自动重启（`Connect.AllowADBRestart` / `Connect.AllowADBHardRestart`，分别执行 `adb kill-server` 与 `taskkill /F /IM adb.exe` / `pkill -9 adb`），并补齐任务超时检测（`TaskTimeoutMinutes` + `ExternalNotification.SendWhenTimeout`）：runner 用 `asyncio.wait_for` 监控超时、`/api/runner/config` 持久化到 `data/runner_config.json`、设置页有数值输入与勾选；新增 4 条单元测试覆盖 ADB restart 与 timeout 场景。
 > 2026-05-07（第六次更新）：实现外部通知 Webhook 通道——新增 `NotificationConfig`/`WebhookNotificationConfig` 模型、`NotificationService`（持久化到 `data/notifications.json`、支持 POST/PUT JSON、自定义 Header）、`/api/notifications` GET/PUT 与 `/api/notifications/test` 端点、设置页「外部通知」全功能 UI；`MaaRunnerService` 增加 `run_event_callback`，在完成/失败/停止路径自动派发 webhook。
