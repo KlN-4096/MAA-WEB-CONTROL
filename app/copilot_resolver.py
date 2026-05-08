@@ -10,10 +10,10 @@ from urllib.error import URLError
 from .models import CopilotInfo, CopilotOperatorInfo
 
 
-PRTS_PLUS_API = "https://prts.plus/api/v1/copilot/get/{id}"
+PRTS_PLUS_API = "https://prts.maa.plus/copilot/get/{id}"
 PRTS_PLUS_URL_PATTERNS = [
     re.compile(r"^maa://(\d+)\b", re.IGNORECASE),
-    re.compile(r"prts\.plus/(?:copilot|copilot/operation|copilots?)/(\d+)", re.IGNORECASE),
+    re.compile(r"prts\.(?:maa\.)?plus/(?:copilot|copilot/operation|copilots?)/(\d+)", re.IGNORECASE),
     re.compile(r"copilot[_-]?id[=:](\d+)", re.IGNORECASE),
     re.compile(r"^\s*(\d{1,9})\s*$"),
 ]
@@ -79,32 +79,41 @@ def _download_copilot(copilot_id: int, cache_dir: Path) -> Path:
         wrapper = json.loads(payload_bytes.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise CopilotResolveError("作业站返回非 JSON 数据。") from exc
-    data = wrapper.get("data") if isinstance(wrapper, dict) else None
+    if not isinstance(wrapper, dict):
+        raise CopilotResolveError("作业站返回根节点不是对象。")
+    status_code = wrapper.get("status_code")
+    if status_code is not None and int(status_code) != 200:
+        msg = wrapper.get("message") or f"status_code={status_code}"
+        raise CopilotResolveError(f"作业 #{copilot_id} 拉取失败：{msg}")
+    data = wrapper.get("data")
     if not isinstance(data, dict):
         raise CopilotResolveError("作业站返回缺少 data 字段。")
     content = data.get("content")
-    if not isinstance(content, str) or not content.strip():
-        raise CopilotResolveError(f"作业 #{copilot_id} 内容为空。")
-    try:
-        copilot_json = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise CopilotResolveError(f"作业 #{copilot_id} 内容不是合法 JSON。") from exc
+    if isinstance(content, str):
+        if not content.strip():
+            raise CopilotResolveError(f"作业 #{copilot_id} 内容为空。")
+        try:
+            copilot_json = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise CopilotResolveError(f"作业 #{copilot_id} 内容不是合法 JSON。") from exc
+    elif isinstance(content, dict):
+        copilot_json = content
+    else:
+        raise CopilotResolveError(f"作业 #{copilot_id} content 字段类型未知。")
     target.write_text(
         json.dumps(copilot_json, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    sidecar_payload: dict[str, Any] = {"id": copilot_id}
     if isinstance(data.get("rating_level"), int):
+        sidecar_payload["rating_level"] = data["rating_level"]
+    if isinstance(data.get("uploader"), str):
+        sidecar_payload["uploader"] = data["uploader"]
+    if isinstance(copilot_json, dict) and isinstance(copilot_json.get("stage_name"), str):
+        sidecar_payload["stage_name"] = copilot_json["stage_name"]
+    if len(sidecar_payload) > 1:
         target.with_suffix(".meta.json").write_text(
-            json.dumps(
-                {
-                    "id": copilot_id,
-                    "rating_level": data.get("rating_level"),
-                    "uploader": data.get("uploader") or "",
-                    "stage_name": data.get("stage_name") or "",
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
+            json.dumps(sidecar_payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
     return target

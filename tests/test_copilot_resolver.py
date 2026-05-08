@@ -134,6 +134,59 @@ class ResolveTest(unittest.TestCase):
                 self.assertEqual(info2.upstream_id, 999)
                 urlopen2.assert_not_called()
 
+    def test_resolve_uses_prts_maa_plus_endpoint(self):
+        captured: dict = {}
+
+        def _factory(req, *args, **kwargs):
+            captured["url"] = getattr(req, "full_url", str(req))
+
+            class _Response:
+                def read(self_inner):
+                    return json.dumps({
+                        "status_code": 200,
+                        "data": {"id": 91671, "content": json.dumps(SAMPLE_COPILOT)},
+                    }).encode("utf-8")
+
+                def __enter__(self_inner):
+                    return self_inner
+
+                def __exit__(self_inner, exc_type, exc, tb):
+                    return False
+
+            return _Response()
+
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory) / "cache"
+            with patch("app.copilot_resolver.urlrequest.urlopen", side_effect=_factory):
+                resolve("maa://91671", cache)
+
+        self.assertEqual(captured["url"], "https://prts.maa.plus/copilot/get/91671")
+
+    def test_resolve_handles_inline_content_object(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory) / "cache"
+            wrapper = {
+                "status_code": 200,
+                "data": {
+                    "id": 1234,
+                    "uploader": "neo",
+                    "content": SAMPLE_COPILOT,
+                },
+            }
+            with patch("app.copilot_resolver.urlrequest.urlopen", side_effect=_api_response_factory(wrapper)):
+                path, info = resolve("maa://1234", cache)
+                self.assertEqual(info.stage_name, "1-7")
+                self.assertEqual(info.upstream_id, 1234)
+
+    def test_resolve_handles_status_code_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory) / "cache"
+            wrapper = {"status_code": 404, "message": "作业不存在"}
+            with patch("app.copilot_resolver.urlrequest.urlopen", side_effect=_api_response_factory(wrapper)):
+                with self.assertRaises(CopilotResolveError) as ctx:
+                    resolve("maa://9999999", cache)
+                self.assertIn("作业不存在", str(ctx.exception))
+
     def test_resolve_handles_empty_content(self):
         with tempfile.TemporaryDirectory() as directory:
             cache = Path(directory) / "cache"

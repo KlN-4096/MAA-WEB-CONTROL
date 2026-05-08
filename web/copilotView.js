@@ -491,7 +491,7 @@ async function triggerCopilotResolve(text) {
   const seq = ++copilotResolveSeq;
   COPILOT_STATE.resolveBusy = true;
   COPILOT_STATE.resolveError = "";
-  renderCopilotView();
+  refreshCopilotInfoBlock();
   let result;
   try {
     result = await api("/api/copilot/resolve", {
@@ -502,7 +502,7 @@ async function triggerCopilotResolve(text) {
     if (seq !== copilotResolveSeq) return;
     COPILOT_STATE.resolveBusy = false;
     COPILOT_STATE.resolveError = `解析失败：${e.message || "请求错误"}`;
-    renderCopilotView();
+    refreshCopilotInfoBlock();
     return;
   }
   if (seq !== copilotResolveSeq) return;
@@ -511,16 +511,40 @@ async function triggerCopilotResolve(text) {
     COPILOT_STATE.resolvedInfo = result.info;
     COPILOT_STATE.resolvedPath = result.path || "";
     COPILOT_STATE.resolveError = "";
-    if (result.path && result.path !== COPILOT_STATE.filename && /^maa:\/\/|prts\.plus|^\d{1,9}$/i.test(text)) {
+    const isMystery = /^\s*(?:maa:\/\/|prts\.(?:maa\.)?plus)/i.test(text) || /^\s*\d{1,9}\s*$/.test(text);
+    if (result.path && result.path !== COPILOT_STATE.filename && isMystery) {
       COPILOT_STATE.filename = result.path;
       persistCopilotState();
+      const input = document.getElementById("copilotFilenameInput");
+      if (input && document.activeElement !== input) input.value = result.path;
     }
   } else {
     COPILOT_STATE.resolvedInfo = null;
     COPILOT_STATE.resolvedPath = "";
-    COPILOT_STATE.resolveError = result?.message || "解析失败";
+    COPILOT_STATE.resolveError = (result && result.message) || "解析失败";
   }
-  renderCopilotView();
+  refreshCopilotInfoBlock();
+}
+
+function refreshCopilotInfoBlock() {
+  const column = document.querySelector(".copilotRunColumn");
+  if (!column) {
+    renderCopilotView();
+    return;
+  }
+  const html = renderCopilotInfoBlock();
+  let block = column.querySelector(".copilotInfoBlock");
+  if (!html) {
+    if (block) block.remove();
+    return;
+  }
+  if (block) {
+    block.outerHTML = html;
+  } else {
+    const startButton = column.querySelector(".copilotStartButton");
+    if (startButton) startButton.insertAdjacentHTML("afterend", html);
+    else column.insertAdjacentHTML("afterbegin", html);
+  }
 }
 
 async function runCopilotAction(action, payload = {}) {
