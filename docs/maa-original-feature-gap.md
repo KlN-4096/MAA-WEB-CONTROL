@@ -1,6 +1,6 @@
 # 原版 MAA 功能与当前 Web 项目缺口对比
 
-生成日期：2026-05-07（最近更新：2026-05-08，第九次）
+生成日期：2026-05-07（最近更新：2026-05-08，第十次）
 
 对照范围：
 
@@ -270,9 +270,9 @@
 | `ignore_requirements` | 忽略属性要求 | 已覆盖 | UI 复选框，API 透传。 |
 | `support_unit_usage` | 助战使用模式 `0..3` | 已覆盖 | UI 三选项「补漏 / 指定 / 随机」对应 1/2/3，API 透传整型。 |
 | `support_unit_name` | 指定助战干员 | 已覆盖 | UI 文本输入，API 透传。 |
-| 神秘代码下载（`maa://12345`） | 粘贴神秘代码自动从 prts.plus 下载作业 | 未覆盖 | 当前粘贴只把字符串当文件路径填入。 |
-| 作业内容预览 | 选中后展示 stage_name / operators / actions | 未覆盖 | 当前不读取 JSON 内容。 |
-| 作业评分上报 | 战斗后向 prts.plus 评分 | 未覆盖 | 无对应 API。 |
+| 神秘代码下载（`maa://12345` / 纯数字 / prts.plus URL） | 粘贴神秘代码自动从 prts.plus 下载作业 | 已覆盖 | `app/copilot_resolver.py` 解析三种格式，调 `https://prts.plus/api/v1/copilot/get/{id}` 拉取，缓存到 `data/copilot_cache/maa-prts-{id}.json`；前端粘贴 / 输入 / 选文件后 350ms 防抖触发 `/api/copilot/resolve`，结果 path 自动回填到输入框。 |
+| 作业内容预览 | 选中后展示 stage_name / operators / actions | 已覆盖 | `_parse_copilot_metadata` 提取 stage_name / doc.title / doc.details / opers / groups / actions count；前端开始按钮下方一个信息卡显示关卡、干员列表（前 8 名）、分组数、动作数、评级、上传者；prts.plus 来源额外标注 `prts.plus #id`。 |
+| 作业评分上报 | 战斗后向 prts.plus 评分 | 未覆盖 | 无对应 API；上报需登录态，暂不实现。 |
 | 文件拖拽 | 桌面端拖拽 .json 入窗 | Web 不适用 | Web 仅支持 file picker。 |
 
 ### `SSSCopilot`
@@ -505,6 +505,7 @@
 
 ## 高优先级缺口建议
 
+> 2026-05-08（第十次更新）：补齐 Copilot 抄作业最常用的两个体验差距：神秘代码自动下载（`app/copilot_resolver.py` 支持 `maa://12345` / 纯数字 / `https://prts.plus/copilot/<id>` 三种格式，拉取后缓存到 `data/copilot_cache/maa-prts-{id}.json`，附带评级/上传者 sidecar）+ 作业内容预览（前端开始按钮下方信息卡，关卡/干员/分组/动作数/评级/上传者）。前端粘贴 / 输入 / 选文件后 350ms 防抖触发 `/api/copilot/resolve`，prts.plus 解析成功后自动把本地路径回填到输入框。新增 9 条 resolver 单测 + 3 条 API 端到端测试。
 > 2026-05-08（第九次更新，文档校对）：自动战斗 Copilot/SSSCopilot/ParadoxCopilot 三张表格与代码状态对齐。前几轮已经把 `copilot_list (filename+stage_name+is_raid) / use_sanity_potion / formation / formation_index / add_trust / ignore_requirements / support_unit_usage / support_unit_name / user_additional` 全部端到端打通（参见 `tests/test_api_copilot.py`），但表格仍写「仅 UI / 未覆盖」造成误读，现已修正；同时补齐「神秘代码自动下载 / 作业内容预览 / 作业评分上报 / 文件拖拽」四条真实未实现的差距条目。
 > 2026-05-08（第八次更新）：补齐 Ubuntu 后台 + redroid 静默运行所需的最后一段闭环：`PostAction.type` 新增 `run_command`（`asyncio.create_subprocess_shell` + 可配置超时，stdout/stderr 进入日志），`/api/redroid/status` 改用 `docker inspect --format` 真实查询（区分 running / exited / 不存在 / docker 未安装），主区「完成后」下拉新增「自定义命令…」+ 命令/超时输入。新增 6 条单测覆盖 run_command 成功/失败/空命令与 redroid 状态三种分支；新增 `docs/deployment-redroid-ubuntu.md` 部署手册。
 > 2026-05-07（第七次更新）：实现 ADB 连接失败自动重启（`Connect.AllowADBRestart` / `Connect.AllowADBHardRestart`，分别执行 `adb kill-server` 与 `taskkill /F /IM adb.exe` / `pkill -9 adb`），并补齐任务超时检测（`TaskTimeoutMinutes` + `ExternalNotification.SendWhenTimeout`）：runner 用 `asyncio.wait_for` 监控超时、`/api/runner/config` 持久化到 `data/runner_config.json`、设置页有数值输入与勾选；新增 4 条单元测试覆盖 ADB restart 与 timeout 场景。

@@ -67,6 +67,11 @@ const COPILOT_STATE = {
   filename: "",
   filePopupOpen: false,
   idle: true,
+  resolveStatus: "",
+  resolveError: "",
+  resolvedPath: "",
+  resolvedInfo: null,
+  resolveBusy: false,
   form: false,
   useFormation: false,
   formationIndex: "1",
@@ -155,6 +160,7 @@ function renderCopilotView() {
       <div class="copilotBody">
         <div class="copilotRunColumn">
           ${renderCopilotRunButton()}
+          ${renderCopilotInfoBlock()}
           ${renderCopilotOptions()}
         </div>
         ${copilotListVisible() ? renderCopilotList() : ""}
@@ -232,6 +238,48 @@ function renderCopilotRunButton() {
     return '<button class="copilotStartButton" type="button" data-copilot-action="start">开始</button>';
   }
   return '<button class="copilotStartButton" type="button" data-copilot-action="stop">停止</button>';
+}
+
+function renderCopilotInfoBlock() {
+  if (COPILOT_STATE.resolveBusy) {
+    return '<div class="copilotInfoBlock loading">正在解析作业……</div>';
+  }
+  if (COPILOT_STATE.resolveError) {
+    return `<div class="copilotInfoBlock error">${escapeHtml(COPILOT_STATE.resolveError)}</div>`;
+  }
+  const info = COPILOT_STATE.resolvedInfo;
+  if (!info) return "";
+  const opers = Array.isArray(info.opers) ? info.opers : [];
+  const operText = opers.length
+    ? opers.slice(0, 8).map((op) => `${escapeHtml(op.name || "")}${op.skill ? `·${op.skill}` : ""}`).join("、") +
+      (opers.length > 8 ? `… 共 ${opers.length}` : "")
+    : "无";
+  const sourceLabel = info.source === "prts.plus" ? `prts.plus #${info.upstream_id ?? "?"}` : "本地";
+  const titleLine = info.title ? `<strong>${escapeHtml(info.title)}</strong>` : "";
+  const detailsLine = info.details ? `<p class="copilotInfoDetails">${escapeHtml(truncate(info.details, 120))}</p>` : "";
+  const ratingLine = Number.isInteger(info.rating_level) ? `<span>评级 ${info.rating_level}</span>` : "";
+  const uploaderLine = info.uploader ? `<span>by ${escapeHtml(info.uploader)}</span>` : "";
+  return `
+    <div class="copilotInfoBlock ok">
+      ${titleLine}
+      <div class="copilotInfoMeta">
+        <span>关卡 ${escapeHtml(info.stage_name || "—")}</span>
+        <span>干员 ${opers.length}</span>
+        <span>分组 ${info.group_count || 0}</span>
+        <span>动作 ${info.action_count || 0}</span>
+        ${ratingLine}
+        ${uploaderLine}
+        <span class="copilotInfoSource">${escapeHtml(sourceLabel)}</span>
+      </div>
+      <div class="copilotInfoOpers">${operText}</div>
+      ${detailsLine}
+    </div>
+  `;
+}
+
+function truncate(text, max) {
+  const value = String(text || "");
+  return value.length > max ? value.slice(0, max) + "…" : value;
 }
 
 function renderCopilotOptions() {
@@ -365,6 +413,7 @@ async function onCopilotClick(event) {
     COPILOT_STATE.filename = file.dataset.copilotFile;
     COPILOT_STATE.filePopupOpen = false;
     persistCopilotState();
+    scheduleCopilotResolve();
     renderCopilotView();
     return;
   }
@@ -410,11 +459,68 @@ function onCopilotInput(event) {
   if (event.target.id === "copilotFilenameInput") {
     COPILOT_STATE.filename = event.target.value;
     persistCopilotState();
+    scheduleCopilotResolve();
   }
   if (event.target.id === "copilotTaskNameInput") {
     COPILOT_STATE.taskName = event.target.value.replace(/[:',.()|[\]?，。【】{}；：]/g, "").trim();
     persistCopilotState();
   }
+}
+
+let copilotResolveTimer = 0;
+let copilotResolveSeq = 0;
+
+function scheduleCopilotResolve() {
+  clearTimeout(copilotResolveTimer);
+  const text = (COPILOT_STATE.filename || "").trim();
+  if (!text) {
+    COPILOT_STATE.resolvedInfo = null;
+    COPILOT_STATE.resolvedPath = "";
+    COPILOT_STATE.resolveError = "";
+    COPILOT_STATE.resolveBusy = false;
+    renderCopilotView();
+    return;
+  }
+  copilotResolveTimer = setTimeout(() => {
+    triggerCopilotResolve(text).catch(() => {});
+  }, 350);
+}
+
+async function triggerCopilotResolve(text) {
+  if (typeof api !== "function") return;
+  const seq = ++copilotResolveSeq;
+  COPILOT_STATE.resolveBusy = true;
+  COPILOT_STATE.resolveError = "";
+  renderCopilotView();
+  let result;
+  try {
+    result = await api("/api/copilot/resolve", {
+      method: "POST",
+      body: JSON.stringify({ code: text })
+    });
+  } catch (e) {
+    if (seq !== copilotResolveSeq) return;
+    COPILOT_STATE.resolveBusy = false;
+    COPILOT_STATE.resolveError = `解析失败：${e.message || "请求错误"}`;
+    renderCopilotView();
+    return;
+  }
+  if (seq !== copilotResolveSeq) return;
+  COPILOT_STATE.resolveBusy = false;
+  if (result && result.ok && result.info) {
+    COPILOT_STATE.resolvedInfo = result.info;
+    COPILOT_STATE.resolvedPath = result.path || "";
+    COPILOT_STATE.resolveError = "";
+    if (result.path && result.path !== COPILOT_STATE.filename && /^maa:\/\/|prts\.plus|^\d{1,9}$/i.test(text)) {
+      COPILOT_STATE.filename = result.path;
+      persistCopilotState();
+    }
+  } else {
+    COPILOT_STATE.resolvedInfo = null;
+    COPILOT_STATE.resolvedPath = "";
+    COPILOT_STATE.resolveError = result?.message || "解析失败";
+  }
+  renderCopilotView();
 }
 
 async function runCopilotAction(action, payload = {}) {
@@ -495,7 +601,10 @@ async function pasteCopilotText() {
   if (!navigator.clipboard?.readText) return;
   try {
     const text = await navigator.clipboard.readText();
-    if (text) COPILOT_STATE.filename = text.trim();
+    if (text) {
+      COPILOT_STATE.filename = text.trim();
+      scheduleCopilotResolve();
+    }
   } catch (error) {
     console.warn("Clipboard access denied:", error.message);
   }

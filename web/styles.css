@@ -1579,6 +1579,60 @@ input[type="checkbox"] {
   margin-bottom: 18px;
 }
 
+.copilotInfoBlock {
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.copilotInfoBlock.loading {
+  text-align: center;
+  color: var(--mute, #999);
+  border-style: dashed;
+}
+
+.copilotInfoBlock.error {
+  border-color: #c0392b;
+  color: #c0392b;
+  background: rgba(192, 57, 43, 0.06);
+}
+
+.copilotInfoBlock strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+.copilotInfoMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 4px;
+  color: var(--mute, #888);
+}
+
+.copilotInfoSource {
+  margin-left: auto;
+  font-style: italic;
+}
+
+.copilotInfoOpers {
+  margin-bottom: 4px;
+}
+
+.copilotInfoDetails {
+  margin: 4px 0 0;
+  color: var(--mute, #888);
+  white-space: pre-wrap;
+}
+
 .copilotOptions {
   display: grid;
   gap: 9px;

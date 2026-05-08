@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisconnect
 
 from .capabilities import build_capabilities
+from .copilot_resolver import CopilotResolveError, resolve as resolve_copilot
 from .default_profiles import complete_profile_tasks
 from .events import EventBus
 from .image_codec import encode_peep_frame
@@ -19,6 +20,8 @@ from .models import (
     AdapterConfig,
     AppendCall,
     CopilotJob,
+    CopilotResolveRequest,
+    CopilotResolveResponse,
     CopilotStartRequest,
     NotificationConfig,
     NotificationTestRequest,
@@ -306,6 +309,15 @@ def create_api_router(
     async def stop_copilot():
         await adapter_stop_safe(runner)
         return {"ok": True}
+
+    @router.post("/copilot/resolve")
+    async def resolve_copilot_endpoint(request: CopilotResolveRequest):
+        cache_dir = (project_root / "data" / "copilot_cache") if project_root else Path("data/copilot_cache")
+        try:
+            path, info = await asyncio.to_thread(resolve_copilot, request.code, cache_dir)
+        except CopilotResolveError as exc:
+            return CopilotResolveResponse(ok=False, message=str(exc))
+        return CopilotResolveResponse(ok=True, path=str(path), info=info)
 
     # ── Scheduler ──────────────────────────────────────────────────
 

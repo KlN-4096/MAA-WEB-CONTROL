@@ -176,6 +176,37 @@ class CopilotStartRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class CopilotOperatorInfo(BaseModel):
+    name: str = ""
+    skill: int = 1
+
+
+class CopilotInfo(BaseModel):
+    stage_name: str = ""
+    title: str = ""
+    details: str = ""
+    opers: list[CopilotOperatorInfo] = Field(default_factory=list)
+    group_count: int = 0
+    action_count: int = 0
+    difficulty: int = 0
+    minimum_required: str = ""
+    source: Literal["local", "prts.plus"] = "local"
+    upstream_id: int | None = None
+    rating_level: int | None = None
+    uploader: str = ""
+
+
+class CopilotResolveRequest(BaseModel):
+    code: str
+
+
+class CopilotResolveResponse(BaseModel):
+    ok: bool
+    path: str = ""
+    info: CopilotInfo | None = None
+    message: str = ""
+
+
 class ToolRequest(BaseModel):
     tool: str
     params: dict[str, Any] = Field(default_factory=dict)
