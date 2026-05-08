@@ -111,9 +111,11 @@ class RedroidStatus(BaseModel):
 class PostAction(BaseModel):
     type: Literal[
         "none", "exit_game", "exit_emulator", "exit_maa",
-        "hibernate", "shutdown", "sleep",
+        "hibernate", "shutdown", "sleep", "run_command",
     ] = "none"
     only_if_no_other_maa: bool = False
+    command: str = ""
+    command_timeout_seconds: int = 60
 
 
 class TimerSlot(BaseModel):

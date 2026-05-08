@@ -14,6 +14,64 @@ from app.runner import DryRunMaaAdapter, MaaRunnerService
 from app.storage import ProfileStore
 
 
+class RedroidApiTest(unittest.TestCase):
+    def test_redroid_status_reports_running_container(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = ProfileStore(Path(directory))
+            events = EventBus()
+            logs = MaaLogService(events)
+            runner = MaaRunnerService(DryRunMaaAdapter(), events, logs)
+            app = FastAPI()
+            app.include_router(create_api_router(store, runner, events, logs))
+
+            with patch("app.api.subprocess.run") as run:
+                run.return_value.stdout = "running|true\n"
+                run.return_value.stderr = ""
+                run.return_value.returncode = 0
+                response = TestClient(app).get("/api/redroid/status")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["available"])
+        self.assertEqual(payload["container"], "redroid")
+        self.assertIn("running", payload["message"])
+
+    def test_redroid_status_handles_missing_container(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = ProfileStore(Path(directory))
+            events = EventBus()
+            logs = MaaLogService(events)
+            runner = MaaRunnerService(DryRunMaaAdapter(), events, logs)
+            app = FastAPI()
+            app.include_router(create_api_router(store, runner, events, logs))
+
+            with patch("app.api.subprocess.run") as run:
+                run.return_value.stdout = ""
+                run.return_value.stderr = "Error: No such object: redroid\n"
+                run.return_value.returncode = 1
+                response = TestClient(app).get("/api/redroid/status")
+
+        payload = response.json()
+        self.assertFalse(payload["available"])
+        self.assertIn("不存在", payload["message"])
+
+    def test_redroid_status_handles_missing_docker_command(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = ProfileStore(Path(directory))
+            events = EventBus()
+            logs = MaaLogService(events)
+            runner = MaaRunnerService(DryRunMaaAdapter(), events, logs)
+            app = FastAPI()
+            app.include_router(create_api_router(store, runner, events, logs))
+
+            with patch("app.api.subprocess.run", side_effect=FileNotFoundError()):
+                response = TestClient(app).get("/api/redroid/status")
+
+        payload = response.json()
+        self.assertFalse(payload["available"])
+        self.assertIn("docker", payload["message"])
+
+
 class AdbApiTest(unittest.TestCase):
     def test_adb_devices_reports_configured_profile_device(self):
         with tempfile.TemporaryDirectory() as directory:

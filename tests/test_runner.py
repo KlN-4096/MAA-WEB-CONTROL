@@ -1,8 +1,9 @@
 import asyncio
+import platform
 import unittest
 
 from app.events import EventBus
-from app.models import AppendCall, Profile, TaskDefinition
+from app.models import AppendCall, PostAction, Profile, TaskDefinition
 from app.runner import MaaRunnerService
 
 
@@ -40,6 +41,12 @@ class FakeRunnerAdapter:
 
 def profile_with_task():
     return Profile(name="daily", tasks=[TaskDefinition(id="award", type="Award")])
+
+
+def _extract_card_text(card) -> str:
+    if not isinstance(card, dict):
+        return ""
+    return "\n".join(item.get("content", "") for item in card.get("items", []))
 
 
 class RunnerStateTest(unittest.IsolatedAsyncioTestCase):
@@ -91,6 +98,49 @@ class RunnerStateTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual([event for event, _ in captured], ["timeout"])
         self.assertEqual(runner.status().state, "Failed")
+
+    async def test_post_action_run_command_executes_shell(self):
+        events = EventBus()
+        runner = MaaRunnerService(FakeRunnerAdapter("Completed"), events)
+        if platform.system() == "Windows":
+            command = 'cmd /c "echo hello-from-post-action"'
+        else:
+            command = "echo hello-from-post-action"
+        runner.set_post_action(PostAction(type="run_command", command=command, command_timeout_seconds=10))
+
+        await runner.run(profile_with_task())
+        await runner._task
+
+        log_text = "\n".join(_extract_card_text(card) for card in runner.log_service.cards("current"))
+        self.assertIn("hello-from-post-action", log_text)
+        event_types = [event.type for event in events.recent()]
+        self.assertNotIn("runner.post_action.error", event_types)
+
+    async def test_post_action_run_command_reports_failure(self):
+        events = EventBus()
+        runner = MaaRunnerService(FakeRunnerAdapter("Completed"), events)
+        if platform.system() == "Windows":
+            command = "cmd /c exit 7"
+        else:
+            command = "sh -c 'exit 7'"
+        runner.set_post_action(PostAction(type="run_command", command=command, command_timeout_seconds=10))
+
+        await runner.run(profile_with_task())
+        await runner._task
+
+        event_types = [event.type for event in events.recent()]
+        self.assertIn("runner.post_action.error", event_types)
+
+    async def test_post_action_run_command_skips_when_empty(self):
+        events = EventBus()
+        runner = MaaRunnerService(FakeRunnerAdapter("Completed"), events)
+        runner.set_post_action(PostAction(type="run_command", command="   "))
+
+        await runner.run(profile_with_task())
+        await runner._task
+
+        event_types = [event.type for event in events.recent()]
+        self.assertNotIn("runner.post_action.error", event_types)
 
     async def test_run_event_callback_fires_on_chain_failure(self):
         events = EventBus()

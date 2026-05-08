@@ -227,8 +227,8 @@ def create_api_router(
             return {"ok": False, "message": f"截图失败: {exc}"}
 
     @router.get("/redroid/status")
-    async def redroid_status():
-        return RedroidStatus()
+    async def redroid_status(container: str = "redroid"):
+        return await asyncio.to_thread(_inspect_redroid, container)
 
     # ── Screenshot ─────────────────────────────────────────────────
 
@@ -511,6 +511,37 @@ def _resolve_status_profile(store: ProfileStore, runner: MaaRunnerService) -> Pr
         return store.load(names[0])
     except (FileNotFoundError, ValueError):
         return None
+
+
+def _inspect_redroid(container: str) -> RedroidStatus:
+    name = (container or "redroid").strip() or "redroid"
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", "--format", "{{.State.Status}}|{{.State.Running}}", name],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+            check=False,
+        )
+    except FileNotFoundError:
+        return RedroidStatus(container=name, message="未找到 docker 命令；请确认已安装 Docker。")
+    except subprocess.TimeoutExpired:
+        return RedroidStatus(container=name, message="docker inspect 超时")
+    if result.returncode != 0:
+        err = (result.stderr or "").strip()
+        if err and "No such object" in err:
+            return RedroidStatus(container=name, message=f"容器 {name} 不存在")
+        return RedroidStatus(container=name, message=err or "docker inspect 失败")
+    state = (result.stdout or "").strip()
+    status, _, running = state.partition("|")
+    is_running = running.strip().lower() == "true"
+    return RedroidStatus(
+        container=name,
+        available=is_running,
+        message=f"容器 {name} 当前状态：{status or 'unknown'}",
+    )
 
 
 def _inspect_adb_status(profile: Profile | None) -> AdbStatus:

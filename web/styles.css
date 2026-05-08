@@ -388,6 +388,29 @@ p {
   color: var(--text);
 }
 
+.afterRunCommand {
+  margin-top: 4px;
+  width: 100%;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 0 6px;
+  font-family: monospace;
+}
+
+.afterRunTimeout {
+  margin-top: 4px;
+  width: 80px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 0 6px;
+}
+
 .linkStart {
   width: 100px;
   height: 50px;

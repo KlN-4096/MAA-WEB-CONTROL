@@ -1,6 +1,6 @@
 # 原版 MAA 功能与当前 Web 项目缺口对比
 
-生成日期：2026-05-07（最近更新：2026-05-07，第七次）
+生成日期：2026-05-07（最近更新：2026-05-08，第八次）
 
 对照范围：
 
@@ -376,7 +376,7 @@
 | `Timer.CustomConfig` | 部分覆盖 | Web slot 可选 profile，但原版提前两分钟切换配置/重启语义未完整实现。 |
 | 单个 Timer `Enable/Config/Hour/Minute` | 已覆盖 | Web `TimerSlot.enabled/profile_name/time`。 |
 | 定时前启动模拟器 | 部分覆盖 | Web 有 `emulator_launch.command/wait_seconds`，但不等价原版 emulator path/additional command 全部语义。 |
-| 后置动作 `PostActions` | 部分覆盖 | Web 支持 `exit_game/exit_emulator/sleep/hibernate/shutdown`；`exit_maa` 在模型里但 UI/runner 未完整实现。 |
+| 后置动作 `PostActions` | 已覆盖 | Web 支持 `exit_game/exit_emulator/sleep/hibernate/shutdown/run_command`；`run_command` 用 `asyncio.create_subprocess_shell` 跑用户命令并带超时（默认 60s），适用于 `docker stop redroid`、备份脚本等场景；`exit_maa` 仍仅模型存在。 |
 
 ### 运行/启动/上报
 
@@ -500,6 +500,7 @@
 
 ## 高优先级缺口建议
 
+> 2026-05-08（第八次更新）：补齐 Ubuntu 后台 + redroid 静默运行所需的最后一段闭环：`PostAction.type` 新增 `run_command`（`asyncio.create_subprocess_shell` + 可配置超时，stdout/stderr 进入日志），`/api/redroid/status` 改用 `docker inspect --format` 真实查询（区分 running / exited / 不存在 / docker 未安装），主区「完成后」下拉新增「自定义命令…」+ 命令/超时输入。新增 6 条单测覆盖 run_command 成功/失败/空命令与 redroid 状态三种分支；新增 `docs/deployment-redroid-ubuntu.md` 部署手册。
 > 2026-05-07（第七次更新）：实现 ADB 连接失败自动重启（`Connect.AllowADBRestart` / `Connect.AllowADBHardRestart`，分别执行 `adb kill-server` 与 `taskkill /F /IM adb.exe` / `pkill -9 adb`），并补齐任务超时检测（`TaskTimeoutMinutes` + `ExternalNotification.SendWhenTimeout`）：runner 用 `asyncio.wait_for` 监控超时、`/api/runner/config` 持久化到 `data/runner_config.json`、设置页有数值输入与勾选；新增 4 条单元测试覆盖 ADB restart 与 timeout 场景。
 > 2026-05-07（第六次更新）：实现外部通知 Webhook 通道——新增 `NotificationConfig`/`WebhookNotificationConfig` 模型、`NotificationService`（持久化到 `data/notifications.json`、支持 POST/PUT JSON、自定义 Header）、`/api/notifications` GET/PUT 与 `/api/notifications/test` 端点、设置页「外部通知」全功能 UI；`MaaRunnerService` 增加 `run_event_callback`，在完成/失败/停止路径自动派发 webhook。
 > 2026-05-07（第五次更新）：补齐 Fight/Recruit `server` 下拉、Fight `custom_annihilation + annihilation_stage` 子关卡映射、相应 mapper 单元测试。

@@ -287,12 +287,46 @@ class MaaRunnerService:
                 await self._run_power_action("sleep")
             elif action.type == "hibernate":
                 await self._run_power_action("hibernate")
+            elif action.type == "run_command":
+                await self._run_post_command(action.command, action.command_timeout_seconds)
         except Exception as exc:
             self._events.publish(EventRecord.now(
                 "runner.post_action.error",
                 f"Post-action failed: {exc}",
                 level="error",
             ))
+
+    async def _run_post_command(self, command: str, timeout_seconds: int) -> None:
+        command = (command or "").strip()
+        if not command:
+            self._logs.append("后置动作: 自定义命令为空，已跳过", color_key="WarningLogBrush")
+            return
+        timeout = max(1, int(timeout_seconds or 60))
+        self._logs.append(f"后置动作: 执行自定义命令 → {command}", color_key="WarningLogBrush")
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            except asyncio.TimeoutError:
+                proc.kill()
+                with suppress(Exception):
+                    await proc.wait()
+                raise RuntimeError(f"自定义命令超时（>{timeout}s）")
+        except FileNotFoundError as exc:
+            raise RuntimeError(f"自定义命令找不到可执行：{exc}") from exc
+        stdout = stdout_b.decode("utf-8", errors="replace").strip() if stdout_b else ""
+        stderr = stderr_b.decode("utf-8", errors="replace").strip() if stderr_b else ""
+        rc = proc.returncode or 0
+        if stdout:
+            self._logs.append(f"  ↳ stdout: {stdout[:512]}", color_key="MessageLogBrush")
+        if stderr:
+            self._logs.append(f"  ↳ stderr: {stderr[:512]}", color_key="ErrorLogBrush" if rc else "TraceLogBrush")
+        if rc != 0:
+            raise RuntimeError(f"自定义命令退出码 {rc}")
 
     async def _run_power_action(self, action: str) -> None:
         system = platform.system()
