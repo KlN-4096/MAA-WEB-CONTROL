@@ -5,6 +5,12 @@
     "address": "emulator-5554",
     "adb_path": "adb",
     "client_type": "Official",
+    "touch_mode": "minitouch",
+    "deployment_with_pause": false,
+    "adb_lite_enabled": false,
+    "kill_adb_on_exit": false,
+    "allow_adb_restart": true,
+    "allow_adb_hard_restart": false,
     "connect_config": {
       "preset": "LDPlayer"
     },
@@ -28,7 +34,7 @@
         "auto_detect": false,
         "detect_every_time": true,
         "connection": "LDPlayer",
-        "touch_mode": "Minitouch（默认）"
+        "touch_mode": "minitouch"
       },
       "strategy": {}
     },
