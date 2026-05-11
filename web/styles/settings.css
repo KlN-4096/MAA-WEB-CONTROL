@@ -1,0 +1,480 @@
+.settingsGrid {
+  display: grid;
+  grid-template-columns: 260px minmax(420px, 620px);
+  gap: 22px;
+  padding: 34px;
+}
+
+.settingsViewRoot {
+  display: grid;
+  grid-template-columns: 175px minmax(620px, 1fr);
+  align-items: start;
+  gap: 20px;
+  min-height: 100%;
+  padding: 26px 34px;
+  overflow: visible;
+}
+
+.settingsSideNav {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  background: var(--panel);
+  position: sticky;
+  top: 30px;
+  max-height: calc(100vh - 88px);
+  overflow-y: auto;
+}
+
+.settingsNavItem {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.settingsNavItem.active {
+  border-color: var(--blue);
+  color: #28a9ff;
+  background: var(--blue-soft);
+}
+
+.settingsContent {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  overflow: visible;
+}
+
+.settingsFold {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+.settingsFoldHead {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 30px;
+  border: 0;
+  border-radius: 4px 4px 0 0;
+  background: #1d1d1f;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.settingsFoldHead strong {
+  flex: 1;
+  font-weight: 400;
+}
+
+.settingsFoldHead span {
+  width: 14px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  text-align: right;
+}
+
+.settingsFoldBody {
+  display: grid;
+  justify-items: center;
+  min-height: 0;
+  border-top: 1px solid var(--line-soft);
+  padding: 12px 20px 14px;
+}
+
+.settingsFoldBody[hidden] {
+  display: none;
+}
+
+.configReplica,
+.timerReplica,
+.settingsFormReplica {
+  display: grid;
+  justify-items: center;
+  width: min(100%, 520px);
+}
+
+.configReplica {
+  gap: 10px;
+}
+
+.settingsField {
+  align-items: center;
+  width: 250px;
+}
+
+.settingsComboLine,
+.settingsAddLine {
+  display: grid;
+  width: 250px;
+}
+
+.settingsComboLine {
+  grid-template-columns: 1fr 30px;
+}
+
+.settingsComboLine select {
+  width: 100%;
+  border-radius: 4px 0 0 4px;
+}
+
+.settingsIconButton {
+  width: 30px;
+  min-height: 30px;
+  border-left: 0;
+  border-radius: 0 4px 4px 0;
+  font-weight: 700;
+}
+
+.settingsAddLine {
+  grid-template-columns: 1fr 60px;
+}
+
+.settingsAddLine input {
+  width: 100%;
+  border-radius: 4px 0 0 4px;
+}
+
+.settingsAddLine button {
+  border-left: 0;
+  border-radius: 0 4px 4px 0;
+}
+
+.timerReplica {
+  gap: 6px;
+}
+
+.settingsGlobalTip {
+  margin: 0;
+  color: var(--text);
+  font-weight: 700;
+  text-align: center;
+}
+
+.timerFlags,
+.timerShowRow {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  min-height: 30px;
+}
+
+.settingsCheckLine {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+}
+
+.settingsCheck {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  white-space: nowrap;
+}
+
+.settingsCheck input[type="checkbox"] {
+  flex: 0 0 15px;
+  margin: 0;
+}
+
+.timerGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 210px);
+  grid-template-rows: repeat(4, auto);
+  grid-auto-flow: column;
+  column-gap: 26px;
+  row-gap: 4px;
+}
+
+.timerItem {
+  display: grid;
+  grid-template-columns: 74px 126px;
+  align-items: center;
+  min-height: 30px;
+}
+
+.timerTime {
+  display: grid;
+  grid-template-columns: 55px 16px 55px;
+  align-items: center;
+  text-align: center;
+}
+
+.timerTime input {
+  width: 55px;
+  text-align: center;
+}
+
+.timerConfigSelect {
+  grid-column: 2;
+  width: 150px;
+  margin-top: 4px;
+}
+
+.settingsFormReplica {
+  grid-template-columns: repeat(2, 200px);
+  justify-content: center;
+  gap: 7px 22px;
+}
+
+.timerEmulatorSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.timerSectionDivider {
+  width: 100%;
+  height: 1px;
+  background: var(--border, #e0e0e0);
+  margin: 4px 0;
+}
+
+.timerEmulatorConfig {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 4px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.timerEmulatorRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+}
+
+.timerEmulatorLabel {
+  flex: 0 0 72px;
+  font-size: 0.88em;
+  color: var(--text-secondary, var(--text));
+  white-space: nowrap;
+}
+
+.timerEmulatorInput {
+  flex: 1;
+  min-width: 0;
+  max-width: 340px;
+}
+
+.timerEmulatorWait {
+  width: 64px;
+  text-align: center;
+}
+
+.timerEmulatorUnit {
+  font-size: 0.88em;
+  color: var(--text-secondary, var(--text));
+}
+
+.settingsFormRow {
+  width: 200px;
+}
+
+.settingsFormRow input,
+.settingsFormRow select,
+.settingsFormRow textarea {
+  width: 100%;
+}
+
+.settingsFormRow textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.settingsFormRowWide {
+  grid-column: 1 / -1;
+  width: 422px;
+}
+
+.settingsStaticCheck {
+  justify-self: start;
+}
+
+.settingsWideButton {
+  width: 200px;
+}
+
+.settingsTipIcon {
+  flex: 0 0 14px;
+}
+
+.settingsReplica,
+.settingsColumn {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+}
+
+.settingsReplica {
+  width: min(100%, 560px);
+}
+
+.settingsColumn {
+  align-content: start;
+}
+
+.settingsSplit {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  justify-content: center;
+  align-items: start;
+  gap: 26px;
+}
+
+.settingsFieldRow {
+  display: grid;
+  grid-template-columns: 120px max-content;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  width: max-content;
+}
+
+.settingsFieldText {
+  text-align: right;
+}
+
+.settingsControlLine,
+.settingsInlinePair {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settingsInlinePair {
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.settingsControlS {
+  width: 56px;
+}
+
+.settingsControlL {
+  width: 190px;
+}
+
+.settingsControlXL {
+  width: 260px;
+}
+
+.settingsControlXXL {
+  width: 330px;
+}
+
+.settingsButtonSmall {
+  min-width: 72px;
+  padding: 0 10px;
+}
+
+.settingsPrimaryButton {
+  width: 190px;
+  border-color: var(--blue);
+  background: var(--blue);
+}
+
+.settingsDivider {
+  width: 100%;
+  height: 1px;
+  border: 0;
+  background: var(--line-soft);
+}
+
+.settingsLineText {
+  color: var(--text);
+  line-height: 1.45;
+  text-align: center;
+}
+
+.settingsLink {
+  color: #008cff;
+  text-decoration: none;
+}
+
+.settingsSliderRow {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  width: 330px;
+}
+
+.settingsSliderRow input[type="range"] {
+  width: 330px;
+  accent-color: var(--blue);
+}
+
+.settingsChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 190px;
+  min-height: 54px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #1d1e22;
+}
+
+.settingsChips span,
+.settingsBadgeRow strong {
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: #565c9d;
+}
+
+.achievementMedal {
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  border: 2px solid #cfd2d6;
+  border-radius: 50%;
+  color: #f0f0f0;
+  font-size: 42px;
+}
+
+.settingsBadgeRow {
+  display: grid;
+  grid-template-columns: 72px max-content;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+}
+
+.settingsBadgeRow strong {
+  font-weight: 400;
+}
+
+.settingsIssueGrid,
+.settingsAboutGrid {
+  gap: 18px;
+}
+
+@media (max-width: 1000px) {
+  body {
+    min-width: 0;
+  }
+
+  .maaLayout {
+    grid-template-columns: 210px minmax(420px, 1fr);
+    padding-left: 36px;
+  }
+
+  .eventColumn {
+    grid-column: 1 / -1;
+    width: auto;
+  }
+}

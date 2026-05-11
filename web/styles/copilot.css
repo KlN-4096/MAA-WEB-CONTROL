@@ -1,0 +1,471 @@
+.copilotViewRoot {
+  display: grid;
+  grid-template-columns: 552px minmax(420px, 1fr);
+  gap: 8px;
+  min-height: calc(100vh - 58px);
+  padding: 31px 34px 34px 40px;
+}
+
+.copilotViewRoot.withList {
+  grid-template-columns: 760px minmax(360px, 1fr);
+}
+
+.copilotMain {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 778px;
+}
+
+.copilotTop {
+  display: grid;
+  gap: 8px;
+}
+
+.copilotTabs {
+  display: grid;
+  grid-template-columns: repeat(4, max-content);
+  justify-content: start;
+  width: max-content;
+  padding: 0;
+  border-radius: 4px;
+  background: transparent;
+}
+
+.copilotTab {
+  min-width: 108px;
+  min-height: 30px;
+  border-radius: 0;
+  padding: 0 10px;
+}
+
+.copilotTab.active {
+  border-color: var(--blue);
+  color: #28a9ff;
+}
+
+.copilotTab:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.copilotTab:not(:first-child) {
+  border-left: 0;
+}
+
+.copilotTab:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.copilotPathRow {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px 34px 34px;
+  width: 552px;
+}
+
+.copilotViewRoot.withList .copilotPathRow {
+  width: 590px;
+}
+
+.copilotPathBox {
+  position: relative;
+}
+
+.copilotPathBox input {
+  width: 100%;
+  border-radius: 4px 0 0 4px;
+  padding-right: 34px;
+}
+
+.pathDropButton {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 30px;
+  min-height: 28px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: #1f2024;
+  font-size: 13px;
+}
+
+.copilotIconButton {
+  position: relative;
+  width: 34px;
+  min-height: 30px;
+  border-left: 0;
+  border-radius: 0;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.copilotIconButton:last-of-type {
+  border-radius: 0 4px 4px 0;
+}
+
+.copilotIconButton.danger {
+  color: var(--danger);
+}
+
+.hiddenFileInput {
+  display: none;
+}
+
+.copilotFilePopup {
+  position: absolute;
+  top: 32px;
+  left: 0;
+  z-index: 70;
+  width: calc(100% + 102px);
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #25262b;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.38);
+  padding: 5px 0;
+}
+
+.fileTreeItem,
+.fileTreeEmpty {
+  min-height: 24px;
+  padding: 4px 10px 4px calc(10px + var(--depth, 0) * 16px);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.fileTreeItem.file {
+  cursor: pointer;
+}
+
+.fileTreeItem.file:hover {
+  background: #30333a;
+  color: #50bfff;
+}
+
+.fileTreeItem.folder {
+  color: #cfd1d6;
+}
+
+.fileTreeEmpty {
+  color: var(--muted);
+}
+
+.copilotBody {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  align-items: start;
+  justify-content: center;
+  padding-top: 16px;
+}
+
+.copilotRunColumn {
+  display: grid;
+  justify-items: center;
+  min-width: 220px;
+}
+
+.copilotStartButton {
+  width: 100px;
+  height: 50px;
+  margin-bottom: 18px;
+}
+
+.copilotInfoLine {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--mute, #999);
+  border-top: 1px dashed transparent;
+}
+
+.copilotInfoLine.loading {
+  color: var(--mute, #888);
+  font-style: italic;
+}
+
+.copilotInfoLine.error {
+  color: #c0392b;
+}
+
+.copilotInfoLine.ok {
+  color: var(--text);
+}
+
+.copilotInfoMain {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.copilotInfoSource {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--mute, #888);
+  white-space: nowrap;
+}
+
+.copilotOptions {
+  display: grid;
+  gap: 9px;
+  justify-items: start;
+}
+
+.copilotCheck {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+  color: var(--text);
+}
+
+.copilotCheck input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+}
+
+.copilotIndented {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 24px;
+}
+
+.copilotSupportBlock {
+  display: grid;
+  gap: 3px;
+}
+
+.copilotSupportSelect {
+  margin-left: 24px;
+}
+
+.copilotSmallSelect {
+  width: 96px;
+}
+
+.loopTimesInput {
+  width: 68px;
+  height: 22px;
+}
+
+.copilotTaskPanel {
+  display: grid;
+  grid-template-rows: minmax(210px, 1fr) 30px;
+  width: 360px;
+  min-height: 280px;
+  margin-left: 5px;
+}
+
+.copilotTaskList {
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+  background: #1a1b1f;
+  overflow-y: auto;
+}
+
+.copilotListEmpty {
+  min-height: 210px;
+}
+
+.copilotTaskItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px 30px;
+  align-items: center;
+  min-height: 31px;
+  padding-left: 8px;
+}
+
+.copilotTaskItem.raid {
+  background: rgba(255, 0, 0, 0.2);
+}
+
+.copilotTaskCheck {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.copilotTaskCheck span,
+.copilotTaskItem > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copilotTaskItem button {
+  min-height: 30px;
+  border: 0;
+  background: transparent;
+  color: #9fa3aa;
+}
+
+.copilotTaskTools {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 34px 34px;
+}
+
+.taskNameBox {
+  position: relative;
+}
+
+.taskNameBox input {
+  width: 100%;
+  border-radius: 0;
+  text-align: center;
+}
+
+.copilotInfo {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 778px;
+  border-left: 1px solid #202226;
+  padding: 4px 28px 0 8px;
+}
+
+.overlayButton {
+  position: absolute;
+  top: 15px;
+  right: 0;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  color: #9da0a6;
+  font-size: 14px;
+}
+
+.copilotTips {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  max-height: 696px;
+  overflow-y: auto;
+  padding-right: 26px;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.copilotTips p,
+.copilotTips ul {
+  margin: 0;
+}
+
+.copilotTips .tipTitle {
+  margin-bottom: 4px;
+}
+
+.copilotTipGroup {
+  display: grid;
+  gap: 4px;
+}
+
+.copilotTipGroup ul {
+  display: grid;
+  gap: 2px;
+  padding-left: 0;
+  list-style: none;
+}
+
+.copilotTipGroup li {
+  position: relative;
+  padding-left: 16px;
+}
+
+.copilotTipGroup li::before {
+  position: absolute;
+  left: 0;
+  content: "●";
+}
+
+.copilotLink {
+  justify-self: center;
+  color: #008cff;
+  text-decoration: none;
+}
+
+.mapLink {
+  margin-top: 12px;
+}
+
+.copilotTipIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 25;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #292b30;
+  color: #8f949b;
+  cursor: help;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.copilotIconButton > .copilotTipIcon,
+.taskNameBox > .copilotTipIcon {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 14px;
+  height: 14px;
+  opacity: 0.42;
+  font-size: 10px;
+}
+
+.copilotTipIcon::after {
+  position: absolute;
+  bottom: 23px;
+  left: 50%;
+  z-index: 80;
+  width: max-content;
+  max-width: 330px;
+  padding: 7px 9px;
+  border: 1px solid #4c5057;
+  border-radius: 4px;
+  background: #24262b;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  content: attr(data-tip);
+  line-height: 1.45;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(2px);
+  white-space: pre-line;
+}
+
+.copilotIconButton > .copilotTipIcon::after,
+.taskNameBox > .copilotTipIcon::after {
+  right: -2px;
+  left: auto;
+  transform: translateY(2px);
+}
+
+.copilotTipIcon:hover::after,
+.copilotTipIcon:focus::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.copilotIconButton > .copilotTipIcon:hover::after,
+.copilotIconButton > .copilotTipIcon:focus::after,
+.taskNameBox > .copilotTipIcon:hover::after,
+.taskNameBox > .copilotTipIcon:focus::after {
+  transform: translateY(0);
+}

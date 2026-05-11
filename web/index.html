@@ -5,7 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MAA Web Control</title>
     <link rel="icon" href="/newlogo.ico" />
-    <link rel="stylesheet" href="/styles.css?v=20260504-layout" />
+    <link rel="stylesheet" href="/styles/base.css" />
+    <link rel="stylesheet" href="/styles/layout.css" />
+    <link rel="stylesheet" href="/styles/basement.css" />
+    <link rel="stylesheet" href="/styles/logs.css" />
+    <link rel="stylesheet" href="/styles/forms.css" />
+    <link rel="stylesheet" href="/styles/tools.css" />
+    <link rel="stylesheet" href="/styles/copilot.css" />
+    <link rel="stylesheet" href="/styles/settings.css" />
   </head>
   <body>
     <div class="windowShell">
@@ -91,13 +98,68 @@
       </main>
     </div>
 
-    <script src="/uiStorage.js"></script>
-    <script src="/taskForms.js"></script>
-    <script src="/featureRegistry.js"></script>
-    <script src="/copilotView.js"></script>
-    <script src="/toolsView.js"></script>
-    <script src="/settingsView.js?v=20260504-lock"></script>
-    <script src="/maaCards.js?v=20260504-1"></script>
-    <script src="/app.js?v=20260504-fix2"></script>
+    <!-- Core infrastructure -->
+    <script src="/core/storage.js"></script>
+    <script src="/core/featureRegistry.js"></script>
+    <script src="/core/state.js"></script>
+    <script src="/core/api.js"></script>
+
+    <!-- Shared utilities -->
+    <script src="/shared/logCards.js"></script>
+    <script src="/shared/logEvents.js"></script>
+
+    <!-- Task type forms (index first for shared helpers, then per-type) -->
+    <script src="/tasks/index.js"></script>
+    <script src="/tasks/startup.js"></script>
+    <script src="/tasks/fight.js"></script>
+    <script src="/tasks/recruit.js"></script>
+    <script src="/tasks/infrast.js"></script>
+    <script src="/tasks/mall.js"></script>
+    <script src="/tasks/award.js"></script>
+    <script src="/tasks/custom.js"></script>
+    <script src="/tasks/roguelike.js"></script>
+    <script src="/tasks/reclamation.js"></script>
+    <script src="/tasks/userdata.js"></script>
+
+    <!-- Basement view (一键长草) -->
+    <script src="/views/basement/profiles.js"></script>
+    <script src="/views/basement/taskList.js"></script>
+    <script src="/views/basement/taskEditor.js"></script>
+    <script src="/views/basement/postAction.js"></script>
+    <script src="/views/basement/runner.js"></script>
+    <script src="/views/basement/stageTips.js"></script>
+    <script src="/views/basement/index.js"></script>
+
+    <!-- Copilot view -->
+    <script src="/views/copilot/index.js"></script>
+
+    <!-- Tools view -->
+    <script src="/views/tools/index.js"></script>
+
+    <!-- Settings view (helpers must load before state.js, sections any order, index last) -->
+    <script src="/views/settings/helpers.js"></script>
+    <script src="/views/settings/state.js"></script>
+    <script src="/views/settings/profileSync.js"></script>
+    <script src="/views/settings/scroll.js"></script>
+    <script src="/views/settings/scheduler.js"></script>
+    <script src="/views/settings/events.js"></script>
+    <script src="/views/settings/sections/config.js"></script>
+    <script src="/views/settings/sections/timer.js"></script>
+    <script src="/views/settings/sections/game.js"></script>
+    <script src="/views/settings/sections/performance.js"></script>
+    <script src="/views/settings/sections/connection.js"></script>
+    <script src="/views/settings/sections/maacore.js"></script>
+    <script src="/views/settings/sections/startup.js"></script>
+    <script src="/views/settings/sections/ui.js"></script>
+    <script src="/views/settings/sections/background.js"></script>
+    <script src="/views/settings/sections/remote.js"></script>
+    <script src="/views/settings/sections/notification.js"></script>
+    <script src="/views/settings/sections/update.js"></script>
+    <script src="/views/settings/sections/issue.js"></script>
+    <script src="/views/settings/sections/about.js"></script>
+    <script src="/views/settings/index.js"></script>
+
+    <!-- Boot last: wires everything and calls boot() -->
+    <script src="/core/boot.js"></script>
   </body>
 </html>

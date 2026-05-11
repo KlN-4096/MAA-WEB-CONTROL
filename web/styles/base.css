@@ -1,0 +1,96 @@
+:root {
+  color-scheme: dark;
+  --bg: #171717;
+  --bar: #1f1f1f;
+  --panel: #1b1b1b;
+  --panel-2: #202020;
+  --text: #f0f0f0;
+  --muted: #9a9a9a;
+  --line: #3b3d42;
+  --line-soft: #2a2c30;
+  --blue: #0087d7;
+  --blue-soft: rgba(0, 135, 215, 0.18);
+  --danger: #d14d4d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  height: 100%;
+  min-width: 1120px;
+  overflow: hidden;
+  background: #0f0f0f;
+  color: var(--text);
+  font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+  font-size: 12px;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #1d1d1f;
+  color: var(--text);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--blue);
+  color: #50bfff;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+input,
+select,
+textarea {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #1d1e22;
+  color: var(--text);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+input,
+select {
+  width: 110px;
+  height: 30px;
+  padding: 0 8px;
+}
+
+textarea {
+  width: 100%;
+  min-height: 110px;
+  padding: 8px;
+  resize: vertical;
+  font-family: Consolas, "Cascadia Mono", monospace;
+}
+
+h2,
+p {
+  margin: 0;
+}

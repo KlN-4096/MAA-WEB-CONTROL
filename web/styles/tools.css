@@ -1,0 +1,428 @@
+.toolsViewRoot {
+  height: calc(100vh - 58px);
+  overflow: hidden;
+  padding: 20px;
+}
+
+.toolsPanel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  border: 0;
+}
+
+.toolsTabs {
+  display: grid;
+  grid-template-columns: repeat(6, max-content);
+  justify-self: center;
+  width: max-content;
+  overflow: hidden;
+  border-radius: 4px;
+  background: transparent;
+}
+
+.toolsTab {
+  min-width: 108px;
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.toolsTab.active {
+  border-color: var(--blue);
+  color: #28a9ff;
+}
+
+.toolsTab:not(:first-child) {
+  border-left: 0;
+}
+
+.toolsContent {
+  min-height: 0;
+  margin-top: 10px;
+  padding: 10px 20px 20px;
+}
+
+.toolsGrid {
+  display: grid;
+  gap: 0;
+  height: 100%;
+}
+
+.recruitTool {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.toolsScroll {
+  min-height: 0;
+  padding-top: 8px;
+}
+
+.toolsInfo {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.recruitInfo {
+  display: inline-block;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.toolsInfo.centered {
+  padding-top: 8px;
+  text-align: center;
+}
+
+.syncLine {
+  padding-top: 0;
+  text-align: center;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.recruitBottom,
+.toolButtonRow,
+.peepControls {
+  display: flex;
+  align-items: center;
+}
+
+.recruitBottom {
+  justify-content: center;
+  gap: 18px;
+  padding-bottom: 18px;
+}
+
+.recruitLeft {
+  display: grid;
+  gap: 8px;
+  min-width: 210px;
+}
+
+.recruitLevels {
+  display: grid;
+  gap: 8px;
+  min-width: 310px;
+}
+
+.recruitLevel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+}
+
+.timePair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.timePair input {
+  width: 55px;
+  height: 30px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.toolCheck,
+.disabledCheck,
+.titleSelect,
+.fpsControl {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.toolCheck input[type="checkbox"],
+.disabledCheck input[type="checkbox"] {
+  flex: 0 0 15px;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--blue);
+}
+
+.wrapCheck {
+  align-items: center;
+}
+
+.wrapCheck span {
+  max-width: 190px;
+  line-height: 1.3;
+}
+
+.toolBigButton {
+  width: 180px;
+  height: 70px;
+  font-size: 12px;
+}
+
+.toolButtonRow {
+  justify-content: center;
+  gap: 18px;
+  margin-top: auto;
+  padding-bottom: 18px;
+}
+
+.toolButtonRow.wide {
+  gap: 18px;
+}
+
+.toolButtonRow.wide .toolBigButton {
+  width: 160px;
+}
+
+.resultTool {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+.nestedToolPanel,
+.cardGrid,
+.emptyResultPanel {
+  min-height: 0;
+}
+
+.nestedToolPanel {
+  display: grid;
+  align-content: start;
+}
+
+.cardGrid {
+  display: grid;
+  gap: 16px;
+}
+
+.depotGrid {
+  grid-template-columns: repeat(auto-fill, minmax(186px, 1fr));
+}
+
+.toolEmpty {
+  display: none;
+}
+
+.gachaDisclaimer,
+.gachaTool,
+.peepTool,
+.miniGameTool {
+  display: grid;
+  height: 100%;
+  justify-items: center;
+}
+
+.gachaDisclaimer {
+  align-content: center;
+  gap: 14px;
+  padding-bottom: 40px;
+  text-align: center;
+}
+
+.disclaimerLine {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.rainbowText {
+  background: linear-gradient(90deg, #b331ff, #ff006e, #ff8d00, #ffe900, #28b338, #008fff);
+  background-clip: text;
+  color: transparent;
+  font-size: 28px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.55);
+}
+
+.gachaAgreeButton {
+  width: 110px;
+  height: 60px;
+  font-size: 14px;
+}
+
+.gachaTool {
+  grid-template-rows: 110px minmax(0, 1fr) auto;
+}
+
+.gachaTool .peepScreen {
+  width: min(560px, 100%);
+  min-height: 220px;
+}
+
+.peepTool {
+  grid-template-rows: minmax(0, 1fr) 100px;
+  width: 100%;
+}
+
+.peepStage {
+  display: grid;
+  width: 100%;
+  place-items: center;
+}
+
+.peepStage p {
+  font-size: 24px;
+}
+
+.peepScreen {
+  position: relative;
+  display: grid;
+  width: min(560px, 80vw);
+  aspect-ratio: 16 / 9;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #101114;
+}
+
+.deviceFrame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #08090b;
+}
+
+.fpsBadge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.72);
+  color: aquamarine;
+  font-weight: 700;
+}
+
+.peepControls {
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  padding-bottom: 18px;
+}
+
+.fpsControl {
+  align-items: start;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fpsControl input {
+  width: 72px;
+  height: 30px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.miniGameTool {
+  grid-template-rows: auto auto minmax(0, 1fr) 80px;
+  width: 100%;
+  padding-top: 8px;
+}
+
+.miniCombo {
+  position: relative;
+  width: 100%;
+  font-size: 12px;
+}
+
+.miniComboTitle {
+  display: block;
+  margin: 0 0 8px 12px;
+}
+
+.miniComboButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 30px;
+  padding: 0 12px 0 16px;
+  border-color: var(--blue);
+  text-align: left;
+}
+
+.miniComboArrow {
+  color: #28a9ff;
+  font-size: 14px;
+}
+
+.miniComboMenu {
+  position: absolute;
+  top: 60px;
+  left: 0;
+  z-index: 80;
+  display: grid;
+  width: 100%;
+  padding: 6px 0;
+  border-radius: 4px;
+  background: #171717;
+  box-shadow: 0 12px 18px rgba(0, 0, 0, 0.26);
+}
+
+.miniComboOption {
+  justify-content: start;
+  width: 100%;
+  min-height: 30px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 18px;
+  font-size: 12px;
+  text-align: left;
+}
+
+.miniComboOption.selected {
+  background: #202024;
+}
+
+.secretFront {
+  display: grid;
+  gap: 10px;
+  justify-self: start;
+  margin-top: 14px;
+}
+
+.titleSelect {
+  justify-content: start;
+  gap: 10px;
+}
+
+.titleSelect span {
+  min-width: 88px;
+  color: var(--muted);
+}
+
+.titleSelect select {
+  width: 240px;
+  height: 30px;
+  font-size: 12px;
+}
+
+.miniTip {
+  justify-self: start;
+  min-height: 120px;
+  padding: 14px 16px;
+  line-height: 1.5;
+  color: var(--text);
+  font-size: 12px;
+  white-space: pre-line;
+}
+
+.miniStart {
+  width: 100px;
+  height: 50px;
+  font-size: 12px;
