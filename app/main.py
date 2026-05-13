@@ -15,6 +15,8 @@ from .notifications import NotificationService
 from .runner import MaaRunnerService
 from .scheduler import SchedulerService
 from .storage import ProfileStore
+from .update_service import UpdateService
+from .version import WEB_VERSION
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +26,8 @@ SCHEDULER_CONFIG = PROJECT_ROOT / "data" / "scheduler.json"
 USERDATA_STATE_PATH = PROJECT_ROOT / "data" / "userdata_state.json"
 NOTIFICATION_CONFIG = PROJECT_ROOT / "data" / "notifications.json"
 RUNNER_CONFIG = PROJECT_ROOT / "data" / "runner_config.json"
+UPDATE_CONFIG = PROJECT_ROOT / "data" / "update_config.json"
+UPDATE_CACHE = PROJECT_ROOT / "data" / "update_cache"
 
 
 def _initial_task_timeout_minutes() -> int:
@@ -58,8 +62,9 @@ async def _scheduler_run_callback(profile_name: str) -> None:
 
 
 scheduler = SchedulerService(event_bus, SCHEDULER_CONFIG, run_callback=_scheduler_run_callback)
+update_service = UpdateService(UPDATE_CONFIG, UPDATE_CACHE, runner, event_bus)
 
-app = FastAPI(title="MAA Web Control", version="0.2.0")
+app = FastAPI(title="MAA Web Control", version=WEB_VERSION)
 app.include_router(create_api_router(
     profile_store,
     runner,
@@ -68,16 +73,19 @@ app.include_router(create_api_router(
     scheduler,
     project_root=PROJECT_ROOT,
     notifications=notification_service,
+    update_service=update_service,
 ))
 
 
 @app.on_event("startup")
 async def on_startup() -> None:
     scheduler.start()
+    update_service.start()
 
 
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
+    await update_service.stop()
     await scheduler.stop()
     await runner.shutdown()
 

@@ -32,12 +32,16 @@ from .models import (
     RunRequest,
     SchedulerConfig,
     ToolRequest,
+    UpdateConfig,
+    UpdateRequest,
 )
 from .notifications import NotificationService
 from .options import build_ui_options
 from .runner import MaaRunnerService
 from .scheduler import SchedulerService
 from .storage import ProfileStore
+from .update_service import UpdateService
+from .maa_versions import get_maa_version_info
 
 
 def create_api_router(
@@ -48,6 +52,7 @@ def create_api_router(
     scheduler: SchedulerService | None = None,
     project_root: Path | None = None,
     notifications: NotificationService | None = None,
+    update_service: UpdateService | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api")
     logs = log_service or runner.log_service
@@ -77,8 +82,15 @@ def create_api_router(
         return build_capabilities()
 
     @router.get("/version")
-    async def get_version():
-        return await asyncio.to_thread(_get_maa_version, runner)
+    async def get_version(client_type: str = "Official"):
+        if update_service is not None:
+            return await asyncio.to_thread(update_service.version_info, client_type)
+        return await asyncio.to_thread(
+            get_maa_version_info,
+            runner,
+            project_root=project_root,
+            client_type=client_type,
+        )
 
     @router.get("/adapter")
     async def get_adapter_config():
@@ -353,6 +365,44 @@ def create_api_router(
             )
         return RunnerConfig(task_timeout_minutes=runner.task_timeout_minutes)
 
+    # ── Updates ───────────────────────────────────────────────────
+
+    @router.get("/update/config")
+    async def get_update_config():
+        if update_service is None:
+            return UpdateConfig()
+        return update_service.config
+
+    @router.put("/update/config")
+    async def put_update_config(config: UpdateConfig):
+        if update_service is None:
+            raise HTTPException(status_code=501, detail="Update service not initialized")
+        return update_service.update_config(config)
+
+    @router.get("/update/state")
+    async def get_update_state():
+        if update_service is None:
+            return {}
+        return update_service.state
+
+    @router.post("/update/check")
+    async def post_update_check(request: UpdateRequest | None = None):
+        if update_service is None:
+            raise HTTPException(status_code=501, detail="Update service not initialized")
+        return await update_service.check_updates((request or UpdateRequest()).client_type)
+
+    @router.post("/update/resource")
+    async def post_resource_update(request: UpdateRequest | None = None):
+        if update_service is None:
+            raise HTTPException(status_code=501, detail="Update service not initialized")
+        return await update_service.update_resource((request or UpdateRequest()).client_type)
+
+    @router.post("/update/core")
+    async def post_core_update(request: UpdateRequest | None = None):
+        if update_service is None:
+            raise HTTPException(status_code=501, detail="Update service not initialized")
+        return await update_service.update_core((request or UpdateRequest()).client_type)
+
     # ── Notifications ──────────────────────────────────────────────
 
     @router.get("/notifications")
@@ -606,42 +656,6 @@ def _parse_adb_devices(output: str) -> list[tuple[str, str]]:
         if len(parts) >= 2:
             devices.append((parts[0], parts[1]))
     return devices
-
-
-def _get_maa_version(runner: "MaaRunnerService") -> dict:
-    maa_version = "—"
-    resource_version = "—"
-    adapter = runner.adapter
-    asst_cls = getattr(adapter, "_asst_cls", None)
-    if asst_cls is None:
-        resolve = getattr(adapter, "_resolve_asst_cls", None)
-        if callable(resolve):
-            try:
-                asst_cls = resolve()
-            except Exception:
-                pass
-    if asst_cls is not None:
-        get_ver = getattr(asst_cls, "get_version", None)
-        if callable(get_ver):
-            try:
-                maa_version = get_ver() or "—"
-            except Exception:
-                pass
-    core_dir = getattr(adapter, "_core_dir", None)
-    if core_dir is not None:
-        import json as _json
-        for candidate in ["resource/version.json", "cache/version.json", "version.json"]:
-            ver_path = core_dir / candidate
-            if ver_path.exists():
-                try:
-                    data = _json.loads(ver_path.read_text(encoding="utf-8"))
-                    resource_version = data.get("activity", {}).get("DateTime", None) or data.get("version", None) or "—"
-                except Exception:
-                    pass
-                break
-    return {"maa_version": maa_version, "resource_version": resource_version}
-
-
 async def events_socket(websocket: WebSocket, events: EventBus) -> None:
     await websocket.accept()
     queue = events.add_subscriber()

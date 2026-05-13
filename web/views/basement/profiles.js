@@ -18,6 +18,7 @@ async function loadProfile(name) {
   state.profile = await api(`/api/profiles/${encodeURIComponent(name)}`);
   state.selectedTask = preferredTaskIndex(state.profile.tasks, restoreSelectedTask(state.profile));
   persistSelectedTask();
+  if (typeof loadVersionInfo === "function") loadVersionInfo();
   renderAll();
 }
 

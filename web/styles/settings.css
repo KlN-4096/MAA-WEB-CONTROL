@@ -399,6 +399,10 @@
   text-align: center;
 }
 
+.updateStatusLine {
+  max-width: 260px;
+}
+
 .settingsLink {
   color: #008cff;
   text-decoration: none;

@@ -34,6 +34,18 @@ function onSettingsClick(event) {
   }
   if (event.target.closest("[data-settings-action='testNotification']")) {
     testNotificationConfig();
+    return;
+  }
+  if (event.target.closest("[data-settings-action='checkUpdate']")) {
+    checkUpdateNow();
+    return;
+  }
+  if (event.target.closest("[data-settings-action='coreUpdate']")) {
+    updateCoreNow();
+    return;
+  }
+  if (event.target.closest("[data-settings-action='resourceUpdate']")) {
+    updateResourceNow();
   }
 }
 
@@ -133,7 +145,13 @@ function updateSettingsField(target) {
       : field === "taskTimeoutMinutes"
         ? clampNumber(target.value, 0, 999, SETTINGS_STATE.taskTimeoutMinutes ?? 0)
         : target.value;
+  if (field === "forceGithubGlobalSource") SETTINGS_STATE.forceGithub = SETTINGS_STATE.forceGithubGlobalSource;
   persistSettingsState();
+  if (isUpdateSettingsField(field)) {
+    saveUpdateConfig();
+    if (SETTINGS_CONDITIONAL_FIELDS.has(field)) renderSettingsView();
+    return true;
+  }
   if (field === "taskTimeoutMinutes") {
     saveRunnerConfig();
     return true;
@@ -141,6 +159,22 @@ function updateSettingsField(target) {
   saveSettingsProfile();
   if (SETTINGS_CONDITIONAL_FIELDS.has(field)) renderSettingsView();
   return true;
+}
+
+function isUpdateSettingsField(field) {
+  return [
+    "startupUpdateCheck",
+    "scheduledUpdateCheck",
+    "autoDownloadUpdatePackage",
+    "autoInstallUpdatePackage",
+    "showUpdaterConsole",
+    "updateChannel",
+    "updateSource",
+    "forceGithubGlobalSource",
+    "mirrorChyanCdk",
+    "proxyType",
+    "proxyAddress"
+  ].includes(field);
 }
 
 function updateNotificationField(field, target) {

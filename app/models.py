@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 RunnerStateName = Literal[
@@ -215,6 +215,29 @@ class ToolRequest(BaseModel):
 class AdapterConfig(BaseModel):
     adapter: str = ""
     core_dir: str = ""
+
+
+class UpdateConfig(BaseModel):
+    startup_update_check: bool = True
+    scheduled_update_check: bool = False
+    auto_download_update_package: bool = True
+    auto_install_update_package: bool = False
+    show_updater_console: bool = False
+    update_channel: Literal["stable", "beta", "alpha"] = "stable"
+    update_source: Literal["Github", "MirrorChyan"] = "Github"
+    force_github_global_source: bool = False
+    mirror_chyan_cdk: str = ""
+    proxy_type: str = ""
+    proxy: str = ""
+
+    @field_validator("update_source", mode="before")
+    @classmethod
+    def normalize_update_source(cls, value: Any) -> Any:
+        return "Github" if value == "Overseas" else value
+
+
+class UpdateRequest(BaseModel):
+    client_type: str = "Official"
 
 
 class WebhookNotificationConfig(BaseModel):

@@ -184,7 +184,8 @@ async function boot() {
   await loadLogCards();
   if (typeof loadSchedulerConfig === "function") await loadSchedulerConfig();
   await loadPostActionConfig();
-  if (typeof loadVersionInfo === "function") loadVersionInfo();
+  if (typeof loadUpdateConfig === "function") await loadUpdateConfig();
+  if (typeof loadVersionInfo === "function") await loadVersionInfo();
   if (typeof loadAdapterConfig === "function") await loadAdapterConfig();
   if (typeof loadNotificationConfig === "function") loadNotificationConfig();
   if (typeof loadRunnerConfig === "function") loadRunnerConfig();
