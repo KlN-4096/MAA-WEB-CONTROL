@@ -6,3 +6,6 @@ __pycache__/
 data/runtime/
 *.png
 .serena/
+.claude/
+data/
+.tmp/

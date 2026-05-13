@@ -71,21 +71,39 @@
                   <span>执行日志</span>
                   <button id="clearLogsButton" type="button">清空</button>
                 </div>
-                <div id="logList" class="logList"></div>
+                <div id="logList" class="logList" data-log-list="main"></div>
               </div>
               <div class="eventPanel rawLogPanel">
                 <div class="panelHead">
                   <span>运行日志</span>
-                  <button id="rawLogToggle" type="button" class="rawLogToggleBtn">展开</button>
+                  <button id="rawLogToggle" type="button" class="rawLogToggleBtn" data-log-raw-toggle>展开</button>
                 </div>
-                <div id="rawLogList" class="logList rawLogList" hidden></div>
+                <div id="rawLogList" class="logList rawLogList" data-log-list="raw" hidden></div>
               </div>
             </aside>
           </div>
         </section>
 
         <section id="view-copilot" class="view">
-          <div id="copilotViewRoot" class="copilotViewRoot"></div>
+          <div id="copilotLayout" class="copilotLayout">
+            <div id="copilotViewRoot" class="copilotViewRoot"></div>
+            <aside class="eventColumn copilotLogColumn" aria-label="自动战斗日志">
+              <div class="eventPanel">
+                <div class="panelHead">
+                  <span>执行日志</span>
+                  <button id="copilotClearLogsButton" type="button" data-copilot-log-action="clear">清空</button>
+                </div>
+                <div id="copilotLogList" class="logList" data-log-list="main"></div>
+              </div>
+              <div class="eventPanel rawLogPanel">
+                <div class="panelHead">
+                  <span>运行日志</span>
+                  <button id="copilotRawLogToggle" type="button" class="rawLogToggleBtn" data-log-raw-toggle data-copilot-log-action="toggle-raw">展开</button>
+                </div>
+                <div id="copilotRawLogList" class="logList rawLogList" data-log-list="raw" hidden></div>
+              </div>
+            </aside>
+          </div>
         </section>
 
         <section id="view-tools" class="view">

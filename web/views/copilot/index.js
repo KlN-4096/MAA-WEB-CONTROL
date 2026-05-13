@@ -5,30 +5,6 @@ const COPILOT_TABS = [
   "其他活动"
 ];
 
-const COPILOT_TIPS = [
-  { title: "小提示:" },
-  { text: "1. 使用前请确认作业与所选的关卡类型一致。" },
-  { text: "2. 主线、故事集、SideStory: 请在关卡界面的右下角存在「开始行动」按钮界面启动。" },
-  { text: "3. 保全派驻: resource/copilot 文件夹内置多份作业。请先手动编队，在右下角存在「开始部署」按钮界面启动，可配合「循环次数」。" },
-  { text: "4. 悖论模拟: 选好技能后，在技能选择界面存在「开始模拟」按钮界面启动，1/2 星干员（无技能）在右下角存在「开始模拟」按钮界面开始。若使用「多作业模式」，请从干员列表「等级/稀有度」筛选下启动。" },
-  { text: "5. 使用好友助战时，请关闭「自动编队」和「多作业模式」，手动选择干员后，在编队界面右下角存在「开始行动」按钮界面启动。" },
-  { text: "6. 干员若被标记为「特别关注」，可能影响「自动编队」的识别与选择。建议使用「自动编队」时移除关注，或在报错后关闭「自动编队」，根据提示手动补充缺失的干员。" },
-  {
-    text: "7. Copilot 作业站的神秘代码可通过输入框右侧的粘贴按钮粘贴:",
-    items: ["单击第 2 个按钮 = 添加作业。", "单击第 3 个按钮 = 添加作业集。"]
-  },
-  {
-    text: "8. 多作业模式:",
-    items: [
-      "选择作业后，检查下方关卡名是否正确 (例: CV-EX-1)。",
-      "添加: 左键 = 普通难度，右键 = 突袭难度。",
-      "清除: 左键 = 全部清空，右键 = 仅移除未激活任务。",
-      "请在能看到目标关卡名的界面启动，不支持跨章节导航。",
-      "遇到理智不足、战斗失败、未能三星结算时将自动中止。"
-    ]
-  }
-];
-
 const USE_COPILOT_LIST_TIP = [
   "仅支持以下模式:",
   "  1. 主线: 同一章节内导航",
@@ -67,6 +43,8 @@ const COPILOT_STATE = {
   filename: "",
   filePopupOpen: false,
   idle: true,
+  launching: false,
+  runnerState: state.runnerState || "Idle",
   resolveStatus: "",
   resolveError: "",
   resolvedPath: "",
@@ -146,10 +124,13 @@ function setCopilotViewOptions(options) {
 }
 
 function renderCopilotView() {
+  syncCopilotRunState(state.runnerState, false);
+  const layout = $("copilotLayout");
+  if (layout) layout.classList.toggle("withList", copilotListVisible());
   const root = $("copilotViewRoot");
   if (!root) return;
   const unavailable = copilotUnavailable();
-  root.className = `copilotViewRoot ${copilotListVisible() ? "withList" : ""}`;
+  root.className = "copilotViewRoot";
   root.innerHTML = `
     <section class="copilotMain">
       ${unavailable ? `<p class="featureUnavailable">${escapeHtml(unavailable)}</p>` : ""}
@@ -165,12 +146,11 @@ function renderCopilotView() {
         </div>
         ${copilotListVisible() ? renderCopilotList() : ""}
       </div>
-      <a class="copilotLink" href="https://prts.plus" target="_blank" rel="noreferrer">自动战斗作业分享</a>
+      <div class="copilotFooter">
+        <a class="copilotLink" href="https://prts.plus" target="_blank" rel="noreferrer">自动战斗作业分享</a>
+        <a class="copilotLink" href="https://map.ark-nights.com/areas" target="_blank" rel="noreferrer">自动战斗地图坐标</a>
+      </div>
     </section>
-    <aside class="copilotInfo">
-      <div class="copilotTips">${renderCopilotTips()}</div>
-      <a class="copilotLink mapLink" href="https://map.ark-nights.com/areas" target="_blank" rel="noreferrer">自动战斗地图坐标</a>
-    </aside>
   `;
 }
 
@@ -181,6 +161,8 @@ function wireCopilotView() {
   root.addEventListener("contextmenu", onCopilotContextMenu);
   root.addEventListener("change", onCopilotChange);
   root.addEventListener("input", onCopilotInput);
+  $("copilotClearLogsButton")?.addEventListener("click", () => clearLogs().catch(showError));
+  $("copilotRawLogToggle")?.addEventListener("click", toggleRawLog);
   copilotWired = true;
 }
 
@@ -234,10 +216,10 @@ function renderCopilotRunButton() {
   if (unavailable) {
     return `<button class="copilotStartButton" type="button" disabled title="${escapeHtml(unavailable)}">开始</button>`;
   }
-  if (COPILOT_STATE.idle) {
-    return '<button class="copilotStartButton" type="button" data-copilot-action="start">开始</button>';
-  }
-  return '<button class="copilotStartButton" type="button" data-copilot-action="stop">停止</button>';
+  const label = COPILOT_STATE.runnerState === "Stopping" ? "停止中" : (COPILOT_STATE.idle ? "开始" : "停止");
+  const disabled = COPILOT_STATE.runnerState === "Stopping" ? " disabled" : "";
+  const action = COPILOT_STATE.idle ? "start" : "stop";
+  return `<button class="copilotStartButton" type="button" data-copilot-action="${action}"${disabled}>${label}</button>`;
 }
 
 function renderCopilotInfoBlock() {
@@ -260,6 +242,30 @@ function renderCopilotInfoBlock() {
     info.uploader ? `by ${escapeHtml(info.uploader)}` : "",
   ].filter(Boolean);
   return `<div class="copilotInfoLine ok"><span class="copilotInfoMain">${segments.join(" · ")}</span><span class="copilotInfoSource">${escapeHtml(sourceLabel)}</span></div>`;
+}
+
+function syncCopilotRunState(runnerState = state.runnerState, shouldRender = true) {
+  const nextRunnerState = runnerState || "Idle";
+  const previousIdle = COPILOT_STATE.idle;
+  const previousRunnerState = COPILOT_STATE.runnerState;
+  COPILOT_STATE.runnerState = nextRunnerState;
+  const busy = typeof isRunnerBusy === "function" ? isRunnerBusy(nextRunnerState) : false;
+  const terminal = nextRunnerState === "Completed" || nextRunnerState === "Failed" || nextRunnerState === "Stopped";
+  if (busy) {
+    COPILOT_STATE.launching = false;
+    COPILOT_STATE.idle = false;
+  } else if (terminal) {
+    COPILOT_STATE.launching = false;
+    COPILOT_STATE.idle = true;
+  } else if (COPILOT_STATE.launching) {
+    COPILOT_STATE.idle = false;
+  } else {
+    COPILOT_STATE.idle = true;
+  }
+  if (!shouldRender) return;
+  if ((previousIdle !== COPILOT_STATE.idle || previousRunnerState !== nextRunnerState) && state.currentView === "copilot") {
+    renderCopilotView();
+  }
 }
 
 function truncate(text, max) {
@@ -361,24 +367,21 @@ function idleDisabledAttr() {
   return COPILOT_STATE.idle ? "" : " disabled";
 }
 
-function renderCopilotTips() {
-  return COPILOT_TIPS.map((tipItem) => {
-    if (tipItem.title) return `<p class="tipTitle">${escapeHtml(tipItem.title)}</p>`;
-    if (!tipItem.items) return `<p>${escapeHtml(tipItem.text)}</p>`;
-    return `
-      <div class="copilotTipGroup">
-        <p>${escapeHtml(tipItem.text)}</p>
-        <ul>${tipItem.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-      </div>
-    `;
-  }).join("");
-}
-
 function copilotListVisible() {
   return (COPILOT_STATE.useCopilotList && (COPILOT_STATE.tab === 0 || COPILOT_STATE.tab === 2)) || COPILOT_STATE.tab === 1 || COPILOT_STATE.tab === 3;
 }
 
 async function onCopilotClick(event) {
+  const logAction = event.target.closest("[data-copilot-log-action]")?.dataset.copilotLogAction;
+  if (logAction === "clear") {
+    await clearLogs().catch(showError);
+    return;
+  }
+  if (logAction === "toggle-raw") {
+    toggleRawLog();
+    return;
+  }
+
   const tab = event.target.closest("[data-copilot-tab]");
   if (tab) {
     setCopilotTab(Number(tab.dataset.copilotTab));
@@ -538,18 +541,22 @@ async function runCopilotAction(action, payload = {}) {
   const options = copilotPayload(action, payload);
   const alternate = Boolean(options.alternate);
   const persistedAction = ["pasteTask", "pasteSet", "addTask", "clearTasks", "deleteTask", "selectTask"].includes(action);
+  if (action === "start") {
+    COPILOT_STATE.launching = true;
+    COPILOT_STATE.filePopupOpen = false;
+    syncCopilotRunState(state.runnerState);
+    await fireCopilotStart();
+    return;
+  }
+  if (action === "stop") {
+    COPILOT_STATE.launching = false;
+    syncCopilotRunState(state.runnerState);
+    await fireCopilotStop();
+    return;
+  }
   if (action === "toggleFiles") COPILOT_STATE.filePopupOpen = !COPILOT_STATE.filePopupOpen;
   if (action === "selectFile") $("copilotFilePicker")?.click();
   if (action === "pasteTask" || action === "pasteSet") await pasteCopilotText();
-  if (action === "start") {
-    COPILOT_STATE.idle = false;
-    COPILOT_STATE.filePopupOpen = false;
-    fireCopilotStart();
-  }
-  if (action === "stop") {
-    COPILOT_STATE.idle = true;
-    fireCopilotStop();
-  }
   if (action === "importFiles") $("copilotFilePicker")?.click();
   if (action === "addTask") addCopilotTask(alternate);
   if (action === "clearTasks") clearCopilotTasks(alternate);
@@ -630,21 +637,22 @@ function copilotUnavailable() {
   return feature.reason || "后端能力尚未接入。";
 }
 
-function fireCopilotStart() {
+async function fireCopilotStart() {
   if (typeof api !== "function") return;
   const job = copilotStartPayload();
-  api("/api/copilot/start", {
-    method: "POST",
-    body: JSON.stringify(job)
-  }).then((result) => {
+  try {
+    const result = await api("/api/copilot/start", {
+      method: "POST",
+      body: JSON.stringify(job)
+    });
     if (!result.ok) {
-      COPILOT_STATE.idle = true;
-      renderCopilotView();
+      COPILOT_STATE.launching = false;
+      syncCopilotRunState(state.runnerState);
     }
-  }).catch(() => {
-    COPILOT_STATE.idle = true;
-    renderCopilotView();
-  });
+  } catch {
+    COPILOT_STATE.launching = false;
+    syncCopilotRunState(state.runnerState);
+  }
 }
 
 function copilotStartPayload() {
@@ -716,9 +724,15 @@ function parseUserAdditional(text) {
     .filter((entry) => entry.name);
 }
 
-function fireCopilotStop() {
+async function fireCopilotStop() {
   if (typeof api !== "function") return;
-  api("/api/copilot/stop", { method: "POST" }).catch(() => {});
+  try {
+    await api("/api/copilot/stop", { method: "POST" });
+  } catch {
+    // Keep the visible state driven by the next runner status refresh.
+  } finally {
+    syncCopilotRunState(state.runnerState);
+  }
 }
 
 const COPILOT_ACTION_NAMES = [

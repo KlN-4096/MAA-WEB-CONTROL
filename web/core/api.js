@@ -32,4 +32,5 @@ async function refreshStatus() {
   setText("adbStatus", statusMessage(adb, "未配置"));
   setText("toolsAdbStatus", statusMessage(adb, "未配置"));
   syncRunnerControls();
+  if (typeof syncCopilotRunState === "function") syncCopilotRunState(state.runnerState);
 }

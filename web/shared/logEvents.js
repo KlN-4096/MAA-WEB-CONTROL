@@ -1,5 +1,8 @@
 let rawLogExpanded = false;
 let maaLogViewLoadPromise = null;
+const LOG_MAIN_LIST_SELECTOR = '[data-log-list="main"]';
+const LOG_RAW_LIST_SELECTOR = '[data-log-list="raw"]';
+const LOG_RAW_TOGGLE_SELECTOR = '[data-log-raw-toggle]';
 
 function addLocalLog(level, type, message, detail = {}) {
   addLogItem({ ts: new Date().toISOString(), level, type, message, detail });
@@ -20,38 +23,25 @@ function addLogItem(item) {
 }
 
 function renderLogs() {
-  const list = $("logList");
-  if (!list) return;
   const logView = getMaaLogView();
-  if (shouldUseCardLog()) {
-    if (logView && state.logCards.length) {
-      list.innerHTML = logView.renderLogCards(state.logCards);
-      scrollLogListToBottom();
-    } else {
-      list.innerHTML = `<div class="logEmpty">等待事件</div>`;
-    }
-    return;
-  }
-  list.innerHTML = logView ? logView.renderLegacyLogItems(state.logs) : renderLegacyLogItemsFallback(state.logs);
-  scrollLogListToBottom();
+  const html = shouldUseCardLog()
+    ? (logView && state.logCards.length ? logView.renderLogCards(state.logCards) : `<div class="logEmpty">等待事件</div>`)
+    : (logView ? logView.renderLegacyLogItems(state.logs) : renderLegacyLogItemsFallback(state.logs));
+  renderLogLists(LOG_MAIN_LIST_SELECTOR, html);
+  syncRawLogPanels();
+  scrollLogListsToBottom(LOG_MAIN_LIST_SELECTOR);
 }
 
 function renderRawLogs() {
-  const list = $("rawLogList");
-  if (!list) return;
   const logView = getMaaLogView();
-  list.innerHTML = logView
-    ? logView.renderLegacyLogItems(state.logs)
-    : renderLegacyLogItemsFallback(state.logs);
-  requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
+  renderLogLists(LOG_RAW_LIST_SELECTOR, logView ? logView.renderLegacyLogItems(state.logs) : renderLegacyLogItemsFallback(state.logs));
+  syncRawLogPanels();
+  scrollLogListsToBottom(LOG_RAW_LIST_SELECTOR);
 }
 
 function toggleRawLog() {
   rawLogExpanded = !rawLogExpanded;
-  const list = $("rawLogList");
-  const btn = $("rawLogToggle");
-  if (list) list.hidden = !rawLogExpanded;
-  if (btn) btn.textContent = rawLogExpanded ? "收起" : "展开";
+  syncRawLogPanels();
   if (rawLogExpanded) renderRawLogs();
 }
 
@@ -112,12 +102,6 @@ function renderLegacyLogItemsFallback(items = []) {
       </div>
     </div>`;
   }).join("");
-}
-
-function scrollLogListToBottom() {
-  const list = $("logList");
-  if (!list) return;
-  requestAnimationFrame(() => { list.scrollTop = list.scrollHeight; });
 }
 
 function normalizeLogItem(item = {}) {
@@ -245,6 +229,31 @@ function renderTooltipContent(data) {
       return `<div class="tooltipRow"><span class="tooltipKey">${escapeHtml(k)}</span><span class="tooltipVal">${escapeHtml(val)}</span></div>`;
     }).join("");
   return `<div class="tooltipTitle">${escapeHtml(title)}</div>${rows || "<div class=\"tooltipRow\">—</div>"}`;
+}
+
+function renderLogLists(selector, html) {
+  document.querySelectorAll(selector).forEach((list) => {
+    list.innerHTML = html;
+  });
+}
+
+function syncRawLogPanels() {
+  document.querySelectorAll(LOG_RAW_TOGGLE_SELECTOR).forEach((btn) => {
+    btn.textContent = rawLogExpanded ? "收起" : "展开";
+  });
+  document.querySelectorAll(LOG_RAW_LIST_SELECTOR).forEach((list) => {
+    list.hidden = !rawLogExpanded;
+  });
+}
+
+function scrollLogListsToBottom(selector) {
+  const lists = Array.from(document.querySelectorAll(selector));
+  if (!lists.length) return;
+  requestAnimationFrame(() => {
+    lists.forEach((list) => {
+      list.scrollTop = list.scrollHeight;
+    });
+  });
 }
 
 function renderScreenshotTooltip(data, title) {

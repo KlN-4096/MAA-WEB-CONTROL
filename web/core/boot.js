@@ -87,6 +87,7 @@ function renderView() {
   setText("viewTitle", window.MaaFeatures?.title(state.currentView) || state.currentView);
   setText("viewSubtitle", state.profile?.name || "");
   window.MaaFeatures?.render(state.currentView, FEATURE_CONTEXT);
+  renderLogs();
 }
 
 function switchView(event) {
@@ -188,7 +189,6 @@ async function boot() {
   if (typeof loadNotificationConfig === "function") loadNotificationConfig();
   if (typeof loadRunnerConfig === "function") loadRunnerConfig();
   renderAll();
-  renderLogs();
 }
 
 patchSettingsInternalScroll();
