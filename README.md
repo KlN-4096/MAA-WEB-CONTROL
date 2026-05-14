@@ -1,77 +1,123 @@
 # MAA Web Control
 
-内网 MAA Web 控制台原型。默认适配器仍是 dry-run，不会连接 ADB 或 MaaCore；只有显式设置 `MAA_ADAPTER=official` 或 `MAA_ADAPTER=real` 后，后端才会加载官方 Python wrapper 并调用真实 MaaCore。
+局域网内的 MAA Web 控制台，用来配置 MAA Core、编辑 profile、查看运行日志，并用内置 scheduler 定时执行每日任务。
 
-## dry-run 运行
+当前主要部署目标是 Linux + redroid：Web 后端常驻后台，到点执行 `docker start redroid`，等待 ADB 就绪后运行指定 profile，任务结束后执行 `docker stop redroid`。
 
-```powershell
-cd E:\Project\Python\maa-web-control
+## 运行条件
+
+- Python 3.11+
+- 已安装项目依赖：`pip install -e .`
+- 可用的 MAA Linux 目录，包含 `libMaaCore.so`、`resource/`、`Python/`
+- 可用的 redroid 容器，默认容器名 `redroid`
+- 宿主机能执行 `adb`、`docker start redroid`、`docker stop redroid`
+
+## 后台启动
+
+在项目根目录创建或确认 `run.sh`：
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT_DIR"
+
+exec "$ROOT_DIR/.venv/bin/uvicorn" app.main:app \
+  --host "${MAA_WEB_HOST:-0.0.0.0}" \
+  --port "${MAA_WEB_PORT:-8000}"
+```
+
+手动后台启动：
+
+```bash
+cd /home/klnon/maa_web/MAA-WEB-CONTROL
+mkdir -p data/runtime
+nohup ./run.sh >> data/runtime/maa-web-control.log 2>&1 &
+echo $! > data/runtime/maa-web-control.pid
+```
+
+访问：
+
+```text
+http://<server-ip>:8000
+```
+
+停止：
+
+```bash
+cd /home/klnon/maa_web/MAA-WEB-CONTROL
+kill "$(cat data/runtime/maa-web-control.pid)"
+```
+
+## Web 配置
+
+首次启动后在 Web 设置页配置：
+
+1. **MAA 核心**
+   - 适配器类型：`Official`
+   - MaaCore 目录：例如 `/home/klnon/redroid/MAA`
+   - 点击「应用并切换」
+
+2. **连接设置**
+   - ADB 地址：`127.0.0.1:5555`
+   - ADB 路径：`adb`
+   - redroid 可使用 `MaaTouch`
+
+3. **任务配置**
+   - 保存需要的 profile，例如 `daily-shualizhi`、`daily-shoucai`
+   - profile 文件位于 `data/profiles/*.json`
+
+4. **定时执行**
+   - 启用时间点并选择 profile
+   - 勾选强制定时启动
+
+5. **启动设置**
+   - 勾选「自动启动模拟器/容器」
+   - 启动命令：`docker start redroid`
+   - 等待秒数：建议 `60` 到 `90`
+
+6. **完成后**
+   - 选择自定义命令
+   - 命令：`docker stop redroid`
+   - 超时：`60` 秒
+
+配置会保存到 `data/adapter.json`、`data/scheduler.json`、`data/runner_config.json` 等文件。重启 Web 后端后会自动加载。
+
+## 验证
+
+```bash
+curl http://127.0.0.1:8000/api/status
+curl http://127.0.0.1:8000/api/adapter
+curl http://127.0.0.1:8000/api/scheduler
+curl http://127.0.0.1:8000/api/profiles
+```
+
+手动触发一次 profile：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/profiles/daily-shualizhi/run
+```
+
+查看日志：
+
+```bash
+tail -f data/runtime/maa-web-control.log
+curl http://127.0.0.1:8000/api/logs/recent?limit=50
+```
+
+确认 Web scheduler 跑通后，再停用旧 crontab 的 MAA 定时块，避免两套调度同时启动 redroid。
+
+## 本地开发
+
+```bash
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8765
 ```
 
-打开 `http://127.0.0.1:8765`。
+未配置 Official 适配器时会使用 dry-run，不会实际操作 MAA/ADB。
 
-## Windows 真实 MaaCore 手测
+## 测试
 
-1. 启动模拟器，并确认 ADB 能看到设备：
-
-```powershell
-adb devices
+```bash
+python -m unittest discover -s tests
 ```
-
-如果列表里没有设备，按模拟器给出的地址连接，例如：
-
-```powershell
-adb connect 127.0.0.1:5555
-adb devices
-```
-
-把 `adb devices` 输出里的设备地址填到 Web UI 的 profile ADB address，或保存到 profile 的 `adb.address`。`adb_path` 默认是 `adb`，如果没有加入 `PATH`，请在 profile 里填完整 adb 路径。
-
-2. 设置真实 MaaCore 环境变量并启动后端：
-
-```powershell
-cd E:\Project\Python\maa-web-control
-$env:MAA_ADAPTER = "official"
-$env:MAA_CORE_DIR = "D:\APPS\AppGroup_3_Game\MAA"
-# 可选：默认会优先尝试 $env:MAA_CORE_DIR\Python，其次才是 E:\Project\C\MaaAssistantArknights\src\Python
-# $env:MAA_PYTHON_DIR = "D:\APPS\AppGroup_3_Game\MAA\Python"
-# 可选：默认 data\runtime\maa
-# $env:MAA_USER_DIR = "E:\Project\Python\maa-web-control\data\runtime\maa"
-# 可选：默认 General；profile.adb.connect_config.name/config/preset 会优先生效
-# $env:MAA_CONNECT_CONFIG = "General"
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8765
-```
-
-`MAA_CORE_DIR` 必须指向包含 `MaaCore.dll` 和 `resource` 的 MAA 发布或构建目录。未设置 `MAA_ADAPTER=official` 时，上面的 Web 操作仍然只是 dry-run。
-
-3. 打开 `http://127.0.0.1:8765`，在 Web UI 中选择或编辑任务，确认 ADB 地址后点击开始。
-
-4. 观察右侧日志：
-
-- `runner.*` 表示 Web runner 的连接、追加任务、启动、完成或失败状态。
-- `maa.callback` 表示 MaaCore 官方 wrapper callback 已进入事件流。
-- 如果要验证 ADB 是否连通，先在命令行执行 `adb devices`；模拟器地址一般是 `127.0.0.1:5555`，然后把这个地址填到 profile 的 `adb.address`。
-- 也可以直接查看最近日志：
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8765/api/logs/recent?limit=50
-```
-
-## 当前边界
-
-- 已有 profile 存储：`data/profiles/*.json`
-- 已有 REST API：`/api/status`、`/api/profiles`、`/api/profiles/{name}`、`/api/run`、`/api/stop`
-- 已有 WebSocket：`/api/events`
-- 默认 dry-run 不会连接真实 MAA/ADB
-- official/real 模式通过官方 Python wrapper 调用 MaaCore
-- `redroid` 状态仍是占位
-
-## Adapter 接入点
-
-执行层保持 `app.runner.MaaAdapter` 协议：
-
-- `connect(profile)`：连接 ADB/redroid
-- `append_task(call)`：调用 `AsstAppendTask(type, paramsJson)`
-- `start()`：调用 `AsstStart()`
-- `stop()`：调用 `AsstStop()`

@@ -29,7 +29,7 @@ function syncSettingsFromProfile() {
   SETTINGS_STATE.connectConfig = profileConnectPreset(adb.connect_config) || SETTINGS_STATE.connectConfig;
   const ld = adb.ld_player_extras;
   if (ld && typeof ld === "object") {
-    if (typeof ld.enabled === "boolean") SETTINGS_STATE.ldExtrasEnabled = ld.enabled;
+    if (typeof ld.enabled === "boolean") SETTINGS_STATE.ldExtrasEnabled = SETTINGS_STATE.connectConfig === "LDPlayer" && ld.enabled;
     if (typeof ld.path === "string" && ld.path) SETTINGS_STATE.ldExtrasPath = ld.path;
     if (Number.isInteger(ld.index)) SETTINGS_STATE.ldExtrasIndex = Math.max(0, ld.index);
   }
@@ -66,12 +66,7 @@ function applySettingsToProfile() {
   state.profile.adb.allow_adb_restart = Boolean(SETTINGS_STATE.allowAdbRestart);
   state.profile.adb.allow_adb_hard_restart = Boolean(SETTINGS_STATE.allowAdbHardRestart);
   state.profile.adb.connect_config = { preset: SETTINGS_STATE.connectConfig };
-  state.profile.adb.ld_player_extras = {
-    enabled: SETTINGS_STATE.ldExtrasEnabled,
-    path: SETTINGS_STATE.ldExtrasPath,
-    manual_index: SETTINGS_STATE.ldManualIndex,
-    index: Number.parseInt(SETTINGS_STATE.ldExtrasIndex, 10) || 0,
-  };
+  state.profile.adb.ld_player_extras = ldPlayerExtrasPayload();
   const startup = firstTaskParams("StartUp");
   if (startup) {
     startup.client_type = clientType;
@@ -80,6 +75,16 @@ function applySettingsToProfile() {
     startup.detect_every_time = SETTINGS_STATE.detectEveryTime;
     startup.touch_mode = SETTINGS_STATE.touchMode;
   }
+}
+
+function ldPlayerExtrasPayload() {
+  const enabled = SETTINGS_STATE.connectConfig === "LDPlayer" && SETTINGS_STATE.ldExtrasEnabled;
+  return {
+    enabled,
+    path: enabled ? SETTINGS_STATE.ldExtrasPath : "",
+    manual_index: enabled && SETTINGS_STATE.ldManualIndex,
+    index: enabled ? Number.parseInt(SETTINGS_STATE.ldExtrasIndex, 10) || 0 : 0,
+  };
 }
 
 function saveSettingsProfile() {
