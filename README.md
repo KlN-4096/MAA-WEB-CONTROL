@@ -7,34 +7,38 @@
 ## 运行条件
 
 - Python 3.11+
-- 已安装项目依赖：`pip install -e .`
 - 可用的 MAA Linux 目录，包含 `libMaaCore.so`、`resource/`、`Python/`
 - 可用的 redroid 容器，默认容器名 `redroid`
 - 宿主机能执行 `adb`、`docker start redroid`、`docker stop redroid`
 
-## 后台启动
+## 一键启动
 
-在项目根目录创建或确认 `run.sh`：
+Linux / macOS：
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-cd "$ROOT_DIR"
-
-exec "$ROOT_DIR/.venv/bin/uvicorn" app.main:app \
-  --host "${MAA_WEB_HOST:-0.0.0.0}" \
-  --port "${MAA_WEB_PORT:-8000}"
+git clone https://github.com/KlN-4096/MAA-WEB-CONTROL.git
+cd MAA-WEB-CONTROL
+./run.sh
 ```
 
-手动后台启动：
+Windows：
+
+```bat
+git clone https://github.com/KlN-4096/MAA-WEB-CONTROL.git
+cd MAA-WEB-CONTROL
+run.bat
+```
+
+`run.sh` 和 `run.bat` 会自动创建 `.venv`、安装项目依赖并启动 Web 服务。默认监听 `0.0.0.0:8000`，可用环境变量覆盖：
 
 ```bash
-cd /home/klnon/maa_web/MAA-WEB-CONTROL
-mkdir -p data/runtime
-nohup ./run.sh >> data/runtime/maa-web-control.log 2>&1 &
-echo $! > data/runtime/maa-web-control.pid
+MAA_WEB_HOST=127.0.0.1 MAA_WEB_PORT=8765 ./run.sh
+```
+
+```bat
+set MAA_WEB_HOST=127.0.0.1
+set MAA_WEB_PORT=8765
+run.bat
 ```
 
 访问：
@@ -43,10 +47,21 @@ echo $! > data/runtime/maa-web-control.pid
 http://<server-ip>:8000
 ```
 
+## 后台启动
+
+Linux 服务器后台启动：
+
+```bash
+cd /home/klnon/MAA-WEB-CONTROL
+mkdir -p data/runtime
+nohup ./run.sh >> data/runtime/maa-web-control.log 2>&1 &
+echo $! > data/runtime/maa-web-control.pid
+```
+
 停止：
 
 ```bash
-cd /home/klnon/maa_web/MAA-WEB-CONTROL
+cd /home/klnon/MAA-WEB-CONTROL
 kill "$(cat data/runtime/maa-web-control.pid)"
 ```
 
@@ -111,7 +126,7 @@ curl http://127.0.0.1:8000/api/logs/recent?limit=50
 ## 本地开发
 
 ```bash
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8765
+MAA_WEB_HOST=127.0.0.1 MAA_WEB_PORT=8765 ./run.sh
 ```
 
 未配置 Official 适配器时会使用 dry-run，不会实际操作 MAA/ADB。
@@ -119,5 +134,6 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8765
 ## 测试
 
 ```bash
-python -m unittest discover -s tests
+.venv/bin/python -m pip install -e ".[test]"
+.venv/bin/python -m unittest discover -s tests
 ```
