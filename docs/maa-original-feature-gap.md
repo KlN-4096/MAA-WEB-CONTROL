@@ -1,5 +1,7 @@
 # 原版 MAA 功能与当前 Web 项目缺口对比
 
+> 许可说明：本文档引用的 MaaAssistantArknights / MAA 原版代码、路径与协议属于 Maa Team and contributors，原项目以 `AGPL-3.0-only` 发布；本项目同样以 `AGPL-3.0-only` 发布。
+
 生成日期：2026-05-07（最近更新：2026-05-08，第十次）
 
 对照范围：

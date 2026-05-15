@@ -141,3 +141,15 @@ MAA_WEB_HOST=127.0.0.1 MAA_WEB_PORT=8765 ./run.sh
 .venv/bin/python -m pip install -e ".[test]"
 .venv/bin/python -m unittest discover -s tests
 ```
+
+## 许可证
+
+本项目以 [GNU Affero General Public License v3.0 only](LICENSE) (`AGPL-3.0-only`) 开源。
+
+本项目不是 MaaAssistantArknights 官方项目。MAA / MaaCore / MaaAssistantArknights 由 Maa Team and contributors 维护，并以 `AGPL-3.0-only` 发布；本项目运行时需要用户自行提供 MAA Core、resource 和 Python wrapper。
+
+## 聊聊其他
+
+这个项目是为了我能在Linux上也能享受到windows一样的MAA服务而开发的,为了一周不上线,纯让MAA来收菜.项目基本能进行日常的收菜了,但肯定还有非常多BUG,还有非常多的功能未接入(比如说自动战斗等,甚至肉鸽,生息这些非高频使用的功能我都没进行测试),小工具,设置页面也有很大一块没有正式接入.
+
+项目源代码是我+codex+claude code共同vibe coding出来的,欢迎贡献

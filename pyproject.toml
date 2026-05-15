@@ -2,6 +2,8 @@
 name = "maa-web-control"
 version = "0.1.0"
 description = "LAN web console for orchestrating MaaAssistantArknights tasks."
+license = "AGPL-3.0-only"
+license-files = ["LICENSE", "LICENSE.spdx"]
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",

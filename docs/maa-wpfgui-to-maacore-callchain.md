@@ -1,5 +1,7 @@
 # MAA 原生 WPF UI 到 MAACore 的调用链备忘录
 
+> 许可说明：本文档引用的 MaaAssistantArknights / MAA 原版代码、路径与协议属于 Maa Team and contributors，原项目以 `AGPL-3.0-only` 发布；本项目同样以 `AGPL-3.0-only` 发布。
+
 > 用途：后续新会话可直接把本文件作为前提输入，减少重复检索。
 > 范围：仅基于 `/mnt/e/Project/C/MaaAssistantArknights` 原生 UI 与 Core 代码整理，不包含 `maa-web-control`。
 
