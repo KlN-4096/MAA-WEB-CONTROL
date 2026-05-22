@@ -1,3 +1,5 @@
+let profileEditVersion = 0;
+
 function profileStorageKey(profile = state.profile) {
   return profile?.name || FALLBACK_PROFILE_KEY;
 }
@@ -16,6 +18,7 @@ function persistSelectedTask() {
 
 async function loadProfile(name) {
   state.profile = await api(`/api/profiles/${encodeURIComponent(name)}`);
+  bumpProfileEditVersion();
   state.selectedTask = preferredTaskIndex(state.profile.tasks, restoreSelectedTask(state.profile));
   persistSelectedTask();
   if (typeof loadVersionInfo === "function") loadVersionInfo();
@@ -33,7 +36,7 @@ async function flushProfileSave() {
   clearTimeout(state.saveTimer);
   collectProfileForm();
   collectTaskForm();
-  await persistProfile(false);
+  await persistProfile(false, bumpProfileEditVersion());
 }
 
 function buildProfile(name) {
@@ -94,7 +97,7 @@ async function createProfile(name = "") {
   state.selectedTask = 0;
   persistSelectedTask();
   renderAll();
-  await persistProfile(false);
+  await persistProfile(false, bumpProfileEditVersion());
   await loadProfiles();
   await loadProfile(state.profile.name);
 }
@@ -103,29 +106,40 @@ async function saveProfile() {
   if (isProfileEditingLocked()) return state.profile;
   collectProfileForm();
   collectTaskForm();
-  await persistProfile(true);
+  await persistProfile(true, bumpProfileEditVersion());
 }
 
-async function persistProfile(withFeedback) {
+async function persistProfile(withFeedback, editVersion = profileEditVersion) {
   const name = state.profile.name;
-  state.profile = await api(`/api/profiles/${encodeURIComponent(name)}`, {
+  const savedProfile = await api(`/api/profiles/${encodeURIComponent(name)}`, {
     method: "PUT",
     body: JSON.stringify(state.profile)
   });
+  const applied = editVersion === profileEditVersion && state.profile?.name === name;
+  if (applied) {
+    state.profile = savedProfile;
+  }
   if (withFeedback) {
     await loadProfiles();
-    addLocalLog("info", "profile.saved", `已保存 ${name}`);
+    addLocalLog("info", "profile.saved", applied ? `已保存 ${name}` : `已保存 ${name}，但本地还有未同步修改`);
   }
+  return savedProfile;
 }
 
 function scheduleSave() {
   if (isProfileEditingLocked()) return;
+  const editVersion = bumpProfileEditVersion();
   clearTimeout(state.saveTimer);
   state.saveTimer = setTimeout(() => {
     if (isProfileEditingLocked()) return;
     collectTaskForm();
-    persistProfile(false).catch(showError);
+    persistProfile(false, editVersion).catch(showError);
   }, 500);
+}
+
+function bumpProfileEditVersion() {
+  profileEditVersion += 1;
+  return profileEditVersion;
 }
 
 function renderProfiles() {
