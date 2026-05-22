@@ -13,9 +13,15 @@ from uuid import uuid4
 
 
 MAA_API_BASE = "https://api.maa.plus/MaaAssistantArknights/api"
+MAA_API_FALLBACK_BASE = "https://api2.maa.plus/MaaAssistantArknights/api"
 MIRROR_CHYAN_CORE = "https://mirrorchyan.com/api/resources/MAA/latest"
 MIRROR_CHYAN_RESOURCE = "https://mirrorchyan.com/api/resources/MaaResource/latest"
 GITHUB_RESOURCE_ZIP = "https://github.com/MaaAssistantArknights/MaaResource/archive/refs/heads/main.zip"
+GUI_STAGE_ACTIVITY_API = "gui/StageActivityV2.json"
+GUI_STAGE_ACTIVITY_URLS = (
+    f"{MAA_API_BASE}/{GUI_STAGE_ACTIVITY_API}",
+    f"{MAA_API_FALLBACK_BASE}/{GUI_STAGE_ACTIVITY_API}",
+)
 MIRROR_USER_AGENT = "MaaWpfGui"
 MIRROR_SP_ID = "maa-web-control"
 FULL_PACKAGE_KEEP = {"cache", "config", "data", "debug", "MAA.Updater.exe"}

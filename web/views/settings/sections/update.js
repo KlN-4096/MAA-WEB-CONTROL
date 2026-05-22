@@ -103,11 +103,18 @@ async function runUpdateRequest(kind, path, busyText) {
     });
     applyUpdateResult(kind, result);
     await loadVersionInfo();
+    await refreshOptionsAfterResourceUpdate(kind, result);
   } catch (e) {
     SETTINGS_STATE.updateStatus = `更新失败：${e.message || "请求错误"}`;
   }
   SETTINGS_STATE.updateBusy = "";
   renderSettingsView();
+}
+
+async function refreshOptionsAfterResourceUpdate(kind, result) {
+  if (kind !== "resource" || result?.ok === false || typeof loadOptions !== "function") return;
+  await loadOptions();
+  if (typeof renderAll === "function") renderAll();
 }
 
 function applyVersionInfo(data) {

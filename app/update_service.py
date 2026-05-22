@@ -17,6 +17,7 @@ from .runner import MaaRunnerService
 from .update_checking import UpdateChecker
 from .update_helpers import (
     GITHUB_RESOURCE_ZIP,
+    GUI_STAGE_ACTIVITY_URLS,
     MIRROR_USER_AGENT,
     extract_zip,
     github_resource_root,
@@ -203,7 +204,8 @@ class UpdateService:
         self._download_file(GITHUB_RESOURCE_ZIP, package_path)
         extract_zip(package_path, extract_dir)
         merge_dir(github_resource_root(extract_dir), core_dir / "resource")
-        return self._resource_updated(client_type)
+        stage_activity = self._sync_stage_activity_metadata(core_dir)
+        return self._resource_updated(client_type, stage_activity=stage_activity)
 
     def _install_mirror_resource(self, core_dir: Path, url: str, client_type: str) -> dict[str, Any]:
         package_path = self._cache_dir / "MaaResourceMirrorchyan.zip"
@@ -213,14 +215,44 @@ class UpdateService:
         merge_dir(mirror_resource_root(extract_dir), core_dir)
         shutil.rmtree(extract_dir, ignore_errors=True)
         package_path.unlink(missing_ok=True)
-        return self._resource_updated(client_type)
+        stage_activity = self._sync_stage_activity_metadata(core_dir)
+        return self._resource_updated(client_type, stage_activity=stage_activity)
 
-    def _resource_updated(self, client_type: str) -> dict[str, Any]:
+    def _sync_stage_activity_metadata(self, core_dir: Path) -> dict[str, Any]:
+        target = core_dir / "cache" / "gui" / "StageActivityV2.json"
+        errors: list[str] = []
+        for url in GUI_STAGE_ACTIVITY_URLS:
+            temp = self._cache_dir / f"StageActivityV2-{uuid4().hex}.json"
+            try:
+                self._download_file(url, temp)
+                data = json.loads(temp.read_text(encoding="utf-8"))
+                if not isinstance(data, dict) or not data:
+                    raise RuntimeError("响应不是有效的关卡元数据 JSON")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(temp, target)
+                return {"ok": True, "source": url, "path": str(target)}
+            except Exception as exc:
+                errors.append(f"{url}: {exc}")
+            finally:
+                temp.unlink(missing_ok=True)
+        return {"ok": False, "path": str(target), "message": "关卡列表元数据同步失败", "errors": errors}
+
+    def _resource_updated(self, client_type: str, *, stage_activity: dict[str, Any] | None = None) -> dict[str, Any]:
         info = get_maa_version_info(self._runner, project_root=self._project_root, client_type=client_type)
         detail = {"version": info.get("resource_version"), "resource_time": info.get("resource_time")}
+        if stage_activity is not None:
+            detail["stage_activity"] = stage_activity
+        if stage_activity is not None and not stage_activity.get("ok"):
+            self._events.publish(EventRecord.now(
+                "update.resource.stage_activity_failed",
+                "关卡列表元数据同步失败。",
+                level="warning",
+                detail=stage_activity,
+            ))
         self._events.publish(EventRecord.now("update.resource.updated", "资源已更新。", detail=detail))
         self._reload_resources_when_possible(client_type)
-        return {"ok": True, "message": "资源已更新", **detail}
+        message = "资源已更新" if not stage_activity or stage_activity.get("ok") else "资源已更新，但关卡列表元数据同步失败"
+        return {"ok": True, "message": message, **detail}
 
     def _reload_resources_when_possible(self, client_type: str) -> None:
         adapter = self._runner.adapter

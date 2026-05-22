@@ -103,16 +103,22 @@ class VersionUpdateTest(unittest.TestCase):
 
                 def download(_url: str, target: Path) -> None:
                     target.parent.mkdir(parents=True, exist_ok=True)
+                    if "StageActivityV2.json" in _url:
+                        write_json(target, stage_activity_json())
+                        return
                     target.write_bytes(package.read_bytes())
 
                 service._download_file = download
                 service._fetch_json = lambda _url: {"version": "v6.9.5", "data": {"version_name": "2026-05-13 01:02:03.456"}}
-                return await service.update_resource("Official")
+                result = await service.update_resource("Official")
+                result["stage_activity"] = json.loads((core_dir / "cache" / "gui" / "StageActivityV2.json").read_text(encoding="utf-8"))
+                return result
 
         result = asyncio.run(run())
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["version"], "New")
+        self.assertEqual(result["stage_activity"]["Official"]["sideStoryStage"]["Act"]["Stages"][0]["Value"], "EA-8")
 
     def test_update_config_round_trip_and_version_api(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -157,6 +163,16 @@ def resource_json(activity: str, pool: str, last_updated: str) -> dict:
         "activity": {"name": activity, "time": 1},
         "gacha": {"pool": pool, "time": 1},
         "last_updated": last_updated,
+    }
+
+
+def stage_activity_json() -> dict:
+    return {
+        "Official": {
+            "sideStoryStage": {
+                "Act": {"Stages": [{"Display": "EA-8", "Value": "EA-8"}]},
+            },
+        },
     }
 
 
