@@ -416,6 +416,22 @@ class TaskMapperTest(unittest.TestCase):
         self.assertNotIn(1, call.params["confirm"])
         self.assertNotIn("reserve_level_1", call.params)
 
+    def test_closedown_drops_unrelated_params(self):
+        task = TaskDefinition(
+            id="closedown",
+            type="CloseDown",
+            params={
+                "auto_expedited": True,
+                "max_times": 99,
+                "refresh": True,
+                "client_type": "官服",
+            },
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params, {"client_type": "Official", "enable": True})
+
     def test_recruit_yituliu_reporting_passes_through(self):
         task = TaskDefinition(
             id="recruit",

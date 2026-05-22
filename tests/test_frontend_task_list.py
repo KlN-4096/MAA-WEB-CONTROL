@@ -145,6 +145,60 @@ class FrontendTaskListTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
+    def test_closedown_collect_drops_stale_recruit_params(self):
+        if shutil.which("node") is None:
+            self.skipTest("node is not available")
+
+        script = textwrap.dedent(
+            r"""
+            const fs = require("fs");
+            const vm = require("vm");
+
+            const elements = {
+              taskIdInput: { value: "closedown" },
+              taskNameInput: { value: "关闭游戏" },
+              taskTypeInput: { value: "CloseDown" },
+              paramCloseDownClientType: { value: "Official" },
+              taskStrategyInput: { value: "{}" },
+            };
+            const context = {
+              console,
+              state: { profile: { tasks: [] } },
+              $: (id) => elements[id] || null,
+              JSON,
+            };
+            vm.createContext(context);
+            vm.runInContext(fs.readFileSync("web/tasks/index.js", "utf8"), context, { filename: "web/tasks/index.js" });
+
+            const task = {
+              id: "closedown",
+              name: "关闭游戏",
+              type: "CloseDown",
+              params: {
+                auto_expedited: true,
+                max_times: 99,
+                refresh: true,
+                client_type: "Official",
+              },
+              strategy: {},
+            };
+            context.collectTaskEditor(task);
+
+            const actual = JSON.stringify(task.params);
+            if (actual !== JSON.stringify({ client_type: "Official" })) {
+              throw new Error(`unexpected CloseDown params: ${actual}`);
+            }
+            """
+        )
+
+        result = subprocess.run(
+            ["node", "-e", script],
+            cwd=Path(__file__).resolve().parents[1],
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

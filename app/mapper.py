@@ -580,8 +580,9 @@ def _map_reclamation(params: dict[str, Any]) -> None:
 
 
 def _map_closedown(params: dict[str, Any]) -> None:
-    if "client_type" in params:
-        params["client_type"] = _normalize_client_type(params.get("client_type"))
+    client_type = _normalize_client_type(params.get("client_type") or "Official")
+    params.clear()
+    params["client_type"] = client_type
 
 
 USERDATA_TRIGGER_INTERVALS = {"EveryTime", "Daily", "Weekly"}

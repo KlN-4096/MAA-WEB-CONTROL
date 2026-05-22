@@ -18,6 +18,7 @@ const TASK_NAMES = {
 };
 
 const NO_ADVANCED_TASKS = new Set(["StartUp", "Award", "CloseDown", "UserDataUpdate"]);
+const REPLACE_COLLECTED_PARAM_TASKS = new Set(["CloseDown"]);
 const STARTUP_CLIENT_TYPES = [
   { label: "官服", value: "Official" },
   { label: "Bilibili服", value: "Bilibili" },
@@ -228,6 +229,7 @@ function builtinDefaultParams(type) {
   if (type === "Award") return { daily: true, orundum: true };
   if (type === "Roguelike") return { theme: "萨卡兹", difficulty: "MAX (18)", strategy: ROGUELIKE_STRATEGIES[0], squad: "指挥分队", roles: "稳扎稳打（重装、术师、狙击）", starts_count: 99999, investment_enabled: true, delay_abort: true };
   if (type === "Reclamation") return { theme: "沙洲遗闻", strategy: RECLAMATION_STRATEGIES[1], tool_to_craft: "荧光棒", increment_mode: "连点", max_craft_count: 16 };
+  if (type === "CloseDown") return { client_type: "Official" };
   if (type === "UserDataUpdate") return { update_oper_box: true, update_depot: true };
   return {};
 }
@@ -264,6 +266,7 @@ function renderGeneral(task, escapeHtmlFn) {
   if (task.type === "Award") return renderAwardGeneral(p);
   if (task.type === "Roguelike") return renderRoguelikeGeneral(p, escapeHtmlFn);
   if (task.type === "Reclamation") return renderReclamationGeneral(p, escapeHtmlFn);
+  if (task.type === "CloseDown") return renderCloseDownGeneral(p, escapeHtmlFn);
   if (task.type === "UserDataUpdate") return renderUserDataUpdateGeneral(p);
   return renderJsonParams(p, escapeHtmlFn);
 }
@@ -284,11 +287,21 @@ function renderJsonParams(p, escapeHtmlFn) {
   return `<label>参数 JSON<textarea id="taskParamsInput">${escapeHtmlFn(formatJson(p))}</textarea></label>`;
 }
 
+function renderCloseDownGeneral(p, escapeHtmlFn) {
+  const clientType = canonicalClientType(p.client_type || activeClientType());
+  return `
+    <div class="maaParams wideForm">
+      <span>客户端类型</span><select id="paramCloseDownClientType">${selectOptions(clientTypeOptionsList(), clientType, escapeHtmlFn)}</select>
+    </div>
+  `;
+}
+
 function collectTaskEditor(task) {
   task.id = $("taskIdInput").value.trim();
   task.name = $("taskNameInput").value.trim();
   task.type = $("taskTypeInput").value;
-  task.params = { ...(task.params || {}), ...collectParams(task.type) };
+  const params = collectParams(task.type);
+  task.params = REPLACE_COLLECTED_PARAM_TASKS.has(task.type) ? params : { ...(task.params || {}), ...params };
   syncProfileClientFromStartup(task);
   task.strategy = parseJsonField("taskStrategyInput");
 }
@@ -313,8 +326,13 @@ function collectParams(type) {
   if (type === "Award") return collectAwardParams();
   if (type === "Roguelike") return collectRoguelikeParams();
   if (type === "Reclamation") return collectReclamationParams();
+  if (type === "CloseDown") return collectCloseDownParams();
   if (type === "UserDataUpdate") return collectUserDataUpdateParams();
   return $("taskParamsInput") ? parseJsonField("taskParamsInput") : {};
+}
+
+function collectCloseDownParams() {
+  return { client_type: canonicalClientType(valueOf("paramCloseDownClientType", "Official")) };
 }
 
 function parseJsonField(id) {
