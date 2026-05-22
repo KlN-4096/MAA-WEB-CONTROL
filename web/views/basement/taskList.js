@@ -1,4 +1,5 @@
 let draggedTaskIndex = null;
+let draggedTaskId = "";
 
 function renderTasks() {
   const tasks = state.profile?.tasks || [];
@@ -14,7 +15,7 @@ function taskListItem(task, index) {
   const draggable = locked ? "false" : "true";
   const title = task.name || task.id;
   const checked = task.enabled ? " checked" : "";
-  return `<div class="taskItem${active}${disabled}${lockedClass}" data-task-index="${index}" draggable="${draggable}">
+  return `<div class="taskItem${active}${disabled}${lockedClass}" data-task-index="${index}" data-task-id="${escapeHtml(task.id || "")}" draggable="${draggable}">
     <input class="taskEnable" type="checkbox" data-task-enable="${index}"${checked} />
     <button class="taskNameButton" type="button" data-task-select="${index}">
       <strong>${escapeHtml(title)}</strong>
@@ -280,7 +281,14 @@ function onTaskDragStart(event) {
     event.preventDefault();
     return;
   }
-  draggedTaskIndex = Number(item.dataset.taskIndex);
+  const index = Number(item.dataset.taskIndex);
+  const task = state.profile?.tasks?.[index];
+  if (!task) {
+    event.preventDefault();
+    return;
+  }
+  draggedTaskIndex = index;
+  draggedTaskId = String(task.id || item.dataset.taskId || "");
   item.classList.add("dragging");
   event.dataTransfer.effectAllowed = "move";
   event.dataTransfer.setData("text/plain", String(draggedTaskIndex));
@@ -305,16 +313,39 @@ function onTaskDrop(event) {
   const item = event.target.closest("[data-task-index]");
   if (!item || draggedTaskIndex === null) return;
   event.preventDefault();
-  const target = Number(item.dataset.taskIndex);
+  event.stopPropagation();
+  const from = resolveDraggedTaskIndex();
+  const target = resolveTaskIndex(item.dataset.taskId || "", Number(item.dataset.taskIndex));
   const insertAfter = isAfterTaskMidline(item, event.clientY);
+  resetTaskDragState();
   clearAllTaskDragState();
-  reorderTask(draggedTaskIndex, target, insertAfter);
-  draggedTaskIndex = null;
+  reorderTask(from, target, insertAfter);
 }
 
 function onTaskDragEnd() {
-  draggedTaskIndex = null;
+  resetTaskDragState();
   clearAllTaskDragState();
+}
+
+function resolveDraggedTaskIndex() {
+  return resolveTaskIndex(draggedTaskId, draggedTaskIndex);
+}
+
+function resolveTaskIndex(taskId, fallbackIndex) {
+  const tasks = state.profile?.tasks || [];
+  const id = String(taskId || "");
+  if (id) {
+    const matches = tasks
+      .map((task, index) => (String(task.id || "") === id ? index : -1))
+      .filter((index) => index >= 0);
+    if (matches.length === 1) return matches[0];
+  }
+  return Number.isInteger(fallbackIndex) ? fallbackIndex : -1;
+}
+
+function resetTaskDragState() {
+  draggedTaskIndex = null;
+  draggedTaskId = "";
 }
 
 function markTaskDropTarget(item, y) {
