@@ -48,12 +48,29 @@ class ResourceOptionsTest(unittest.TestCase):
         self.assertEqual(options["resource"]["root"], str(core))
         self.assertIn("Bilibili", options["by_client"])
         self.assertIn({"label": "Bilibili服", "value": "Bilibili"}, options["resource"]["clients"])
-        self.assertIn({"label": "龙门币-6/5", "value": "CE-6"}, options["by_client"]["Official"]["stages"])
-        self.assertIn({"label": "当期剿灭", "value": "Annihilation"}, options["by_client"]["Official"]["stages"])
-        self.assertIn(
-            {"label": "切尔诺伯格", "value": "Chernobog@Annihilation"},
-            options["by_client"]["Official"]["stages"],
+        official_stages = options["by_client"]["Official"]["stages"]
+        self.assertEqual(
+            official_stages,
+            [
+                {"label": "当前/上次", "value": "CurrentStage"},
+                {"label": "EA-8", "value": "EA-8"},
+                {"label": "17-11", "value": "17-11"},
+                {"label": "17-5", "value": "17-5"},
+                {"label": "1-7", "value": "1-7"},
+                {"label": "R8-11", "value": "R8-11"},
+                {"label": "12-17-HARD", "value": "12-17-HARD"},
+                {"label": "龙门币-6/5", "value": "CE-6"},
+                {"label": "技能-5", "value": "CA-5"},
+                {"label": "经验-6/5", "value": "LS-6"},
+                {"label": "当期剿灭", "value": "Annihilation"},
+                {"label": "术/狙芯片", "value": "PR-B-1"},
+                {"label": "术/狙芯片组", "value": "PR-B-2"},
+                {"label": "近/特芯片", "value": "PR-D-1"},
+                {"label": "近/特芯片组", "value": "PR-D-2"},
+            ],
         )
+        self.assertNotIn({"label": "红票-5", "value": "AP-5"}, official_stages)
+        self.assertNotIn({"label": "切尔诺伯格", "value": "Chernobog@Annihilation"}, official_stages)
         self.assertNotIn({"label": "CE-6", "value": "CE-6"}, options["by_client"]["Official"]["stages"])
         self.assertIn({"label": "EA-8", "value": "EA-8"}, options["by_client"]["Official"]["stages"])
         self.assertIn({"label": "EA-8", "value": "EA-8"}, options["by_client"]["Bilibili"]["stages"])
@@ -115,7 +132,14 @@ class ResourceOptionsTest(unittest.TestCase):
         self._write_json(core / "cache" / "gui" / "StageActivityV2.json", {
             "Official": {
                 "sideStoryStage": {
-                    "Act": {"Stages": [{"Display": "EA-8", "Value": "EA-8"}]},
+                    "Act": {
+                        "Activity": {
+                            "UtcStartTime": "2026/05/01 07:00:00",
+                            "UtcExpireTime": "2026/05/15 03:59:59",
+                            "TimeZone": 8,
+                        },
+                        "Stages": [{"Display": "EA-8", "Value": "EA-8"}],
+                    },
                     "Main17": {
                         "Activity": {
                             "StageName": "相变临界",
@@ -130,7 +154,18 @@ class ResourceOptionsTest(unittest.TestCase):
                     },
                 },
             },
-            "YoStarEN": {"sideStoryStage": {"Act": {"Stages": [{"Display": "OS-9", "Value": "OS-9"}]}}},
+            "YoStarEN": {
+                "sideStoryStage": {
+                    "Act": {
+                        "Activity": {
+                            "UtcStartTime": "2026/05/01 07:00:00",
+                            "UtcExpireTime": "2026/05/15 03:59:59",
+                            "TimeZone": 8,
+                        },
+                        "Stages": [{"Display": "OS-9", "Value": "OS-9"}],
+                    },
+                },
+            },
         })
         self._write_json(core / "resource" / "roguelike" / "Sarkaz" / "recruitment.json", {
             "priority": [{"opers": [{"name": "维什戴尔", "is_start": True}]}],

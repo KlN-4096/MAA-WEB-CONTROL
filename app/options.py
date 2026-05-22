@@ -13,28 +13,25 @@ from .resource_paths import (
     resource_client_type,
 )
 
+DEFAULT_STAGE_OPTION = {"label": "当前/上次", "value": "CurrentStage"}
 PERMANENT_STAGES = [
-    {"label": "当前/上次", "value": "CurrentStage"},
     {"label": "1-7", "value": "1-7"},
     {"label": "R8-11", "value": "R8-11"},
     {"label": "12-17-HARD", "value": "12-17-HARD"},
-    {"label": "龙门币-6/5", "value": "CE-6"},
-    {"label": "红票-5", "value": "AP-5"},
-    {"label": "技能-5", "value": "CA-5"},
-    {"label": "经验-6/5", "value": "LS-6"},
-    {"label": "碳-5", "value": "SK-5"},
+    {"label": "龙门币-6/5", "value": "CE-6", "days": [2, 4, 6, 0], "resource": True},
+    {"label": "红票-5", "value": "AP-5", "days": [1, 4, 6, 0], "resource": True},
+    {"label": "技能-5", "value": "CA-5", "days": [2, 3, 5, 0], "resource": True},
+    {"label": "经验-6/5", "value": "LS-6", "days": [], "resource": True},
+    {"label": "碳-5", "value": "SK-5", "days": [1, 3, 5, 6], "resource": True},
     {"label": "当期剿灭", "value": "Annihilation"},
-    {"label": "切尔诺伯格", "value": "Chernobog@Annihilation"},
-    {"label": "龙门外环", "value": "LungmenOutskirts@Annihilation"},
-    {"label": "龙门市区", "value": "LungmenDowntown@Annihilation"},
-    {"label": "奶/盾芯片", "value": "PR-A-1"},
-    {"label": "奶/盾芯片组", "value": "PR-A-2"},
-    {"label": "术/狙芯片", "value": "PR-B-1"},
-    {"label": "术/狙芯片组", "value": "PR-B-2"},
-    {"label": "先/辅芯片", "value": "PR-C-1"},
-    {"label": "先/辅芯片组", "value": "PR-C-2"},
-    {"label": "近/特芯片", "value": "PR-D-1"},
-    {"label": "近/特芯片组", "value": "PR-D-2"},
+    {"label": "奶/盾芯片", "value": "PR-A-1", "days": [1, 4, 5, 0], "resource": True},
+    {"label": "奶/盾芯片组", "value": "PR-A-2", "days": [1, 4, 5, 0], "resource": True},
+    {"label": "术/狙芯片", "value": "PR-B-1", "days": [1, 2, 5, 6], "resource": True},
+    {"label": "术/狙芯片组", "value": "PR-B-2", "days": [1, 2, 5, 6], "resource": True},
+    {"label": "先/辅芯片", "value": "PR-C-1", "days": [3, 4, 6, 0], "resource": True},
+    {"label": "先/辅芯片组", "value": "PR-C-2", "days": [3, 4, 6, 0], "resource": True},
+    {"label": "近/特芯片", "value": "PR-D-1", "days": [2, 3, 6, 0], "resource": True},
+    {"label": "近/特芯片组", "value": "PR-D-2", "days": [2, 3, 6, 0], "resource": True},
 ]
 
 EXCLUDED_DROP_IDS = {
@@ -109,7 +106,7 @@ def build_ui_options(
 def _build_client_options(source: Path, client_type: str, *, now_utc: datetime | None = None) -> dict[str, Any]:
     resource_client = resource_client_type(client_type)
     return {
-        "stages": _load_stage_options(source, resource_client),
+        "stages": _load_stage_options(source, resource_client, now_utc=now_utc),
         "stage_tips": _load_stage_tips(source, resource_client, now_utc=now_utc),
         "drops": _load_drop_options(source, resource_client),
         "copilot": {"files": _load_copilot_files(source)},
@@ -169,27 +166,22 @@ def _collect_start_operators(value: Any) -> list[str]:
     return []
 
 
-def _load_stage_options(source: Path, client_type: str) -> list[dict[str, str]]:
+def _load_stage_options(source: Path, client_type: str, *, now_utc: datetime | None = None) -> list[dict[str, str]]:
+    now = _aware_utc(now_utc)
+    data = _read_stage_activity_data(source)
+    client_data = data.get(normalize_client_type(client_type)) if isinstance(data, dict) else {}
+    if not isinstance(client_data, dict):
+        client_data = {}
+    day_of_week = _maa_day_of_week(client_type, now)
+    resource_collection_open = _activity_is_open(client_data.get("resourceCollection"), now)
     return _unique_options([
-        *[dict(stage) for stage in PERMANENT_STAGES],
-        *_load_activity_stages(source, client_type),
+        dict(DEFAULT_STAGE_OPTION),
+        *_load_activity_stages(client_data, now),
+        *_load_permanent_stages(day_of_week, resource_collection_open),
     ])
 
 
-def _load_activity_stages(source: Path, client_type: str) -> list[dict[str, str]]:
-    data = _read_first_json(
-        [
-            source / "cache" / "gui" / "StageActivityV2.json",
-            source / "resource" / "gui" / "StageActivityV2.json",
-            source / "cache" / "StageActivityV2.json",
-        ]
-    )
-    if not isinstance(data, dict):
-        return []
-
-    client_data = data.get(normalize_client_type(client_type))
-    if not isinstance(client_data, dict):
-        return []
+def _load_activity_stages(client_data: dict[str, Any], now: datetime) -> list[dict[str, str]]:
     side_story = client_data.get("sideStoryStage")
     if not isinstance(side_story, dict):
         return []
@@ -198,14 +190,39 @@ def _load_activity_stages(source: Path, client_type: str) -> list[dict[str, str]
     for group in side_story.values():
         if not isinstance(group, dict) or not isinstance(group.get("Stages"), list):
             continue
+        group_activity = group.get("Activity") or group.get("activity")
         for stage in group["Stages"]:
             if not isinstance(stage, dict):
+                continue
+            activity = stage.get("Activity") or stage.get("activity") or group_activity
+            if not _activity_is_open(activity, now):
                 continue
             value = stage.get("Value") or stage.get("Display")
             label = stage.get("Display") or value
             if value and label:
                 stages.append({"label": str(label), "value": str(value)})
     return stages
+
+
+def _load_permanent_stages(day_of_week: int, resource_collection_open: bool) -> list[dict[str, str]]:
+    return [
+        _stage_option(stage)
+        for stage in PERMANENT_STAGES
+        if _permanent_stage_is_open(stage, day_of_week, resource_collection_open)
+    ]
+
+
+def _permanent_stage_is_open(stage: dict[str, Any], day_of_week: int, resource_collection_open: bool) -> bool:
+    if stage.get("hidden"):
+        return False
+    if stage.get("resource") and resource_collection_open:
+        return True
+    days = stage.get("days")
+    return not isinstance(days, list) or not days or day_of_week in days
+
+
+def _stage_option(stage: dict[str, Any]) -> dict[str, str]:
+    return {"label": str(stage["label"]), "value": str(stage["value"])}
 
 
 def _load_stage_tips(source: Path, client_type: str, *, now_utc: datetime | None = None) -> dict[str, Any]:
