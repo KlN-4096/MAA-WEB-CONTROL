@@ -33,14 +33,15 @@ def build_default_profiles() -> list[Profile]:
 
 
 def complete_profile_tasks(profile: Profile) -> Profile:
-    existing_by_id = {task.id: task for task in profile.tasks}
     ordered_tasks: list[TaskDefinition] = []
     used_ids: set[str] = set()
-    for template in _profile_tasks(set()):
-        task = existing_by_id.get(template.id) or template
+    for task in profile.tasks:
         ordered_tasks.append(task)
         used_ids.add(task.id)
-    ordered_tasks.extend(task for task in profile.tasks if task.id not in used_ids)
+    for template in _profile_tasks(set()):
+        if template.id not in used_ids:
+            ordered_tasks.append(template)
+            used_ids.add(template.id)
     return profile.model_copy(update={"tasks": ordered_tasks}, deep=True)
 
 

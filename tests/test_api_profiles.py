@@ -55,16 +55,34 @@ class ProfileApiTest(unittest.TestCase):
         tasks = response.json()["tasks"]
         self.assertEqual([task["id"] for task in tasks[:9]], [
             "startup",
+            "award",
             "recruit",
             "infrast",
             "fight",
             "remaining-sanity",
             "mall",
-            "award",
             "roguelike",
             "reclamation",
         ])
         self.assertEqual([task["id"] for task in tasks if task["enabled"]], ["startup", "award"])
+
+    def test_put_profile_preserves_user_task_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store, client = self._client(root)
+            response = client.put("/api/profiles/daily", json={
+                "name": "daily",
+                "tasks": [
+                    {"id": "award", "type": "Award", "enabled": True},
+                    {"id": "startup", "type": "StartUp", "enabled": True},
+                    {"id": "custom-1", "type": "Custom", "enabled": True},
+                ],
+            })
+
+            saved = store.load("daily")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([task.id for task in saved.tasks[:3]], ["award", "startup", "custom-1"])
 
     def test_put_profile_persists_builtin_disabled_tasks(self):
         with tempfile.TemporaryDirectory() as directory:

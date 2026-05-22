@@ -49,18 +49,22 @@ class DefaultProfilesTest(unittest.TestCase):
 
         self.assertEqual(
             [task.id for task in completed.tasks],
-            ["startup", "recruit", "infrast", "fight", "remaining-sanity", "mall", "award", "roguelike", "reclamation"],
+            ["startup", "award", "recruit", "infrast", "fight", "remaining-sanity", "mall", "roguelike", "reclamation"],
         )
         self.assertEqual([task.id for task in completed.tasks if task.enabled], ["startup", "award"])
         self.assertEqual(next(task for task in completed.tasks if task.id == "fight").name, "理智作战")
 
-    def test_complete_profile_tasks_preserves_extra_tasks(self):
+    def test_complete_profile_tasks_preserves_user_order_and_extra_tasks(self):
         profile = Profile(
             name="daily",
-            tasks=[TaskDefinition(id="custom-1", type="Custom", enabled=False, name="额外任务")],
+            tasks=[
+                TaskDefinition(id="award", type="Award", enabled=True),
+                TaskDefinition(id="startup", type="StartUp", enabled=True),
+                TaskDefinition(id="custom-1", type="Custom", enabled=False, name="额外任务"),
+            ],
         )
 
         completed = complete_profile_tasks(profile)
 
-        self.assertEqual(completed.tasks[-1].id, "custom-1")
-        self.assertFalse(completed.tasks[-1].enabled)
+        self.assertEqual([task.id for task in completed.tasks[:3]], ["award", "startup", "custom-1"])
+        self.assertFalse(completed.tasks[2].enabled)
