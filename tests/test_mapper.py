@@ -48,6 +48,24 @@ class TaskMapperTest(unittest.TestCase):
         self.assertEqual(call.params["account_name"], "Doctor")
         self.assertTrue(call.params["start_game_enabled"])
 
+    def test_startup_retry_web_fields_are_preserved_for_runner(self):
+        task = TaskDefinition(
+            id="startup",
+            type="StartUp",
+            params={
+                "startup_retry_times": 3,
+                "startup_retry_command_a": "docker stop redroid",
+                "startup_retry_wait_a_seconds": 60,
+                "startup_retry_command_b": "docker start redroid",
+                "startup_retry_wait_b_seconds": 60,
+            },
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params["startup_retry_times"], 3)
+        self.assertEqual(call.params["startup_retry_command_a"], "docker stop redroid")
+
     def test_stage_plan_selects_first_open_candidate(self):
         task = TaskDefinition(
             id="fight",

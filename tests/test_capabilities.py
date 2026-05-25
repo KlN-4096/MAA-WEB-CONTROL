@@ -23,6 +23,7 @@ class CapabilitiesTest(unittest.TestCase):
         self.assertTrue(capabilities["supports_visit_as_mall_subtask"])
         self.assertIn("Fight", capabilities["tasks"])
         self.assertTrue(capabilities["tasks"]["Fight"]["supports_advanced"])
+        self.assertTrue(capabilities["tasks"]["StartUp"]["supports_advanced"])
 
     def test_api_capabilities_route_returns_payload(self):
         with tempfile.TemporaryDirectory() as directory:

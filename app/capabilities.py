@@ -29,7 +29,7 @@ CAPABILITIES: dict[str, Any] = {
         "StartUp": {
             "enabled": True,
             "title": "开始唤醒",
-            "supports_advanced": False,
+            "supports_advanced": True,
             "default_params": {
                 "account": "",
                 "start_game_enabled": True,

@@ -13,6 +13,24 @@ function renderStartUpGeneral(p, escapeHtml) {
   `;
 }
 
+function renderStartUpAdvanced(p, escapeHtml) {
+  return `
+    <div class="maaParams wideForm">
+      <strong class="sectionTitle">开始唤醒失败重试</strong>
+      <span>最大尝试次数${hint("包含第一次开始唤醒。填 3 表示最多执行 3 次 StartUp；某次成功后会直接进入后续任务。", escapeHtml)}</span>
+      <input id="paramStartupRetryTimes" type="number" min="1" max="10" value="${numberValue(p.startup_retry_times, 1)}" />
+      <span>失败后命令 A${hint("在失败的 StartUp 后执行，例如 docker stop redroid。命令为空时跳过。", escapeHtml)}</span>
+      <input id="paramStartupRetryCommandA" class="wideInput" value="${escapeHtml(p.startup_retry_command_a || "")}" placeholder="docker stop redroid" />
+      <span>命令 A 后等待</span>
+      <div><input id="paramStartupRetryWaitA" type="number" min="0" max="3600" value="${numberValue(p.startup_retry_wait_a_seconds, 60)}" /><span class="unitLabel">秒</span></div>
+      <span>恢复命令 B${hint("等待 A 后执行，例如 docker start redroid 或 docker compose up -d。命令为空时跳过。", escapeHtml)}</span>
+      <input id="paramStartupRetryCommandB" class="wideInput" value="${escapeHtml(p.startup_retry_command_b || "")}" placeholder="docker start redroid" />
+      <span>命令 B 后等待</span>
+      <div><input id="paramStartupRetryWaitB" type="number" min="0" max="3600" value="${numberValue(p.startup_retry_wait_b_seconds, 60)}" /><span class="unitLabel">秒</span></div>
+    </div>
+  `;
+}
+
 function collectStartUpParams() {
   const params = {};
   addValue(params, "account", "paramAccount", "");
@@ -22,5 +40,10 @@ function collectStartUpParams() {
   addBool(params, "start_game_enabled", "start_game_enabled");
   addBool(params, "auto_detect", "auto_detect");
   addBool(params, "detect_every_time", "detect_every_time");
+  addNumber(params, "startup_retry_times", "paramStartupRetryTimes", 1);
+  addValue(params, "startup_retry_command_a", "paramStartupRetryCommandA", "");
+  addNumber(params, "startup_retry_wait_a_seconds", "paramStartupRetryWaitA", 60);
+  addValue(params, "startup_retry_command_b", "paramStartupRetryCommandB", "");
+  addNumber(params, "startup_retry_wait_b_seconds", "paramStartupRetryWaitB", 60);
   return params;
 }

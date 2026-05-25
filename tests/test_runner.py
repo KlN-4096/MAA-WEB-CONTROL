@@ -14,20 +14,26 @@ class FakeRunnerAdapter:
         self.wait_for_stop = wait_for_stop
         self.started = asyncio.Event()
         self.stop_called = False
+        self.appended: list[AppendCall] = []
+        self.start_calls = 0
+        self.connect_calls = 0
 
     @property
     def task_chain_status(self):
         return self._task_chain_status
 
     async def connect(self, profile):
+        self.connect_calls += 1
         return True
 
     async def append_task(self, call: AppendCall):
+        self.appended.append(call)
         if self.append_error:
             raise self.append_error
         return 100
 
     async def start(self):
+        self.start_calls += 1
         self.started.set()
         while self.wait_for_stop and not self.stop_called:
             await asyncio.sleep(0)
@@ -39,8 +45,38 @@ class FakeRunnerAdapter:
         return True
 
 
+class SequenceStatusAdapter(FakeRunnerAdapter):
+    def __init__(self, statuses):
+        super().__init__("Completed")
+        self.statuses = list(statuses)
+
+    async def start(self):
+        await super().start()
+        if self.statuses:
+            self._task_chain_status = self.statuses.pop(0)
+        return True
+
+
 def profile_with_task():
     return Profile(name="daily", tasks=[TaskDefinition(id="award", type="Award")])
+
+
+def profile_with_startup_retry():
+    return Profile(name="daily", tasks=[
+        TaskDefinition(
+            id="startup",
+            type="StartUp",
+            params={
+                "start_game_enabled": True,
+                "startup_retry_times": 3,
+                "startup_retry_command_a": "docker stop redroid",
+                "startup_retry_wait_a_seconds": 7,
+                "startup_retry_command_b": "docker start redroid",
+                "startup_retry_wait_b_seconds": 11,
+            },
+        ),
+        TaskDefinition(id="award", type="Award"),
+    ])
 
 
 def _extract_card_text(card) -> str:
@@ -214,6 +250,47 @@ class RunnerStateTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(runner.status().state, "Failed")
         self.assertEqual(events.recent()[-1].type, "runner.failed")
         self.assertIn("append failed", events.recent()[-1].message)
+
+    async def test_startup_retry_runs_commands_between_failed_attempts(self):
+        events = EventBus()
+        adapter = SequenceStatusAdapter(["Failed", "Completed", "Completed"])
+        actions: list[str] = []
+
+        async def command_runner(command: str, timeout_seconds: int) -> tuple[str, str, int]:
+            actions.append(f"cmd:{command}:{timeout_seconds}")
+            return "", "", 0
+
+        async def sleep(seconds: float) -> None:
+            actions.append(f"sleep:{int(seconds)}")
+
+        runner = MaaRunnerService(adapter, events, command_runner=command_runner, sleep=sleep)
+
+        await runner.run(profile_with_startup_retry())
+        await runner._task
+
+        self.assertEqual(runner.status().state, "Completed")
+        self.assertEqual([call.type for call in adapter.appended], ["StartUp", "StartUp", "Award"])
+        self.assertEqual(adapter.start_calls, 3)
+        self.assertEqual(adapter.connect_calls, 3)
+        self.assertEqual(actions, [
+            "cmd:docker stop redroid:60",
+            "sleep:7",
+            "cmd:docker start redroid:60",
+            "sleep:11",
+        ])
+
+    async def test_startup_retry_exhausted_continues_remaining_tasks(self):
+        events = EventBus()
+        adapter = SequenceStatusAdapter(["Failed", "Failed", "Failed", "Completed"])
+        runner = MaaRunnerService(adapter, events, command_runner=lambda command, timeout: None, sleep=lambda seconds: None)
+
+        await runner.run(profile_with_startup_retry())
+        await runner._task
+
+        self.assertEqual(runner.status().state, "Completed")
+        self.assertEqual([call.type for call in adapter.appended], ["StartUp", "StartUp", "StartUp", "Award"])
+        self.assertEqual(adapter.start_calls, 4)
+        self.assertEqual(adapter.connect_calls, 4)
 
 
 if __name__ == "__main__":

@@ -262,7 +262,9 @@
 }
 
 .settingsArea {
-  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 18px;
   min-height: 720px;
   padding-top: 6px;
   overflow: visible;
@@ -367,11 +369,10 @@ input[type="checkbox"] {
 }
 
 .modeTabs {
-  position: absolute;
-  left: 126px;
-  bottom: 235px;
   display: grid;
   grid-template-columns: 110px 110px;
+  width: 220px;
+  margin-left: 126px;
 }
 
 .modeTabs button {
@@ -393,10 +394,8 @@ input[type="checkbox"] {
 }
 
 .tipsBlock {
-  position: absolute;
-  left: 176px;
-  bottom: 0;
   width: 260px;
+  margin-left: 176px;
   color: var(--text);
   line-height: 1.35;
   white-space: pre-line;
@@ -760,4 +759,3 @@ input[type="checkbox"] {
 .taskItem.active .taskNameButton {
   outline: 0;
 }
-

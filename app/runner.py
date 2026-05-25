@@ -4,7 +4,9 @@ import asyncio
 import platform
 import subprocess
 from contextlib import suppress
+from dataclasses import dataclass
 from datetime import datetime
+from inspect import isawaitable
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Protocol
 
@@ -15,6 +17,26 @@ from .models import AppendCall, EventRecord, PostAction, Profile, RunnerStatus
 
 
 RunEventCallback = Callable[[str, dict[str, Any]], Awaitable[None]]
+CommandRunner = Callable[[str, int], Any]
+SleepRunner = Callable[[float], Any]
+STARTUP_RETRY_PARAM_KEYS = {
+    "startup_retry_times",
+    "startup_retry_command_a",
+    "startup_retry_wait_a_seconds",
+    "startup_retry_command_b",
+    "startup_retry_wait_b_seconds",
+}
+STARTUP_RETRY_COMMAND_TIMEOUT_SECONDS = 60
+STARTUP_RETRY_MAX_ATTEMPTS = 10
+
+
+@dataclass(frozen=True)
+class StartupRetryConfig:
+    attempts: int = 1
+    command_a: str = ""
+    wait_a_seconds: int = 60
+    command_b: str = ""
+    wait_b_seconds: int = 60
 
 
 class MaaAdapter(Protocol):
@@ -62,6 +84,8 @@ class MaaRunnerService:
         userdata_state_path: Path | None = None,
         run_event_callback: RunEventCallback | None = None,
         task_timeout_minutes: int = 0,
+        command_runner: CommandRunner | None = None,
+        sleep: SleepRunner | None = None,
     ) -> None:
         self._adapter = adapter
         self._events = events
@@ -75,6 +99,8 @@ class MaaRunnerService:
         self._run_event_callback = run_event_callback
         self._task_timeout_minutes = max(0, int(task_timeout_minutes))
         self._timed_out = False
+        self._command_runner = command_runner
+        self._sleep = sleep or asyncio.sleep
 
     def set_run_event_callback(self, callback: RunEventCallback | None) -> None:
         self._run_event_callback = callback
@@ -150,18 +176,17 @@ class MaaRunnerService:
         try:
             calls = profile_to_append_calls(profile, state_path=self._userdata_state_path)
             await self._connect(profile)
-            await self._append_tasks(calls)
             if self._task_timeout_minutes > 0:
                 try:
                     await asyncio.wait_for(
-                        self._start_and_finish(),
+                        self._run_calls_and_finish(profile, calls),
                         timeout=self._task_timeout_minutes * 60,
                     )
                 except asyncio.TimeoutError:
                     self._timed_out = True
                     await self._handle_timeout()
             else:
-                await self._start_and_finish()
+                await self._run_calls_and_finish(profile, calls)
         except RunStopped as exc:
             self._stop(str(exc))
             await self._fire_run_event("stopped", str(exc))
@@ -170,6 +195,20 @@ class MaaRunnerService:
             await self._fire_run_event("error", str(exc))
         finally:
             await self._execute_post_action()
+
+    async def _run_calls_and_finish(self, profile: Profile, calls: list[AppendCall]) -> None:
+        if not calls:
+            raise RunStopped("No enabled tasks selected.")
+        startup, startup_retry, remaining = self._split_startup_retry_calls(calls)
+        if startup is not None:
+            await self._run_startup_with_retry(profile, startup, startup_retry)
+            if remaining:
+                await self._connect(profile)
+        await self._append_tasks(remaining)
+        if not remaining:
+            await self._finish_from_status(self._adapter.task_chain_status or "Completed")
+            return
+        await self._start_and_finish()
 
     async def _handle_timeout(self) -> None:
         message = f"任务执行超过 {self._task_timeout_minutes} 分钟，自动停止。"
@@ -189,7 +228,7 @@ class MaaRunnerService:
 
     async def _append_tasks(self, calls: list[AppendCall]) -> None:
         if not calls:
-            raise RunStopped("No enabled tasks selected.")
+            return
         self._status.state = "AppendingTasks"
         self._status.total_tasks = len(calls)
         self._events.publish(EventRecord.now("runner.appending", f"Appending {len(calls)} tasks."))
@@ -197,10 +236,17 @@ class MaaRunnerService:
             if self._stop_requested:
                 raise RunStopped("Run stopped before start.")
             self._status.current_task = call.task_id
-            task_id = await self._adapter.append_task(call)
+            task_id = await self._append_call(call)
             self._status.appended_tasks += 1
             detail = {"task_id": call.task_id, "maa_task_id": task_id, "type": call.type}
             self._events.publish(EventRecord.now("task.appended", f"Appended {call.type}.", detail=detail))
+
+    async def _append_call(self, call: AppendCall) -> int:
+        target = call
+        if call.type == "StartUp":
+            target = call.model_copy(deep=True)
+            target.params = _strip_startup_retry_params(target.params)
+        return await self._adapter.append_task(target)
 
     async def _start_and_finish(self) -> None:
         self._status.state = "Running"
@@ -212,7 +258,106 @@ class MaaRunnerService:
             self._stop("Run stopped.")
             await self._fire_run_event("stopped", "Run stopped.")
             return
-        final_status = self._adapter.task_chain_status or "Completed"
+        await self._finish_from_status(self._adapter.task_chain_status or "Completed")
+
+    def _split_startup_retry_calls(
+        self,
+        calls: list[AppendCall],
+    ) -> tuple[AppendCall | None, StartupRetryConfig, list[AppendCall]]:
+        if not calls or calls[0].type != "StartUp":
+            return None, StartupRetryConfig(), calls
+        cfg = _startup_retry_config(calls[0])
+        if cfg.attempts <= 1:
+            return None, StartupRetryConfig(), calls
+        startup = calls[0].model_copy(deep=True)
+        startup.params = _strip_startup_retry_params(startup.params)
+        return startup, cfg, calls[1:]
+
+    async def _run_startup_with_retry(self, profile: Profile, startup: AppendCall, cfg: StartupRetryConfig) -> None:
+        for attempt in range(1, cfg.attempts + 1):
+            if self._stop_requested:
+                raise RunStopped("Run stopped before start.")
+            status = await self._run_single_startup(startup, attempt, cfg.attempts)
+            if status != "Failed":
+                return
+            if attempt >= cfg.attempts:
+                self._events.publish(EventRecord.now(
+                    "runner.startup_retry.exhausted",
+                    "StartUp retry attempts exhausted; continuing remaining tasks.",
+                    level="warning",
+                    detail={"attempts": cfg.attempts},
+                ))
+                self._logs.append("开始唤醒重试次数已用完，继续后续任务。", color_key="WarningLogBrush")
+                return
+            await self._run_startup_recovery(profile, cfg, attempt)
+
+    async def _run_single_startup(self, call: AppendCall, attempt: int, attempts: int) -> str:
+        self._status.state = "AppendingTasks"
+        self._status.total_tasks = max(self._status.total_tasks, 1)
+        self._status.current_task = call.task_id
+        task_id = await self._append_call(call)
+        self._status.appended_tasks += 1
+        self._events.publish(EventRecord.now(
+            "task.appended",
+            f"Appended {call.type}.",
+            detail={"task_id": call.task_id, "maa_task_id": task_id, "type": call.type},
+        ))
+        self._status.state = "Running"
+        self._logs.append(f"开始唤醒尝试 {attempt}/{attempts}……", color_key="MessageLogBrush", split_mode="Before")
+        self._events.publish(EventRecord.now(
+            "runner.startup_retry.attempt",
+            f"StartUp attempt {attempt}/{attempts}.",
+            detail={"attempt": attempt, "attempts": attempts},
+        ))
+        if not await self._adapter.start():
+            raise RuntimeError("MaaCore start failed.")
+        return self._adapter.task_chain_status or "Completed"
+
+    async def _run_startup_recovery(self, profile: Profile, cfg: StartupRetryConfig, attempt: int) -> None:
+        self._events.publish(EventRecord.now(
+            "runner.startup_retry.recovery",
+            f"StartUp failed; running recovery before attempt {attempt + 1}.",
+            level="warning",
+            detail={"attempt": attempt, "next_attempt": attempt + 1},
+        ))
+        self._logs.append("开始唤醒失败，执行恢复命令后重试。", color_key="WarningLogBrush", split_mode="Both")
+        await self._run_retry_command("A", cfg.command_a)
+        await self._wait_retry_interval("A", cfg.wait_a_seconds)
+        await self._run_retry_command("B", cfg.command_b)
+        await self._wait_retry_interval("B", cfg.wait_b_seconds)
+        await self._connect(profile)
+
+    async def _run_retry_command(self, label: str, command: str) -> None:
+        command = (command or "").strip()
+        if not command:
+            return
+        self._logs.append(f"开始唤醒恢复命令 {label}: {command}", color_key="WarningLogBrush")
+        try:
+            await self._execute_shell_command(command, STARTUP_RETRY_COMMAND_TIMEOUT_SECONDS)
+        except Exception as exc:
+            self._events.publish(EventRecord.now(
+                "runner.startup_retry.command_error",
+                f"StartUp recovery command {label} failed: {exc}",
+                level="error",
+                detail={"label": label, "command": command},
+            ))
+            self._logs.append(f"开始唤醒恢复命令 {label} 失败: {exc}", color_key="ErrorLogBrush")
+
+    async def _wait_retry_interval(self, label: str, seconds: int) -> None:
+        wait = max(0, int(seconds or 0))
+        if wait <= 0:
+            return
+        self._events.publish(EventRecord.now(
+            "runner.startup_retry.waiting",
+            f"Waiting {wait}s after StartUp recovery command {label}.",
+            detail={"label": label, "seconds": wait},
+        ))
+        self._logs.append(f"开始唤醒恢复等待 {label}: {wait}s", color_key="WarningLogBrush")
+        result = self._sleep(wait)
+        if isawaitable(result):
+            await result
+
+    async def _finish_from_status(self, final_status: str) -> None:
         if final_status == "Failed":
             self._fail("MaaCore task chain failed.")
             await self._fire_run_event("error", "MaaCore task chain failed.")
@@ -303,6 +448,14 @@ class MaaRunnerService:
             return
         timeout = max(1, int(timeout_seconds or 60))
         self._logs.append(f"后置动作: 执行自定义命令 → {command}", color_key="WarningLogBrush")
+        await self._execute_shell_command(command, timeout)
+
+    async def _execute_shell_command(self, command: str, timeout: int) -> None:
+        if self._command_runner is not None:
+            result = self._command_runner(command, timeout)
+            if isawaitable(result):
+                await result
+            return
         try:
             proc = await asyncio.create_subprocess_shell(
                 command,
@@ -357,6 +510,33 @@ def _build_resource_log() -> str:
     now = datetime.now()
     stamp = f"{now.year}/{now.month}/{now.day} {now:%H:%M:%S}"
     return f"Build Time:\n{stamp}\nResource Time:\n{stamp}"
+
+
+def _startup_retry_config(call: AppendCall) -> StartupRetryConfig:
+    params = call.params or {}
+    attempts = _int_in_range(params.get("startup_retry_times"), 1, STARTUP_RETRY_MAX_ATTEMPTS, 1)
+    return StartupRetryConfig(
+        attempts=attempts,
+        command_a=str(params.get("startup_retry_command_a", "") or ""),
+        wait_a_seconds=_int_in_range(params.get("startup_retry_wait_a_seconds"), 0, 3600, 60),
+        command_b=str(params.get("startup_retry_command_b", "") or ""),
+        wait_b_seconds=_int_in_range(params.get("startup_retry_wait_b_seconds"), 0, 3600, 60),
+    )
+
+
+def _strip_startup_retry_params(params: dict[str, Any]) -> dict[str, Any]:
+    stripped = dict(params)
+    for key in STARTUP_RETRY_PARAM_KEYS:
+        stripped.pop(key, None)
+    return stripped
+
+
+def _int_in_range(value: Any, minimum: int, maximum: int, fallback: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return max(minimum, min(maximum, parsed))
 
 
 class RunStopped(RuntimeError):

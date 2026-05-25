@@ -17,7 +17,7 @@ const TASK_NAMES = {
   UserDataUpdate: "更新数据"
 };
 
-const NO_ADVANCED_TASKS = new Set(["StartUp", "Award", "CloseDown", "UserDataUpdate"]);
+const NO_ADVANCED_TASKS = new Set(["Award", "CloseDown", "UserDataUpdate"]);
 const REPLACE_COLLECTED_PARAM_TASKS = new Set(["CloseDown"]);
 const STARTUP_CLIENT_TYPES = [
   { label: "官服", value: "Official" },
@@ -275,6 +275,7 @@ function renderAdvanced(task, escapeHtmlFn) {
   const p = task.params || {};
   if (task.type === "Fight") return renderFightAdvanced(p, escapeHtmlFn);
   if (task.type === "Custom") return renderJsonParams(p, escapeHtmlFn);
+  if (task.type === "StartUp") return renderStartUpAdvanced(p, escapeHtmlFn);
   if (task.type === "Recruit") return renderRecruitAdvanced(p, escapeHtmlFn);
   if (task.type === "Infrast") return renderInfrastAdvanced(p);
   if (task.type === "Mall") return renderMallAdvanced(p, escapeHtmlFn);
