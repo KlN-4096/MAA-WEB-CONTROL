@@ -102,13 +102,21 @@ async function runUpdateRequest(kind, path, busyText) {
       body: JSON.stringify({ client_type: updateClientType() })
     });
     applyUpdateResult(kind, result);
-    await loadVersionInfo();
-    await refreshOptionsAfterResourceUpdate(kind, result);
+    if (result?.restart_scheduled) {
+      refreshVersionAfterRestart();
+    } else {
+      await loadVersionInfo();
+      await refreshOptionsAfterResourceUpdate(kind, result);
+    }
   } catch (e) {
     SETTINGS_STATE.updateStatus = `更新失败：${e.message || "请求错误"}`;
   }
   SETTINGS_STATE.updateBusy = "";
   renderSettingsView();
+}
+
+function refreshVersionAfterRestart() {
+  setTimeout(() => loadVersionInfo(), 8000);
 }
 
 async function refreshOptionsAfterResourceUpdate(kind, result) {

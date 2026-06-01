@@ -233,8 +233,7 @@ class OfficialMaaAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(connected)
         instance = FlakyConnect.instances[-1]
         self.assertEqual(len(instance.connect_calls), 2)
-        run_mock.assert_called_once()
-        self.assertEqual(run_mock.call_args[0][0][1], "kill-server")
+        self.assertEqual([call.args[0][1] for call in run_mock.call_args_list], ["connect", "kill-server", "connect"])
 
     async def test_connect_does_not_restart_adb_when_disabled(self):
         class AlwaysFails(FakeAsst):
@@ -263,7 +262,28 @@ class OfficialMaaAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(connected)
         instance = AlwaysFails.instances[-1]
         self.assertEqual(len(instance.connect_calls), 1)
-        run_mock.assert_not_called()
+        run_mock.assert_called_once()
+        self.assertEqual(run_mock.call_args[0][0][1], "connect")
+
+    async def test_connect_preconnects_tcp_adb_address(self):
+        FakeAsst.reset()
+        with tempfile.TemporaryDirectory() as directory:
+            adapter = OfficialMaaAdapter(
+                core_dir=Path("D:/MAA"),
+                python_dir=None,
+                user_dir=Path(directory) / "maa-user",
+                asst_cls=FakeAsst,
+                events=EventBus(),
+                poll_interval=0,
+            )
+            profile = Profile(name="daily", adb=AdbConfig(address="127.0.0.1:5555", adb_path="adb"))
+
+            with patch("subprocess.run") as run_mock:
+                connected = await adapter.connect(profile)
+
+        self.assertTrue(connected)
+        run_mock.assert_called_once()
+        self.assertEqual(run_mock.call_args[0][0], ["adb", "connect", "127.0.0.1:5555"])
 
     async def test_fake_asst_loads_connects_appends_starts_waits_and_stops(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -400,6 +420,25 @@ class OfficialMaaAdapterTest(unittest.IsolatedAsyncioTestCase):
         log_event = [event for event in recent if event.type == "maa.log.item"][-1]
         self.assertEqual(log_event.detail["color_key"], "ErrorLogBrush")
         self.assertEqual(log_event.detail["split_mode"], "Both")
+
+    async def test_all_tasks_completed_does_not_overwrite_chain_failure_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            events = EventBus()
+            adapter = OfficialMaaAdapter(
+                core_dir=Path("D:/MAA"),
+                python_dir=None,
+                user_dir=Path(directory),
+                asst_cls=FakeAsst,
+                events=events,
+                poll_interval=0,
+            )
+
+            await adapter.connect(Profile(name="daily"))
+            FakeAsst.instances[0].callback(10000, b'{"taskchain":"StartUp"}', None)
+            FakeAsst.instances[0].callback(3, b'{"taskchain":"StartUp","finished_tasks":[1]}', None)
+            await asyncio.sleep(0)
+
+        self.assertEqual(adapter.task_chain_status, "Failed")
 
     async def test_callback_maps_common_subtask_extra_info_to_log_item(self):
         with tempfile.TemporaryDirectory() as directory:

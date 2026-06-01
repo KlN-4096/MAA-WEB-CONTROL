@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
@@ -28,6 +30,7 @@ NOTIFICATION_CONFIG = PROJECT_ROOT / "data" / "notifications.json"
 RUNNER_CONFIG = PROJECT_ROOT / "data" / "runner_config.json"
 UPDATE_CONFIG = PROJECT_ROOT / "data" / "update_config.json"
 UPDATE_CACHE = PROJECT_ROOT / "data" / "update_cache"
+CORE_UPDATE_RESTART_DELAY_SECONDS = 2.0
 
 
 def _initial_task_timeout_minutes() -> int:
@@ -36,6 +39,12 @@ def _initial_task_timeout_minutes() -> int:
     except (OSError, FileNotFoundError, json.JSONDecodeError):
         return 0
     return int(data.get("task_timeout_minutes", 0)) if isinstance(data, dict) else 0
+
+
+def _schedule_process_restart() -> None:
+    timer = threading.Timer(CORE_UPDATE_RESTART_DELAY_SECONDS, lambda: os._exit(75))
+    timer.daemon = True
+    timer.start()
 
 
 event_bus = EventBus()
@@ -62,7 +71,7 @@ async def _scheduler_run_callback(profile_name: str) -> None:
 
 
 scheduler = SchedulerService(event_bus, SCHEDULER_CONFIG, run_callback=_scheduler_run_callback)
-update_service = UpdateService(UPDATE_CONFIG, UPDATE_CACHE, runner, event_bus)
+update_service = UpdateService(UPDATE_CONFIG, UPDATE_CACHE, runner, event_bus, restart_callback=_schedule_process_restart)
 
 app = FastAPI(title="MAA Web Control", version=WEB_VERSION)
 app.include_router(create_api_router(

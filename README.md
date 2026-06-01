@@ -125,8 +125,6 @@ tail -f data/runtime/maa-web-control.log
 curl http://127.0.0.1:8000/api/logs/recent?limit=50
 ```
 
-确认 Web scheduler 跑通后，再停用旧 crontab 的 MAA 定时块，避免两套调度同时启动 redroid。
-
 ## 本地开发
 
 ```bash

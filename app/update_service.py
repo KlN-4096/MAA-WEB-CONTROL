@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import platform
 import shutil
 import urllib.request
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -19,15 +22,20 @@ from .update_helpers import (
     GITHUB_RESOURCE_ZIP,
     GUI_STAGE_ACTIVITY_URLS,
     MIRROR_USER_AGENT,
+    extract_archive,
     extract_zip,
+    full_package_root,
     github_resource_root,
+    install_full_package,
     merge_dir,
     mirror_resource_root,
+    run_maa_cli_update,
     start_updater,
 )
 
 
 CHECK_INTERVAL_SECONDS = 30
+CORE_UPDATE_BUSY_STATES = {"Connecting", "AppendingTasks", "Running", "Stopping"}
 YJ_CLIENT_TIMEZONE = {"Official": 8, "Bilibili": 8, "txwy": 8, "YoStarEN": -7, "YoStarJP": 9, "YoStarKR": 9}
 
 
@@ -38,11 +46,13 @@ class UpdateService:
         cache_dir: Path,
         runner: MaaRunnerService,
         events: EventBus,
+        restart_callback: Callable[[], None] | None = None,
     ) -> None:
         self._config_path = config_path
         self._cache_dir = cache_dir
         self._runner = runner
         self._events = events
+        self._restart_callback = restart_callback
         self._config = UpdateConfig()
         self._task: asyncio.Task[None] | None = None
         self._checking = False
@@ -109,7 +119,7 @@ class UpdateService:
     async def check_and_auto_update(self, client_type: str, *, reason: str = "manual") -> dict[str, Any]:
         result = await self.check_updates(client_type)
         if result.get("core", {}).get("has_update") and self._config.auto_download_update_package:
-            result["core_action"] = await self.update_core(client_type, checked=result)
+            result["core_action"] = await self.update_core(client_type, checked=result, manual=False)
         if self._should_auto_update_resource(result):
             result["resource_action"] = await self.update_resource(client_type, checked=result)
         result["reason"] = reason
@@ -132,8 +142,9 @@ class UpdateService:
         client_type: str = DEFAULT_CLIENT_TYPE,
         *,
         checked: dict[str, Any] | None = None,
+        manual: bool = True,
     ) -> dict[str, Any]:
-        result = await asyncio.to_thread(self._update_core_sync, client_type, checked)
+        result = await asyncio.to_thread(self._update_core_sync, client_type, checked, manual)
         self._last_result = {**self.state, "core_action": result}
         return result
 
@@ -181,15 +192,60 @@ class UpdateService:
             return self._install_mirror_resource(core_dir, resource["url"], client_type)
         return self._install_github_resource(core_dir, client_type)
 
-    def _update_core_sync(self, client_type: str, checked: dict[str, Any] | None) -> dict[str, Any]:
+    def _update_core_sync(self, client_type: str, checked: dict[str, Any] | None, manual: bool) -> dict[str, Any]:
         result = checked or self._check_updates_sync(client_type)
         core = result.get("core", {})
         if not core.get("has_update"):
             return {"ok": True, "message": core.get("message", "核心已是最新")}
+        if self._runner.status().state in CORE_UPDATE_BUSY_STATES:
+            return {"ok": False, "message": "任务正在运行，无法更新核心"}
+        core_dir = _require_core_dir(self._runner, self._project_root)
+        if platform.system() != "Windows" and (core.get("asset") or {}).get("browser_download_url"):
+            return self._install_core_package(core_dir, core)
+        if _can_update_with_maa_cli(core_dir):
+            if not manual and not self._config.auto_install_update_package:
+                return {"ok": True, "message": "发现核心更新，等待手动点击核心更新安装", "version": core.get("latest")}
+            return self._update_core_with_maa_cli(core_dir, core)
+        return self._download_core_package(core_dir, core)
+
+    def _install_core_package(self, core_dir: Path, core: dict[str, Any]) -> dict[str, Any]:
+        asset = core.get("asset") or {}
+        package_name = Path(str(asset.get("name") or "MaaCorePackage")).name
+        package_path = self._cache_dir / package_name
+        extract_dir = self._cache_dir / f"core-update-{uuid4().hex}"
+        self._download_file(asset["browser_download_url"], package_path)
+        extract_archive(package_path, extract_dir)
+        install_full_package(full_package_root(extract_dir), core_dir)
+        shutil.rmtree(extract_dir, ignore_errors=True)
+        response = {
+            "ok": True,
+            "message": f"核心已更新到 {core.get('latest') or '最新版本'}；服务将自动重启以加载新核心",
+            "package": str(package_path),
+            "version": core.get("latest"),
+            "core_dir": str(core_dir),
+            "restart_required": True,
+            "restart_scheduled": self._schedule_restart(),
+        }
+        self._events.publish(EventRecord.now("update.core.updated", response["message"], detail=response))
+        return response
+
+    def _update_core_with_maa_cli(self, core_dir: Path, core: dict[str, Any]) -> dict[str, Any]:
+        response = run_maa_cli_update(core_dir, self._config.update_channel)
+        response.update({"version": core.get("latest"), "core_dir": str(core_dir)})
+        if not response.get("ok"):
+            self._events.publish(EventRecord.now("update.core.failed", response["message"], level="error", detail=response))
+            return response
+        action_message = response.get("message") or "核心更新完成"
+        response["message"] = f"{action_message}，核心已更新到 {core.get('latest') or '最新版本'}；服务将自动重启以加载新核心"
+        response["restart_required"] = True
+        response["restart_scheduled"] = self._schedule_restart()
+        self._events.publish(EventRecord.now("update.core.updated", response["message"], detail=response))
+        return response
+
+    def _download_core_package(self, core_dir: Path, core: dict[str, Any]) -> dict[str, Any]:
         asset = core.get("asset") or {}
         if not asset.get("browser_download_url") or not asset.get("name"):
             return {"ok": False, "message": "发现核心更新，但没有可用的下载包", "url": core.get("url", "")}
-        core_dir = _require_core_dir(self._runner, self._project_root)
         package_path = core_dir / asset["name"]
         self._download_file(asset["browser_download_url"], package_path)
         response = {"ok": True, "message": "核心更新包已下载", "package": str(package_path), "version": core.get("latest")}
@@ -197,6 +253,17 @@ class UpdateService:
             response.update(start_updater(core_dir, package_path, asset["name"], show_console=self._config.show_updater_console))
         self._events.publish(EventRecord.now("update.core.downloaded", response["message"], detail=response))
         return response
+
+    def _schedule_restart(self) -> bool:
+        if self._restart_callback is None:
+            return False
+        try:
+            self._restart_callback()
+        except Exception as exc:
+            detail = {"error": str(exc)}
+            self._events.publish(EventRecord.now("update.core.restart_failed", "核心更新后自动重启失败。", level="error", detail=detail))
+            return False
+        return True
 
     def _install_github_resource(self, core_dir: Path, client_type: str) -> dict[str, Any]:
         package_path = self._cache_dir / "MaaResourceGithub.zip"
@@ -322,3 +389,10 @@ def _require_core_dir(runner: MaaRunnerService, project_root: Path) -> Path:
     if not (core_dir / "resource").is_dir():
         raise RuntimeError(f"MAA_CORE_DIR 无效或缺少 resource 目录：{core_dir}")
     return core_dir
+
+
+def _can_update_with_maa_cli(core_dir: Path) -> bool:
+    if platform.system() == "Windows":
+        return False
+    maa_cli = core_dir / "maa"
+    return maa_cli.is_file() and os.access(maa_cli, os.X_OK)

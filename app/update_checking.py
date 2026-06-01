@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import platform
 import urllib.parse
 from collections.abc import Callable
 from typing import Any
@@ -14,8 +13,10 @@ from .update_helpers import (
     MIRROR_SP_ID,
     MIRROR_USER_AGENT,
     mirror_time,
+    package_arch,
+    package_os,
     parse_mirror_time,
-    select_windows_asset,
+    select_platform_asset,
     semver_less,
 )
 
@@ -79,7 +80,7 @@ class UpdateChecker:
         latest = str(detail.get("version") or "")
         has_update = bool(latest) and semver_less(current_version, latest)
         details = detail.get("details", {}) if isinstance(detail.get("details"), dict) else {}
-        asset = select_windows_asset(details.get("assets", []), current_version, latest)
+        asset = select_platform_asset(details.get("assets", []), current_version, latest)
         if asset and not self._config.force_github_global_source:
             asset = _prefer_mirror_asset(asset)
         return {
@@ -95,13 +96,12 @@ class UpdateChecker:
 
 
 def mirror_core_url(current_version: str, config: UpdateConfig) -> str:
-    arch = "arm64" if "arm" in platform.machine().lower() else "x64"
     params = {
         "current_version": current_version,
         "cdk": config.mirror_chyan_cdk.strip(),
         "user_agent": MIRROR_USER_AGENT,
-        "os": "win",
-        "arch": arch,
+        "os": package_os(),
+        "arch": package_arch(),
         "channel": config.update_channel,
         "sp_id": MIRROR_SP_ID,
     }

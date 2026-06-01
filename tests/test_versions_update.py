@@ -1,9 +1,12 @@
 import asyncio
 import json
+import subprocess
+import tarfile
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -91,6 +94,187 @@ class VersionUpdateTest(unittest.TestCase):
         self.assertTrue(any("mirrorchyan.com" in url for url in seen_urls))
         self.assertTrue(any("api.maa.plus" in url for url in seen_urls))
 
+    def test_linux_core_check_selects_linux_asset(self):
+        assets = [
+            {"name": "MAA-v6.10.7-win-x64.zip", "browser_download_url": "https://example.test/win.zip"},
+            {"name": "MAA-v6.10.7-linux-x86_64.tar.gz", "browser_download_url": "https://example.test/linux.tar.gz"},
+        ]
+
+        def fetch(_url: str) -> dict:
+            return {"version": "v6.10.7", "details": {"assets": assets, "html_url": "https://example.test"}}
+
+        with patch("app.update_helpers.platform.system", return_value="Linux"), \
+                patch("app.update_helpers.platform.machine", return_value="x86_64"):
+            result = UpdateChecker(UpdateConfig(), fetch).check_core("v6.9.5")
+
+        self.assertTrue(result["has_update"])
+        self.assertEqual(result["asset"]["name"], "MAA-v6.10.7-linux-x86_64.tar.gz")
+
+    def test_linux_core_update_runs_maa_cli_and_schedules_restart(self):
+        async def run() -> dict:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                core_dir = root / "MAA"
+                write_json(core_dir / "resource" / "version.json", resource_json("CN", "Pool", "2026-05-12 01:02:03.456"))
+                maa_cli = core_dir / "maa"
+                maa_cli.write_text("#!/bin/sh\n", encoding="utf-8")
+                maa_cli.chmod(0o755)
+                (core_dir / "libMaaCore.so").write_text("core", encoding="utf-8")
+                restarted: list[bool] = []
+                service = make_service(root, core_dir, restart_callback=lambda: restarted.append(True))
+                checked = {"core": {"has_update": True, "latest": "v6.10.7"}}
+                completed = subprocess.CompletedProcess(
+                    [str(maa_cli), "update"],
+                    0,
+                    stdout="updated",
+                    stderr="",
+                )
+                library_dir = subprocess.CompletedProcess([str(maa_cli), "dir", "library"], 0, stdout=str(core_dir), stderr="")
+                resource_dir = subprocess.CompletedProcess([str(maa_cli), "dir", "resource"], 0, stdout=str(core_dir / "resource"), stderr="")
+                with patch("app.update_service.platform.system", return_value="Linux"), \
+                        patch("app.update_helpers.subprocess.run", side_effect=[completed, library_dir, resource_dir]) as run_mock:
+                    result = await service.update_core("Official", checked=checked)
+                result["called_args"] = run_mock.call_args_list[0].args[0]
+                result["restarted"] = restarted
+                return result
+
+        result = asyncio.run(run())
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["called_args"], [
+            str(Path(result["core_dir"]) / "maa"),
+            "update",
+            "--batch",
+            "-t",
+            "0",
+            "stable",
+        ])
+        self.assertEqual(result["restarted"], [True])
+        self.assertTrue(result["restart_scheduled"])
+
+    def test_linux_core_update_installs_full_package_asset(self):
+        async def run() -> dict:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                core_dir = root / "MAA"
+                write_json(core_dir / "resource" / "tasks" / "stale.json", {"old": True})
+                package_root = root / "package"
+                (package_root / "resource").mkdir(parents=True)
+                (package_root / "Python").mkdir()
+                (package_root / "libMaaCore.so").write_text("new core", encoding="utf-8")
+                (package_root / "Python" / "asst.py").write_text("wrapper", encoding="utf-8")
+                write_json(package_root / "resource" / "version.json", resource_json("New", "Pool", "2026-05-13 01:02:03.456"))
+                package = root / "MAA-v6.10.7-linux-x86_64.tar.gz"
+                with tarfile.open(package, "w:gz") as archive:
+                    for item in package_root.rglob("*"):
+                        archive.add(item, arcname=item.relative_to(package_root))
+                service = make_service(root, core_dir, restart_callback=lambda: None)
+                checked = {
+                    "core": {
+                        "has_update": True,
+                        "latest": "v6.10.7",
+                        "asset": {
+                            "name": package.name,
+                            "browser_download_url": "https://example.test/linux.tar.gz",
+                        },
+                    },
+                }
+
+                def download(_url: str, target: Path) -> None:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(package.read_bytes())
+
+                service._download_file = download
+                with patch("app.update_service.platform.system", return_value="Linux"):
+                    result = await service.update_core("Official", checked=checked)
+                result["core_text"] = (core_dir / "libMaaCore.so").read_text(encoding="utf-8")
+                result["wrapper_exists"] = (core_dir / "Python" / "asst.py").exists()
+                result["stale_exists"] = (core_dir / "resource" / "tasks" / "stale.json").exists()
+                return result
+
+        result = asyncio.run(run())
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["core_text"], "new core")
+        self.assertTrue(result["wrapper_exists"])
+        self.assertFalse(result["stale_exists"])
+
+    def test_linux_core_update_force_installs_when_core_was_not_installed_by_maa_cli(self):
+        async def run() -> dict:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                core_dir = root / "MAA"
+                write_json(core_dir / "resource" / "version.json", resource_json("CN", "Pool", "2026-05-12 01:02:03.456"))
+                maa_cli = core_dir / "maa"
+                maa_cli.write_text("#!/bin/sh\n", encoding="utf-8")
+                maa_cli.chmod(0o755)
+                service = make_service(root, core_dir, restart_callback=lambda: None)
+                checked = {"core": {"has_update": True, "latest": "v6.10.7"}}
+                failed_update = subprocess.CompletedProcess(
+                    [str(maa_cli), "update"],
+                    1,
+                    stdout="",
+                    stderr=f"Error: MaaCore found at {core_dir} but not installed by maa, aborting",
+                )
+                forced_install = subprocess.CompletedProcess(
+                    [str(maa_cli), "install"],
+                    0,
+                    stdout="installed",
+                    stderr="",
+                )
+                managed_lib = root / "managed" / "lib"
+                managed_resource = root / "managed" / "resource"
+                (managed_lib / "libMaaCore.so").parent.mkdir(parents=True, exist_ok=True)
+                (managed_lib / "libMaaCore.so").write_text("new core", encoding="utf-8")
+                write_json(managed_resource / "version.json", resource_json("New", "Pool", "2026-05-13 01:02:03.456"))
+                library_dir = subprocess.CompletedProcess(
+                    [str(maa_cli), "dir", "library"],
+                    0,
+                    stdout=str(managed_lib),
+                    stderr="",
+                )
+                resource_dir = subprocess.CompletedProcess(
+                    [str(maa_cli), "dir", "resource"],
+                    0,
+                    stdout=str(managed_resource),
+                    stderr="",
+                )
+                with patch("app.update_service.platform.system", return_value="Linux"), \
+                        patch("app.update_helpers.subprocess.run", side_effect=[
+                            failed_update,
+                            forced_install,
+                            library_dir,
+                            resource_dir,
+                        ]) as run_mock:
+                    result = await service.update_core("Official", checked=checked)
+                result["commands"] = [call.args[0] for call in run_mock.call_args_list]
+                result["synced_core"] = (core_dir / "libMaaCore.so").read_text(encoding="utf-8")
+                result["synced_resource"] = json.loads((core_dir / "resource" / "version.json").read_text(encoding="utf-8"))
+                return result
+
+        result = asyncio.run(run())
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["commands"][1][1:], ["install", "--force", "--batch", "-t", "0", "stable"])
+        self.assertIn("maa-cli 强制安装完成", result["message"])
+        self.assertEqual(result["synced_core"], "new core")
+        self.assertEqual(result["synced_resource"]["activity"]["name"], "New")
+
+    def test_core_update_rejects_while_runner_is_active(self):
+        async def run() -> dict:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                core_dir = root / "MAA"
+                write_json(core_dir / "resource" / "version.json", resource_json("CN", "Pool", "2026-05-12 01:02:03.456"))
+                service = make_service(root, core_dir)
+                service._runner._status.state = "Running"
+                return await service.update_core("Official", checked={"core": {"has_update": True, "latest": "v6.10.7"}})
+
+        result = asyncio.run(run())
+
+        self.assertFalse(result["ok"])
+        self.assertIn("任务正在运行", result["message"])
+
     def test_update_resource_from_github_merges_resource_package(self):
         async def run() -> dict:
             with tempfile.TemporaryDirectory() as directory:
@@ -147,10 +331,10 @@ class VersionUpdateTest(unittest.TestCase):
         self.assertEqual(version.json()["resource_version"], "CN")
 
 
-def make_service(root: Path, core_dir: Path) -> UpdateService:
+def make_service(root: Path, core_dir: Path, restart_callback=None) -> UpdateService:
     events = EventBus()
     runner = MaaRunnerService(FakeAdapter(core_dir), events)
-    return UpdateService(root / "data" / "update_config.json", root / "cache", runner, events)
+    return UpdateService(root / "data" / "update_config.json", root / "cache", runner, events, restart_callback=restart_callback)
 
 
 def write_json(path: Path, data: dict) -> None:

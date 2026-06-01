@@ -4,6 +4,7 @@ import asyncio
 from copy import deepcopy
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -173,6 +174,7 @@ class OfficialMaaAdapter:
             raise RuntimeError(f"MaaCore connect failed for ADB address: {profile.adb.address}") from exc
 
     def _connect_with_retry(self, profile: Profile) -> bool:
+        self._ensure_adb_connected(profile)
         connected = bool(
             self._asst.connect(
                 profile.adb.adb_path,
@@ -185,6 +187,7 @@ class OfficialMaaAdapter:
         if profile.adb.allow_adb_restart:
             self._publish_adb_event("adb.restart", "重启 ADB 服务后重试连接……", level="warning")
             self._restart_adb_server(profile.adb.adb_path, hard=False)
+            self._ensure_adb_connected(profile)
             connected = bool(
                 self._asst.connect(
                     profile.adb.adb_path,
@@ -197,6 +200,7 @@ class OfficialMaaAdapter:
         if profile.adb.allow_adb_hard_restart:
             self._publish_adb_event("adb.hard_restart", "强制结束 ADB 进程后重试连接……", level="warning")
             self._restart_adb_server(profile.adb.adb_path, hard=True)
+            self._ensure_adb_connected(profile)
             connected = bool(
                 self._asst.connect(
                     profile.adb.adb_path,
@@ -206,8 +210,21 @@ class OfficialMaaAdapter:
             )
         return connected
 
+    def _ensure_adb_connected(self, profile: Profile) -> None:
+        address = (profile.adb.address or "").strip()
+        if not _looks_like_tcp_adb_address(address):
+            return
+        try:
+            subprocess.run(
+                [profile.adb.adb_path or "adb", "connect", address],
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
     def _restart_adb_server(self, adb_path: str, *, hard: bool) -> None:
-        import subprocess
         if hard:
             kill_cmd: list[str]
             if sys.platform == "win32":
@@ -326,8 +343,7 @@ class OfficialMaaAdapter:
                 self._append_task_chain_log(msg_name, details, detail)
             event_type, final_status, text, level = TASK_CHAIN_EVENTS[msg_name]
             if final_status is not None:
-                with self._status_lock:
-                    self._task_chain_status = final_status
+                self._set_task_chain_status(final_status)
             return [EventRecord.now(event_type, text, level=level, detail=detail)]
 
         # ── SubTask Start / Completed / Error (20001 / 20002 / 20000) ─────────
@@ -344,6 +360,12 @@ class OfficialMaaAdapter:
             return [EventRecord.now("maa.sub_task.extra", sub_what or "extra", level="debug", detail=detail)]
 
         return []
+
+    def _set_task_chain_status(self, status: str) -> None:
+        with self._status_lock:
+            if self._task_chain_status in {"Failed", "Stopped"} and status == "Completed":
+                return
+            self._task_chain_status = status
 
     def _record_screenshot_benchmark(self, details: Any, raw_detail: dict[str, Any]) -> None:
         benchmark = _screenshot_benchmark(details)
@@ -1140,6 +1162,11 @@ def _ld_index_from_address(address: str) -> int:
     except (ValueError, IndexError):
         pass
     return 0
+
+
+def _looks_like_tcp_adb_address(address: str) -> bool:
+    host, sep, port = address.rpartition(":")
+    return bool(host and sep and port.isdigit())
 
 
 def _ld_player_pid(ld_path: str, index: int) -> int:
