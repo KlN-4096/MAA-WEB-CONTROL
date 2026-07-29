@@ -5,7 +5,7 @@
 当前主要部署目标是 Linux + redroid：Web 后端常驻后台，到点执行 `docker start redroid`，等待 ADB 就绪后运行指定 profile，任务结束后执行 `docker stop redroid`。
 
 截图:
-<img width="1709" height="988" alt="image" src="https://github.com/user-attachments/assets/622c2d58-50c8-435e-b7f0-5f676d67572d" />
+<img width="2460" height="1500" alt="maa-4-settings_2026-07-29T05-33-48-453Z" src="https://github.com/user-attachments/assets/6c7ef175-bd24-41c0-9f66-157c594b8e25" />
 
 
 ## 运行条件
