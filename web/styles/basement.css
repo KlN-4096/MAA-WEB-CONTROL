@@ -1,10 +1,16 @@
 .maaLayout {
   display: grid;
-  grid-template-columns: 210px minmax(360px, 1fr) minmax(300px, 360px);
+  /* 中间表单只有 ~330px 宽，超宽屏用 1fr 会把它孤零零丢在一大片空白中间；
+     改为限宽 + 整体居中，多余空间给日志列。 */
+  grid-template-columns: 210px minmax(360px, 520px) minmax(320px, 560px);
+  justify-content: center;
   gap: 24px;
+  width: 100%;
+  max-width: 1560px;
   height: 100%;
   min-height: 0;
-  padding: 20px 20px 20px 28px;
+  margin: 0 auto;
+  padding: 20px 24px;
 }
 
 .taskColumn {

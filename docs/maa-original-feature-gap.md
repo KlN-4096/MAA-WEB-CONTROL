@@ -2,523 +2,134 @@
 
 > 许可说明：本文档引用的 MaaAssistantArknights / MAA 原版代码、路径与协议属于 Maa Team and contributors，原项目以 `AGPL-3.0-only` 发布；本项目同样以 `AGPL-3.0-only` 发布。
 
-生成日期：2026-05-07（最近更新：2026-05-08，第十次）
+**核对日期：2026-07-29**（本轮逐条对照 MaaCore C++ 源码重写，此前版本的状态列已大量过期）
 
-对照范围：
+## 怎么读这份文档
 
-- 当前项目：`E:\Project\Python\maa-web-control`
-- 原版 MAA：`E:\Project\C\MaaAssistantArknights`
-- 原版依据：`docs/zh-cn/protocol/integration.md`、WPF `Configuration/Single/MaaTask`、`Models/AsstTasks`、`Constants/ConfigurationKeys.cs`、设置页 ViewModel。
-- 当前依据：`app/capabilities.py`、`app/mapper.py`、`app/models.py`、`app/api.py`、`web/taskForms.js`、`web/copilotView.js`、`web/toolsView.js`、`web/settingsView.js`。
-
-状态口径：
+- **结论只来自源码**：`MaaCore/Task/**/*.cpp` 决定某个参数到底会不会被消费；`MaaWpfGui/Models/AsstTasks/*.cs` 决定原版实际下发什么。
+  原版 `docs/zh-cn/protocol/integration.md` 有过时之处（例如 Recruit `set_time` 的生效条件），不作为唯一依据。
+- **界面上的「暂未接入」徽标**与本文档「暂未接入」清单一一对应。看到徽标就说明该控件确实不会生效，不是没做完的半成品。
+- 当前项目的证据路径（2026-05 拆分后的目录结构）：
+  - 后端：`app/mapper.py`、`app/maa_adapter.py`、`app/runner.py`、`app/api.py`、`app/capabilities.py`
+  - 前端任务表单：`web/tasks/*.js`
+  - 前端视图：`web/views/basement/**`、`web/views/copilot/index.js`、`web/views/tools/index.js`、`web/views/settings/**`
 
 | 状态 | 含义 |
 |---|---|
-| 已覆盖 | 当前 Web 有专用 UI/API，并能映射到 MaaCore 参数或等价行为。 |
-| 部分覆盖 | 有 UI、mapper 或 API 的一部分，但缺字段、缺执行语义、缺结果解析或只支持别名。 |
-| 仅后端 | mapper/API 能接受或发起，但没有专用 UI。 |
-| 仅 UI | 页面展示或本地保存了选项，但没有接入后端或 MaaCore。 |
-| 未覆盖 | 当前项目没有等价 UI/API/mapper/执行能力。 |
-| Web 不适用 | 原版 WPF/系统级能力，浏览器本身无法直接复刻；若要支持需要 native helper 或后端服务。 |
+| 已覆盖 | 有 UI，且参数确实被 MaaCore 消费（已对照 C++ 源码确认）。 |
+| 部分覆盖 | 主干可用，细项或体验有差距。 |
+| 暂未接入 | 界面上有入口但明确不会生效，已打徽标标注。 |
+| 未覆盖 | 没有入口。 |
+| Web 不适用 | 桌面端/系统级能力，浏览器天然做不到。 |
 
 ## 总览
 
-| 原版能力 | 当前项目状态 | 主要缺口 |
+| 原版能力 | 当前状态 | 说明 |
 |---|---|---|
-| 主任务链 `StartUp/Fight/Recruit/Infrast/Mall/Award/Roguelike/Reclamation/Custom/CloseDown/UserDataUpdate` | 部分覆盖 | 主链任务基本存在，部分字段已补充 UI（企鹅+一图流上报/剩余理智/加急次数/`UserDataUpdate.TriggerInterval` 等）；少量原版字段（剿灭关卡映射/StageReset 重置语义）仍未实现。 |
-| `Copilot` 自动战斗 | 已覆盖（核心字段） | `/api/copilot/start` + UI 端到端打通 `filename / copilot_list (filename+stage_name+is_raid) / loop_times / use_sanity_potion / formation / formation_index / add_trust / ignore_requirements / support_unit_usage / support_unit_name / user_additional`；剩余 prts.plus 神秘代码自动下载、作业内容预览、作业评分上报暂未实现。 |
-| `SSSCopilot` 保全作业 | 已覆盖（核心字段） | Web 保全 tab 按 `SSSCopilot` 发起，传递 `filename / loop_times`；原版核心协议这两个字段即全部，更多细项是作业 JSON 内部字段。 |
-| `ParadoxCopilot` 悖论模拟 | 已覆盖（核心字段） | Web 悖论 tab 按 `ParadoxCopilot` 发起，支持单文件 `filename` 与多作业 `list`。 |
-| `SingleStep` | 未覆盖 | 无 UI/API/mapper 白名单。 |
-| `VideoRecognition` | 未覆盖 | 无 UI/API/mapper；原版核心协议仍保留该任务。 |
-| `Depot/OperBox/RecruitCalc` 工具 | 部分覆盖 | Depot/OperBox 结果解析和前端展示已实现；RecruitCalc 结果解析、持久化仍不完整。 |
-| `Gacha/MiniGame/Peep` 工具 | 部分覆盖 | Gacha/MiniGame 通过 `Custom` 发起；MiniGame 列表硬编码，缺原版动态活动列表；Peep 有截图流但不是完整原版工具数据流。 |
-| 远程控制协议 | 仅 UI | 设置页禁用展示，没有轮询获取任务、汇报任务、身份配置执行逻辑。 |
-| 外部通知 | 部分覆盖 | Webhook（POST/PUT JSON）通道已实现，runner 完成/失败/停止时按配置触发；剩余 SMTP/ServerChan/Discord/DingTalk/Telegram/Bark/Qmsg/Gotify 等专用渠道未接入。 |
-| 更新/性能/背景/热键/成就/托盘 | 仅 UI 或未覆盖 | 多数为桌面端能力；当前 Web 只显示版本或占位，未实现实际功能。 |
-| 连接/ADB 实例选项 | 部分覆盖 | 支持地址、ADB 路径、连接配置、LD extras、ClientType、TouchMode、DeploymentWithPause、AdbLite、KillAdbOnExit；仍缺 MuMu 12 桥接、`RetryOnDisconnected`、`AllowADBRestart` 等。 |
+| 主任务链 `StartUp/Fight/Recruit/Infrast/Mall/Award/Roguelike/Reclamation/Custom/CloseDown` | 已覆盖 | 常用参数已端到端打通，本轮修正了一批键名/类型错误 |
+| `UserDataUpdate` | 已覆盖（展开实现） | MaaCore **没有**该任务类型；mapper 按原版做法展开成 `Depot` + `OperBox` |
+| `Copilot` / `SSSCopilot` / `ParadoxCopilot` | 已覆盖 | 含神秘代码下载、作业预览、多作业列表、本地文件上传 |
+| `Depot` / `OperBox` / 公招识别 | 已覆盖 | 回调解析已按 MaaCore 真实字段重写，结果落盘 `data/tools_state.json` |
+| `Gacha` / `MiniGame` | 部分覆盖 | 通过 `Custom.task_names` 发起；MiniGame 列表仍是硬编码 |
+| `SingleStep` / `VideoRecognition` | 未覆盖 | 无 UI / API / mapper 白名单 |
+| 连接与实例选项 | 部分覆盖 | TouchMode/DeploymentWithPause/AdbLite/KillAdbOnExit/ClientType/ADB 重启均已实现；MuMu 增强未接入 |
+| 定时执行 / 后置动作 | 已覆盖 | 8 个槽位 + `run_command` 后置命令（`docker stop redroid` 场景） |
+| 外部通知 | 部分覆盖 | 通用 Webhook（POST/PUT + 自定义头）已实现；SMTP/ServerChan/Bark 等专用渠道未接入 |
+| 远程控制协议 | 暂未接入 | 只有占位 UI，无轮询/汇报执行器 |
+| 更新 | 部分覆盖 | 核心与资源更新可用；Mirror酱 CDK、更新渠道已接入配置 |
+| 界面/背景/热键/托盘/成就 | Web 不适用 / 暂未接入 | 详见下方清单 |
 
-## 核心任务逐项对比
+## 本轮（2026-07-29）修正的参数契约问题
 
-证据：
+这些都属于「界面上有、以前也保存了，但 MaaCore 根本不消费或直接拒绝」的情况，**修之前任务会白跑**：
 
-- 原版任务类型：`E:\Project\C\MaaAssistantArknights\src\MaaWpfGui\Services\MaaService.cs:104`
-- 当前 mapper 白名单：`app/mapper.py:15`
-- 当前新增任务菜单：`web/app.js:7`、`web/taskForms.js:1`
-
-### 通用任务字段
-
-| 原版字段 | 默认/说明 | 当前状态 | 缺口 |
+| 项 | 以前 | 现在 | 依据 |
 |---|---|---|---|
-| `enable` | 默认 `true`，所有 append task 通用 | 已覆盖 | 当前 `TaskDefinition.enabled` 控制是否 append，mapper 还会设置 `params.enable=true`。 |
-| 任务排序/启用/名称 | WPF `BaseTask.Name/IsEnable/TaskType` | 已覆盖 | Web profile task 支持 `id/type/enabled/name/params/strategy`。 |
-| 任务右键/单次运行/复制等队列操作 | 原版任务队列 UI 行为 | 部分覆盖 | 当前已有任务编辑/添加/选择，原版完整右键行为未逐项实现。 |
+| 肉鸽策略 → `mode` | 刷开局=2、刷月度小队=3（MaaCore 已移除的值），`AsstAppendTask` 返回 0，任务被静默丢弃 | 刷等级 0 / 刷源石锭 1 / 刷开局 4 / 刷坍缩范式 5 / 刷月度小队 6 / 刷深入调查 7 / 刷常乐节点 20001 | `Task/Roguelike/RoguelikeConfig.h` 的 `RoguelikeMode` 与 `is_valid_mode` |
+| `append_task` 返回值 | 不检查，返回 0 也当成功 | 返回 0 即抛错，把 MaaCore 的拒绝暴露到日志 | `Assistant.cpp::append_task` 未知类型/校验失败 `return 0` |
+| `start_with_seed` | 布尔 + 另一个 `seed` 字段 | 直接下发种子字符串（留空即不启用），不存在 `seed` 键 | `RoguelikeInputSeedTaskPlugin::load_params` |
+| 萨米密文板 | `first_floor_foldartal` 传布尔、列表键写成 `first_floor_foldartals` | 前者传期望板名字符串，后者正名为 `start_foldartal_list` | `RoguelikeConfig.cpp:31`、`Task/Interface/RoguelikeTask.cpp:171` |
+| 凹开局奖励 | 中文词组成的字典（一个都命中不了） | 固定英文键 `hot_water/shield/ingot/hope/random` + 主题专属 `key/dice/ideas/ticket` | `RoguelikeCustomStartTaskPlugin.cpp:84-100` |
+| 开局职业组 | 「稳扎稳打（重装、术师、狙击）」整串下发，OCR 永远匹配不上 | 截成短名「稳扎稳打」 | `RoguelikeSettingsUserControlModel.cs:141-154` 的 Value |
+| 凹精二直升 | 任何模式都下发，非 mode=4 时 MaaCore **拒绝整个任务** | 仅 mode=4 时下发，且 `only_` 依赖 `start_` | `RoguelikeConfig.cpp:35-43` |
+| 常乐节点目标 | 布尔；且 mode=20001 下不下发会让任务被拒 | mode=20001 时无条件下发 1~3 的整数 | `RoguelikeConfig.cpp:107-112` |
+| 最大投资次数 | 0 原样下发 = 一次都不投（提示却写「0=不限制」） | 0 时不下发该键 = `INT_MAX` | `RoguelikeInvestTaskPlugin.cpp:31` |
+| 公招 `force_refresh` | 跟随「自动刷新 3 星」，无法单独设置；文案还挂在 `skip_robot` 上 | 独立开关；`skip_robot` 文案改回「不选择 1 星（小车）词条」 | `RecruitTask.cpp:47-54` |
+| 公招 `select` / `confirm` | select 含 3 星；`reserve_level_1` 是空操作 | select 只含 4/5/6；`skip_robot` 时 confirm 追加 1（与原版 `NotChooseLevel1` 一致） | `RecruitSettingsUserControlModel.cs:288-308` |
+| 过期理智药 | 同时下发 `medicine_expire_days` 与已废弃的 `expiring_medicine` | 只发 `medicine_expire_days`（原版亦然） | `FightTask.cpp:69-81`、`AsstFightTask.cs:41` |
+| 掉线自动重连 | `auto_restart` 是死字段 | 勾选后写入 `Fight.client_type`（为空即禁用该功能） | `integration.md:176-181` |
+| 关卡按星期选择 | 用本地 `weekday()`，凌晨 0-4 点会选错 | 加明日方舟 04:00 日切 | 与 `options.py::_maa_day_of_week`、前端 `stageTips` 对齐 |
+| 仓库/干员识别回调 | 判 `Depot`/`OperBox`，字段名也全错，事件永不发出 | 判 `DepotInfo`/`OperBoxInfo`；`data` 是 JSON 字符串；未拥有列表由 `all_opers.own` 算出 | `DepotRecognitionTask.cpp:57-75`、`OperBoxRecognitionTask.cpp:62-101` |
+| 公招识别小工具 | 下发 `RecruitCalc`（MaaCore 没有该类型） | 下发 `Recruit` + `confirm:[-1]`（原版的「仅识别」写法） | `Assistant.cpp` 类型分支、`AutoRecruitTask::is_calc_only_task` |
+| 干员星级显示 | `rarity + 1`，6 星画 7 颗 | 直接用 `rarity`（本身就是 1~6） | `OperBoxImageAnalyzer.cpp:163` |
+
+## 暂未接入清单（界面上有徽标）
+
+**MaaCore 不消费这些参数**，保留控件只是为了对齐原版界面：
+
+- 理智作战：活动结束前 48H 吃过期药、隐藏代理倍率、允许使用源石保存状态、过期关卡重置、下拉框隐藏当日不开关卡、启用周计划、过期理智药使用上限、使用剩余理智执行指定关卡（请改用任务列表里独立的「剩余理智」任务）
+- 自动肉鸽：战斗结束前延迟「停止」动作（原版是 GUI 层行为）
+- 基建：轮换计划（具体计划请写进自定义基建配置文件）
+- 公招：最大加急次数（`RecruitTask.cpp:52` 标 `[[maybe_unused]]`，上游同样无效）
+- 开始唤醒：自动检测连接（已迁到「设置 → 连接设置 → 自动检测连接」按钮，那里会真正扫描 adb 设备）
+- 连接设置：MuMu 截图增强 / 网络桥接（需要 Windows 原生 DLL）
+
+**桌面端专属，浏览器天然做不到**：托盘图标与最小化到托盘、隐藏关闭按钮、窗口标题滚动、开机自启、启动后最小化、系统通知弹窗、软件渲染、热键、GPU 推理、背景图与主题/语言切换、开始前/结束后脚本、运行时阻止休眠。
+
+**有价值但还没做**：远程控制协议、SMTP/ServerChan/Discord/DingTalk/Telegram/Bark/Qmsg/Gotify 专用通知渠道、日志打包下载、`SingleStep`、`VideoRecognition`、MiniGame 动态活动列表、作业评分上报。
+
+## 主要任务逐项状态
 
 ### `StartUp`
-
-原版证据：`integration.md:44`、`AsstStartUpTask.cs:24`、`StartUpTask.cs:20`。当前证据：`web/taskForms.js:326`、`web/taskForms.js:596`、`app/mapper.py:215`。
-
-| 原版字段/配置 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `client_type` | 必填；`Official/Bilibili/txwy/YoStarEN/YoStarJP/YoStarKR` | 已覆盖 | UI、profile、mapper 均支持。 |
-| `start_game_enabled` | 默认 `false`；是否启动客户端 | 已覆盖 | 当前默认多处为 `true`，行为上可配置。 |
-| `account_name` | 可选；切换账号 | 已覆盖 | Web UI 字段叫 `account`，mapper 转为 `account_name`。 |
-| 连接配置 `ConnectConfig` | 原版 StartUp 页可配置连接 | 部分覆盖 | Web 保存 `connection/connect_config`，后端连接使用 profile connect config；但 StartUp task params 里的 `connection` 不是 MaaCore 协议字段。 |
-| `TouchMode` 实例选项 | 原版通过 `AsstSetInstanceOption(2, value)` 设置 | 部分覆盖 | Web UI 有 `touch_mode`，mapper 只放进 task params；official adapter 当前未设置 MaaCore `TouchMode` instance option。 |
-| 自动检测连接 | `AutoDetect/AlwaysAutoDetect` | 仅 UI/部分覆盖 | Web 保存 `auto_detect/detect_every_time`，但真实自动检测模拟器端口能力不完整。 |
-| PC 附加窗口 | WPF 附加窗口截图/鼠标/键盘模式 | Web 不适用 | 当前无 native window helper。 |
-
-### `CloseDown`
-
-原版证据：`integration.md:84`、`AsstCloseDownTask.cs:32`。当前证据：`app/capabilities.py:140`、`app/mapper.py:461`。
-
-| 原版字段 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `client_type` | 必填；空则不执行 | 部分覆盖 | capabilities/mapper 支持；任务表单无专用 UI，走通用 JSON 或默认参数。 |
+`client_type` / `start_game_enabled` / `account_name` 已覆盖。连接配置与触控模式由 profile 的 `adb.*` 决定（`_profile_connect_config` + `_set_instance_options`），表单里的同名字段只做镜像。
+本项目额外提供原版没有的「开始唤醒失败重试」（失败后执行命令 A → 等待 → 命令 B → 重试，用于 `docker restart redroid`）。
 
 ### `Fight`
-
-原版证据：`integration.md:110`、`FightTask.cs:35`、`AsstFightTask.cs:29`。当前证据：`web/taskForms.js:283`、`web/taskForms.js:561`、`app/mapper.py:229`。
-
-| 原版字段/配置 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `stage` | 默认空；当前/上次关卡 | 已覆盖 | UI 支持下拉、候选关卡和手动值。 |
-| `medicine` | 最大使用理智药数量，默认 `0` | 已覆盖 | Web 用 `use_medicine + medicine` 控制。 |
-| `expiring_medicine` | 最大使用 48 小时内过期理智药数量 | 已覆盖 | Web 支持 `use_expiring_medicine/medicine_expire_hours` 并映射到 `medicine_expire_days`；高级设置新增 `expiring_medicine_count`，mapper 输出原协议字段 `expiring_medicine`。 |
-| `stone` | 最大碎石数量，默认 `0` | 已覆盖 | Web 用 `use_stone + stone` 控制。 |
-| `times` | 作战次数，默认 `2147483647` | 已覆盖 | Web 用 `has_times_limited + times` 控制。 |
-| `series` | 连战次数 `-1..6` | 已覆盖 | UI 和 mapper 均支持。 |
-| `drops` | 指定掉落 `{item_id: count}` | 部分覆盖 | UI 只支持单材料但已支持 `drop_count` 数量输入；mapper 可接受 dict 或列表，但 UI 不支持多材料目标。 |
-| `report_to_penguin` | 默认 `false` | 已覆盖 | UI 高级设置有专用开关；mapper 映射。 |
-| `penguin_id` | 企鹅物流 ID | 已覆盖 | UI 高级设置有输入框；mapper 支持。 |
-| `use_remaining_sanity_stage` | 使用剩余理智执行指定关卡 | 已覆盖 | UI 高级设置有复选框，mapper `_map_fight_reporting` 处理。 |
-| `remaining_sanity_stage` | 剩余理智关卡名 | 已覆盖 | UI 高级设置有文本输入，mapper 用 `_normalize_stage_str` 规范化。 |
-| `report_to_yituliu` | 默认 `false` | 已覆盖 | UI 高级设置有专用开关；mapper 透传。 |
-| `yituliu_id` | 一图流 ID | 已覆盖 | UI 高级设置有输入框；mapper 透传。 |
-| `server` | 默认 `CN` | 已覆盖 | UI 高级设置新增「服务器」下拉（CN/US/JP/KR）；mapper 透传。 |
-| `client_type` | 崩溃重启时用于回连 | 部分覆盖 | mapper 支持；Fight UI 未提供专用字段，依赖 profile/default。 |
-| `DrGrandet` | 节省碎石模式 | 已覆盖 | UI 字段 `dr_grandet`，mapper 转为 `DrGrandet`。 |
-| 自定义剿灭 `AnnihilationStage` | WPF 配置项 | 已覆盖 | UI 高级设置新增「剿灭子关卡」下拉（当期/切尔诺伯格/龙门外环/龙门市区）；mapper 在 `custom_annihilation=true` 时把 `stage`/`stage_plan` 中的 `Annihilation` 替换为指定子关卡。 |
-| 过期关卡重置 `StageResetMode` | WPF 配置项 | 仅 UI | UI 保存 `stage_reset`，mapper 未执行原版重置逻辑。 |
-| 每周计划 `WeeklySchedule` | WPF 每日开关 | 仅 UI | UI 只有 `weekly_schedule` 开关，没有周一至周日具体计划。 |
-| `UseStoneAllowSave/HideSeries/HideUnavailableStage/CustomStageCode` | WPF UI 行为配置 | 部分覆盖 | Web 有部分 UI 状态，主要影响前端显示，不完全等价原版 WPF 行为。 |
+`stage / stage_plan / medicine / medicine_expire_days / stone / times / series / drops / report_to_penguin / penguin_id / report_to_yituliu / yituliu_id / server / client_type / DrGrandet` 已覆盖。
+剿灭子关卡通过 `custom_annihilation + annihilation_stage` 替换 `stage` 实现。
+`drops` 后端支持多材料字典，前端目前只有单材料 + 数量。
 
 ### `Recruit`
-
-原版证据：`integration.md:219`、`RecruitTask.cs:31`、`AsstRecruitTask.cs:141`。当前证据：`web/taskForms.js:341`、`web/taskForms.js:608`、`app/mapper.py:270`。
-
-| 原版字段/配置 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `refresh` | 刷新 3 星 Tags，默认 `false` | 已覆盖 | UI 和 mapper 支持。 |
-| `force_refresh` | 无招聘许可时继续刷新，WPF 序列化字段 | 已覆盖 | Web 用 `skip_robot`/默认值间接覆盖，mapper 输出 `force_refresh`。 |
-| `select` | 会点击的 Tag 等级 | 部分覆盖 | mapper 支持直接 list；UI 没有逐等级 `select` 控件，而是由 confirm 推导。 |
-| `confirm` | 会确认的 Tag 等级 | 已覆盖 | UI 提供 3/4/5/6 星确认。 |
-| `first_tags` | 3 星首选 Tag | 部分覆盖 | UI 是文本 `extra_tags`，mapper 拆分为 `first_tags`；没有独立列表管理。 |
-| `extra_tags_mode` | `0/1/2` 多选策略 | 已覆盖 | UI 下拉框三档选择（默认/优先合成玉/全选匹配），mapper 输出 `extra_tags_mode` 整型。 |
-| `times` | 招募次数 | 已覆盖 | UI `max_times`，mapper 输出 `times`。 |
-| `set_time` | 是否设置招募时限 | 已覆盖 | UI 高级设置新增开关；mapper 透传。 |
-| `expedite` | 是否使用加急许可 | 已覆盖 | UI `auto_expedited`。 |
-| `expedite_times` | 加急次数 | 已覆盖 | UI 高级设置有独立数字输入；mapper 支持。 |
-| `skip_robot` | 小车词条处理 | 已覆盖 | UI `skip_robot`。 |
-| `recruitment_time` | 3/4/5/6 星时间 | 已覆盖 | UI 现已支持 3/4/5/6 星全部时间收集，mapper 写入 `recruitment_time["6"]`。 |
-| `report_to_penguin`/`penguin_id` | 企鹅物流上报 | 已覆盖 | UI 高级设置有「上报 PenguinStats」+ ID 输入框；mapper 透传。 |
-| `report_to_yituliu`/`yituliu_id` | 一图流上报 | 已覆盖 | UI 高级设置有「上报一图流」+ ID 输入框；mapper 透传。 |
-| `server` | `CN/US/JP/KR` | 已覆盖 | UI 高级设置新增「服务器」下拉，mapper 透传。 |
-| `reserve_level_1` | WPF/当前 UI 保留 1 星词条 | 已覆盖 | UI 收集；mapper 启用时从 `select`/`confirm` 中剔除 `1` 星，跳过该栏位。 |
+`refresh / force_refresh / select / confirm / first_tags / extra_tags_mode / times / set_time / expedite / skip_robot / recruitment_time / report_to_* / server` 已覆盖。
 
 ### `Infrast`
-
-原版证据：`integration.md:318`、`InfrastTask.cs:39`、`AsstInfrastTask.cs:103`。当前证据：`web/taskForms.js:369`、`web/taskForms.js:626`、`app/mapper.py:298`。
-
-| 原版字段/配置 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `mode` | `0/10000/20000` | 已覆盖 | UI 和 mapper 支持常规、自定义、队列轮换。 |
-| `facility` | 有序设施列表 | 已覆盖 | UI 多选，mapper 转英文设施名。 |
-| `drones` | 无人机用途 | 已覆盖 | UI 中文，mapper 转 MaaCore 值。 |
-| `threshold` | 心情阈值 `[0,1]` | 已覆盖 | UI 百分比，mapper 转小数。 |
-| `replenish` | 源石碎片补货 | 已覆盖 | UI `stone_fragment`。 |
-| `dorm_notstationed_enabled` | 宿舍未进驻筛选 | 已覆盖 | UI `skip_entered`。 |
-| `dorm_trust_enabled` | 宿舍蹭信赖 | 已覆盖 | UI `dorm_trust`。 |
-| `reception_message_board` | 会客室信息板信用 | 已覆盖 | UI `collect_credit`。 |
-| `reception_clue_exchange` | 线索交流 | 已覆盖 | UI `clue_exchange`。 |
-| `reception_send_clue` | 赠送线索 | 已覆盖 | UI `send_clue`。 |
-| `continue_training` | 训练室继续专精 | 已覆盖 | UI 和 mapper 支持。 |
-| `filename` | 自定义基建文件 | 部分覆盖 | UI 可手填；动态文件列表由 options 提供，但未做原版完整方案选择体验。 |
-| `plan_index` | 自定义方案序号 | 已覆盖 | UI 和 mapper 支持。 |
-| 队列轮换计划 | WPF 队列轮换相关配置 | 仅 UI | Web 有 `rotation` 输入，但 mapper 未使用。 |
+`mode / facility / drones / threshold / replenish / dorm_* / reception_* / continue_training / filename / plan_index` 已覆盖。
+自定义基建文件已改为下拉选择（数据来自 `/api/options` 的 `infrast.custom_files`），也可手填路径。
 
 ### `Mall`
-
-原版证据：`integration.md:404`、`MallTask.cs:33`、`AsstMallTask.cs:25`。当前证据：`web/taskForms.js:402`、`web/taskForms.js:647`、`app/mapper.py:318`。
-
-| 原版字段/配置 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `visit_friends` | 访问好友 | 已覆盖 | UI 和 mapper 支持。 |
-| `shopping` | 信用商店购物 | 已覆盖 | UI 和 mapper 支持。 |
-| `buy_first` | 优先购买列表 | 已覆盖 | UI 分号文本，mapper 拆 list。 |
-| `blacklist` | 黑名单 | 已覆盖 | UI 分号文本，mapper 拆 list。 |
-| `force_shopping_if_credit_full` | 信用溢出无视黑名单 | 已覆盖 | UI `overflow_blacklist`。 |
-| `only_buy_discount` | 只买折扣 | 已覆盖 | UI `discount_only`。 |
-| `reserve_max_credit` | 低于 300 停止购买 | 已覆盖 | UI `stop_if_low`。 |
-| `credit_fight` | OF-1 助战信用 | 已覆盖 | UI 和 mapper 支持。 |
-| `formation_index` | 信用战斗编队 | 已覆盖 | UI 和 mapper 支持。 |
-| 一日只执行一次 | WPF 本地状态 | 部分覆盖 | Web 有 `visit_once/credit_fight_once`，mapper 输出扩展字段；需要确认 MaaCore 是否消费。 |
+`visit_friends / shopping / buy_first / blacklist / force_shopping_if_credit_full / only_buy_discount / reserve_max_credit / credit_fight / formation_index` 已覆盖。
+两个「一日只执行一次」在原版是 GUI 层按上次执行日期置位，本项目没有该状态存储，等同无效。
 
 ### `Award`
-
-原版证据：`integration.md:463`、`AwardTask.cs:26`、`AsstAwardTask.cs:31`。当前证据：`web/taskForms.js:429`、`app/mapper.py:332`。
-
-| 原版字段 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `award` | 每日/每周任务奖励 | 已覆盖 | UI `daily`，mapper 输出 `award`。 |
-| `mail` | 邮件奖励 | 已覆盖 | 无。 |
-| `recruit` | 限定池免费单抽 | 已覆盖 | UI `free_gacha`。 |
-| `orundum` | 幸运墙合成玉 | 已覆盖 | 无。 |
-| `mining` | 限时开采许可 | 已覆盖 | UI `limited_orundum`。 |
-| `specialaccess` | 周年赠送月卡 | 已覆盖 | UI `monthly_card`。 |
+`award / mail / recruit / orundum / mining / specialaccess` 全部已覆盖。
 
 ### `Roguelike`
-
-原版证据：`integration.md:507`、`RoguelikeTask.cs:30`、`AsstRoguelikeTask.cs:204`。当前证据：`web/taskForms.js:454`、`web/taskForms.js:680`、`app/mapper.py:341`。
-
-| 原版字段/配置 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `theme` | `Phantom/Mizuki/Sami/Sarkaz/JieGarden` | 已覆盖 | UI 和 mapper 支持。 |
-| `mode` | `0..7` 多模式 | 部分覆盖 | UI 用策略文案推导部分模式；mapper 支持直接 `mode`，但 UI 未覆盖所有模式说明和数值。 |
-| `squad` | 开局分队 | 已覆盖 | UI 和 mapper 支持。 |
-| `roles` | 开局职业组 | 已覆盖 | UI 和 mapper 支持。 |
-| `core_char` | 开局干员 | 已覆盖 | UI `operator`，mapper 转 `core_char`。 |
-| `use_support` | 开局干员助战 | 已覆盖 | UI `use_support_unit`，mapper 转 `use_support`。 |
-| `use_nonfriend_support` | 非好友助战 | 已覆盖 | UI 有复选框，mapper 支持。 |
-| `starts_count` | 探索次数 | 已覆盖 | UI 和 mapper 支持。 |
-| `difficulty` | 难度 | 已覆盖 | UI 和 mapper 支持。 |
-| `stop_at_final_boss` | 五层 BOSS 前暂停 | 已覆盖 | UI 和 mapper 支持。 |
-| `stop_at_max_level` | 满级停止 | 已覆盖 | UI 和 mapper 支持。 |
-| `investment_enabled` | 投资源石锭 | 已覆盖 | UI 和 mapper 支持。 |
-| `investments_count` | 投资次数 | 已覆盖 | UI 有数字输入，mapper 支持。 |
-| `stop_when_investment_full` | 投资满停止 | 已覆盖 | UI 有复选框，mapper 支持。 |
-| `investment_with_more_score` | 投资后购物 | 已覆盖 | mapper 已修正字段名为 `investment_with_more_score`（原 bug：`invest_with_more_score`）；UI 有复选框。 |
-| `start_with_elite_two` | 凹开局精二直升 | 已覆盖 | UI 有复选框，mapper 支持。 |
-| `only_start_with_elite_two` | 只凹精二直升 | 已覆盖 | UI 有条件显示的复选框（仅 start_with_elite_two 启用时展示），mapper 支持。 |
-| `refresh_trader_with_dice` | 水月骰子刷商店 | 已覆盖 | UI 仅水月主题时显示复选框，mapper 支持。 |
-| `first_floor_foldartal` | 萨米第一层远见密文板 | 已覆盖 | UI 仅萨米主题时显示复选框，mapper 支持。 |
-| `start_foldartal_list` / `first_floor_foldartals` | 萨米生活队开局密文板列表 | 已覆盖 | UI 逗号分隔输入，mapper 接受 `first_floor_foldartals` 并转为 list；与原版 `start_foldartal_list` 字段名不同但语义覆盖。 |
-| `collectible_mode_start_list` | 凹开局奖励对象 | 已覆盖 | UI 高级设置「凹开局/烧水」组，逗号分隔输入；mapper 转为 `{name: true}` dict 透传。 |
-| `use_foldartal` | 是否使用密文板 | 已覆盖 | UI 仅萨米主题显示复选框；mapper 透传。 |
-| `check_collapsal_paradigms` | 是否检测坍缩范式 | 已覆盖 | UI 仅萨卡兹主题显示复选框；mapper 透传。 |
-| `double_check_collapsal_paradigms` | 防漏检测 | 已覆盖 | UI 仅萨卡兹主题显示复选框；mapper 透传。 |
-| `expected_collapsal_paradigms` | 期望坍缩范式 | 已覆盖 | UI 仅萨卡兹主题时显示逗号分隔输入，mapper 和测试均覆盖。 |
-| `monthly_squad_auto_iterate` | 月度小队自动切换 | 仅后端 | mapper 支持；UI 无控件。 |
-| `monthly_squad_check_comms` | 月度通信作为切换依据 | 仅后端 | mapper 支持；UI 无控件。 |
-| `deep_exploration_auto_iterate` | 深入调查自动切换 | 仅后端 | mapper 支持；UI 无控件。 |
-| `collectible_mode_shopping` | 烧水启用购物 | 已覆盖 | UI 高级设置「凹开局/烧水」组，复选框；mapper 透传。 |
-| `collectible_mode_squad` | 烧水分队 | 已覆盖 | UI 高级设置「凹开局/烧水」组，文本输入；mapper 透传。 |
-| `find_playTime_target` | 界园常乐节点目标 | 已覆盖 | UI 仅界园主题显示复选框；mapper 透传。 |
-| `start_with_seed`/`seed` | 固定种子刷钱 | 已覆盖 | UI 有布尔开关和种子文本输入框，mapper 支持 `seed` 字符串透传。 |
-| `delay_abort` | WPF 多任务共用停止延迟 | 仅 UI | UI 保存，mapper 未传递或转为 MaaCore instance option。 |
+主题、难度、模式、分队、职业组、开局干员、助战、探索次数、投资、停止条件、种子、密文板、坍缩范式、凹开局/烧水均已覆盖（见上方修正表）。
+`monthly_squad_auto_iterate` / `monthly_squad_check_comms` / `deep_exploration_auto_iterate` 仅后端支持，无控件。
 
 ### `Reclamation`
+`theme / mode / tools_to_craft / increment_mode / num_craft_batches / clear_store` 已覆盖。
+「沙中之火」在 MaaCore 已下线（`ReclamationTask.cpp` 直接 Stop），下拉里已标注。
 
-原版证据：`integration.md:906`、`ReclamationTask.cs:26`、`AsstReclamationTask.cs:73`。当前证据：`web/taskForms.js:483`、`web/taskForms.js:699`、`app/mapper.py:437`。
+### `Copilot` 系列
+`filename / copilot_list(filename+stage_name+is_raid) / loop_times / use_sanity_potion / formation / formation_index / add_trust / ignore_requirements / support_unit_usage / support_unit_name / user_additional` 已覆盖；SSS 与悖论按各自 task type 分流。
+神秘代码（`maa://12345` / 纯数字 / prts.plus 链接）由 `app/copilot_resolver.py` 下载并缓存到 `data/copilot_cache/`。
+本地作业文件通过 `POST /api/copilot/upload` 上传到 `data/copilot_upload/`（浏览器拿不到真实路径，必须上传服务端 MaaCore 才读得到）。
 
-| 原版字段/配置 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `theme` | `Fire/Tales` | 已覆盖 | mapper 同时支持「沙中之火 → Fire」「沙洲遗闻 → Tales」；UI 选项已去除“（活动未开放）”后缀。 |
-| `mode` | `0/1` | 已覆盖 | UI 用策略文案推导。 |
-| `tools_to_craft` | 支援道具列表 | 部分覆盖 | UI 单输入 `tool_to_craft`，mapper 转 list；不支持多项编辑体验。 |
-| `increment_mode` | `0` 连点 / `1` 长按 | 已覆盖 | UI 和 mapper 支持。 |
-| `num_craft_batches` | 单次最大制造轮数 | 已覆盖 | UI `max_craft_count`。 |
-| `clear_store` | WPF 额外字段，完成后买商店 | 部分覆盖 | UI 只在部分模式显示；mapper 支持。 |
+## 本项目特有的 API
 
-### `Custom`
+| 端点 | 用途 |
+|---|---|
+| `POST /api/adb/detect` | 扫描 `adb devices` + 探测常见模拟器端口，回填连接地址 |
+| `GET/PUT /api/tools/state` | 仓库/干员/公招识别结果持久化 |
+| `POST /api/copilot/upload` | 上传本地作业 JSON |
+| `POST /api/tools/stop` | 停止小工具任务（不影响一键长草的 runner 状态） |
+| `GET /api/redroid/status` | `docker inspect` 查询 redroid 容器状态 |
+| `POST /api/adb/test-screenshot` | 截图能力与耗时基准 |
 
-原版证据：`integration.md:958`、`AsstCustomTask.cs:21`。当前证据：`web/taskForms.js:442`、`app/mapper.py:471`。
+## 已知的、还没解决的问题
 
-| 原版字段 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `task_names` | 必填；执行数组中首个匹配任务 | 已覆盖 | UI 和 mapper 支持。 |
-
-### `UserDataUpdate`
-
-原版证据：`UserDataUpdateTask.cs:28`、`UserDataUpdateSettingsUserControlModel.cs:39`。当前证据：`app/capabilities.py:156`、`web/taskForms.js:518`、`app/mapper.py:466`。
-
-| 原版字段/配置 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `UpdateOperBox` | 默认 `true` | 已覆盖 | UI 有独立复选框；mapper 设置默认值并透传。 |
-| `UpdateDepot` | 默认 `true` | 已覆盖 | UI 有独立复选框；mapper 设置默认值并透传。 |
-| `TriggerInterval` | `EveryTime/Daily/Weekly` | 已覆盖 | UI 下拉框三档；`profile_to_append_calls` 在 `data/userdata_state.json` 中按 `task.id` 记录最近执行日期，按 Daily/Weekly 跳过同周期内重复执行。 |
-
-## 自动战斗与扩展任务
-
-### `Copilot`
-
-原版证据：`integration.md:714`、`AsstCopilotTask.cs:27`。当前证据：`web/copilotView.js:516`-`web/copilotView.js:599`、`app/api.py:387`-`app/api.py:412`、`app/models.py:138`-`app/models.py:172`、`tests/test_api_copilot.py`。
-
-| 原版字段/配置 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `filename` | 单作业路径，与 `copilot_list` 二选一 | 已覆盖 | Web 输入路径，`/api/copilot/start` append `Copilot.filename`。 |
-| `copilot_list[].filename` | 多作业文件 | 已覆盖 | 多作业模式启用后 API 发送 `copilot_list`，每项含 filename。 |
-| `copilot_list[].stage_name` | 多作业关卡名 | 已覆盖 | UI 任务名映射到 `stage_name`。 |
-| `copilot_list[].is_raid` | 突袭难度 | 已覆盖 | 添加任务时左键普通 / 右键 raid，标记一并随 `copilot_list` 发送。 |
-| `loop_times` | 单作业循环次数 | 已覆盖 | API + UI 支持；`>1` 时透传。 |
-| `use_sanity_potion` | 理智不足时吃药 | 已覆盖 | 多作业模式 UI 勾选后 API 透传 `use_sanity_potion=true`。 |
-| `formation` | 自动编队 | 已覆盖 | UI「自动编队」总开关 → boolean，独立于 `formation_index`。 |
-| `formation_index` | 编队栏位 `0..4` | 已覆盖 | UI「使用编队」+ 1/2/3/4 下拉，按原协议字段发送（仅 >0 时携带）。 |
-| `user_additional[]` | 自定义追加干员 | 已覆盖 | UI 文本「干员,技能;干员,技能」解析为 `[{name, skill}]`，API 透传。 |
-| `user_additional[].name` | 干员名 | 已覆盖 | 同上。 |
-| `user_additional[].skill` | 技能 | 已覆盖 | 缺值默认 `1`。 |
-| `add_trust` | 低信赖补位 | 已覆盖 | UI 复选框，API 透传。 |
-| `ignore_requirements` | 忽略属性要求 | 已覆盖 | UI 复选框，API 透传。 |
-| `support_unit_usage` | 助战使用模式 `0..3` | 已覆盖 | UI 三选项「补漏 / 指定 / 随机」对应 1/2/3，API 透传整型。 |
-| `support_unit_name` | 指定助战干员 | 已覆盖 | UI 文本输入，API 透传。 |
-| 神秘代码下载（`maa://12345` / 纯数字 / prts.plus URL） | 粘贴神秘代码自动从 prts.plus 下载作业 | 已覆盖 | `app/copilot_resolver.py` 解析三种格式，调 `https://prts.plus/api/v1/copilot/get/{id}` 拉取，缓存到 `data/copilot_cache/maa-prts-{id}.json`；前端粘贴 / 输入 / 选文件后 350ms 防抖触发 `/api/copilot/resolve`，结果 path 自动回填到输入框。 |
-| 作业内容预览 | 选中后展示 stage_name / operators / actions | 已覆盖 | `_parse_copilot_metadata` 提取 stage_name / doc.title / doc.details / opers / groups / actions count；前端开始按钮下方一个信息卡显示关卡、干员列表（前 8 名）、分组数、动作数、评级、上传者；prts.plus 来源额外标注 `prts.plus #id`。 |
-| 作业评分上报 | 战斗后向 prts.plus 评分 | 未覆盖 | 无对应 API；上报需登录态，暂不实现。 |
-| 文件拖拽 | 桌面端拖拽 .json 入窗 | Web 不适用 | Web 仅支持 file picker。 |
-
-### `SSSCopilot`
-
-原版证据：`integration.md:809`、`sss-schema.md:15`。当前证据：`web/copilotView.js:540`-`web/copilotView.js:580`、`app/api.py:415`-`app/api.py:420`、`tests/test_api_copilot.py`。
-
-| 原版字段 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `filename` | 保全作业 JSON 路径 | 已覆盖 | Web 保全 tab 选中后 `/api/copilot/start` 按 `task_type=SSSCopilot` 发起。 |
-| `loop_times` | 循环次数 | 已覆盖 | 保全 tab 不在多作业模式时显示循环次数；API 透传。 |
-
-### `ParadoxCopilot`
-
-原版证据：`integration.md:838`、`AsstParadoxCopilotTask.cs:21`。当前证据：`web/copilotView.js:580`-`web/copilotView.js:585`、`app/api.py:423`-`app/api.py:428`、`tests/test_api_copilot.py`。
-
-| 原版字段 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `filename` | 单个悖论作业路径 | 已覆盖 | 悖论 tab 单作业模式 API 按 `ParadoxCopilot.filename` 发起。 |
-| `list` | 悖论作业列表 | 已覆盖 | 多作业模式发送 `list`，与原版 `ParadoxCopilot.list` 字段一致。 |
-| `list` | 悖论作业列表 | 未覆盖 | UI 多作业状态未转为 `ParadoxCopilot.list`。 |
-
-### `SingleStep`
-
-原版证据：`integration.md:982`。
-
-| 原版字段 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `type` | 默认 `copilot` | 未覆盖 | 无 UI/API/mapper 白名单。 |
-| `subtask` | `stage/start/action` | 未覆盖 | 无。 |
-| `details` | 子任务参数 | 未覆盖 | 无。 |
-
-### `VideoRecognition`
-
-原版证据：`integration.md:1022`、`AsstProxy.cs:2964`。
-
-| 原版字段 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `filename` | 视频路径 | 未覆盖 | 无 UI/API/mapper；需要服务端文件路径或上传方案。 |
-
-## 小工具
-
-证据：
-
-- 原版工具 append：`AsstProxy.cs:2908`、`AsstProxy.cs:2919`、`AsstProxy.cs:2930`、`AsstProxy.cs:2944`
-- 当前工具 UI/API：`web/toolsView.js:1`、`web/toolsView.js:460`、`app/api.py:257`
-
-| 原版工具/配置 | 当前状态 | 缺口 |
-|---|---|---|
-| 公招识别 `RecruitCalc` | 已覆盖 | 后端 append `RecruitCalc` 并传星级/时间参数；识别结果通过 `maa.tools.recruit_calc` EventBus 事件推送，前端实时展示 Tags 及高稀有度标记。潜能联动和历史记录仍未实现。 |
-| 干员识别 `OperBox` | 已覆盖 | 后端解析 `OperBoxInfo` callback，EventBus 广播 `maa.tools.operbox` 事件；前端实时展示已拥有/未拥有列表，支持文本导出。持久化跨会话仍未实现。 |
-| 仓库识别 `Depot` | 已覆盖 | 后端解析 `Depot` callback，EventBus 广播 `maa.tools.depot` 事件；前端实时展示物品网格，支持 arkplanner/lolicon JSON 格式导出。持久化跨会话仍未实现。 |
-| 抽卡 `GachaOnce/GachaTenTimes` | 部分覆盖 | 后端用 `Custom.task_names` 发起；免责声明“下次不再提示”和成就联动未完整实现。 |
-| Peep/牛牛监控 | 部分覆盖 | 当前有 `/api/peep` 截图流和 FPS；原版相关状态、工具联动、截图输入能力未完整对齐。 |
-| MiniGame | 部分覆盖 | 后端用 `Custom.task_names` 发起；列表硬编码，缺原版 `StageManager.MiniGameEntries` 动态活动解析；`SecretFront` 参数拼接语义也不完全一致。 |
-| `MiniGame.TaskName` | 部分覆盖 | Web 本地保存 `miniGame`，不是原版配置键。 |
-| `MiniGame.SecretFrontEnding` | 已覆盖 | Web 有结局选择。 |
-| `MiniGame.SecretFrontEvent` | 已覆盖 | Web 有优先事件选择。 |
-| `Gacha.ShowDisclaimerNoMore` | 未覆盖 | Web 有免责声明，但“下次不再提示”禁用。 |
-| `Peep.TargetFps` | 部分覆盖 | Web 本地保存 FPS，未使用原版配置键。 |
-
-## 连接与 MaaCore 选项
-
-原版证据：`ConfigurationKeys.cs:67`、`ConnectSettingsUserControlModel.cs:98`、`AsstProxy.cs:633`、`integration.md:1110`。当前证据：`app/models.py:27`、`web/settingsView.js:360`、`app/maa_adapter.py:163`。
-
-| 原版配置/实例选项 | 默认/说明 | 当前状态 | 缺口 |
-|---|---|---|---|
-| `Connect.AddressHistory` | 地址历史 | 未覆盖 | Web 不维护历史列表。 |
-| `Connect.AutoDetect` | 默认 `true` | 部分覆盖 | UI/profile 保存，真实自动检测能力不完整。 |
-| `Connect.AlwaysAutoDetect` | 默认 `false` | 部分覆盖 | UI/profile 保存，执行语义不完整。 |
-| `Connect.Address` | ADB 地址 | 已覆盖 | profile `adb.address`。 |
-| `Connect.AdbPath` | ADB 路径 | 已覆盖 | profile `adb.adb_path`。 |
-| `Connect.ConnectConfig` | 连接配置 | 部分覆盖 | 支持 profile preset；预设列表少于原版，部分模拟器配置缺失。 |
-| `Connect.MuMu12Extras.Enabled` | MuMu 截图增强 | 未覆盖 | UI 禁用，模型/后端未实现。 |
-| `Connect.MuMu12EmulatorPath` | MuMu 安装路径 | 未覆盖 | UI 禁用。 |
-| `Connect.MuMu12Index` | MuMu 实例编号 | 未覆盖 | UI 禁用。 |
-| `Connect.MuMu12Display` | MuMu 显示器 | 未覆盖 | 无 UI/API。 |
-| `Connect.MumuBridgeConnection` | MuMu 桥接 | 未覆盖 | UI 禁用。 |
-| `Connect.LdPlayerExtras.Enabled` | LD 截图增强 | 部分覆盖 | profile/adapter 支持 LD extras；截图增强结果展示仍有限。 |
-| `Connect.LdPlayerEmulatorPath` | LD 安装路径 | 已覆盖 | profile `ld_player_extras.path`。 |
-| `Connect.LdPlayerManualSetIndex` | 手动实例编号 | 已覆盖 | profile `manual_index`。 |
-| `Connect.LdPlayerIndex` | LD 实例编号 | 已覆盖 | profile `index`。 |
-| `Connect.RetryOnDisconnected` | 断连重试 | 未覆盖 | 无 UI/API/runner 逻辑。 |
-| `Connect.AllowADBRestart` | 连接失败重启 ADB server | 已覆盖 | UI 复选框；`AdbConfig.allow_adb_restart`；`OfficialMaaAdapter._connect_with_retry` 在首次连接失败后执行 `adb kill-server` 后重试一次。 |
-| `Connect.AllowADBHardRestart` | 重启 ADB 进程 | 已覆盖 | UI 复选框；`AdbConfig.allow_adb_hard_restart`；Windows `taskkill /F /IM adb.exe`，Linux `pkill -9 adb`，作为兜底再重试一次。 |
-| `Connect.AdbLiteEnabled` / instance option `4` | 使用 AdbLite | 已覆盖 | UI 保存 `adb_lite_enabled`；`_set_instance_options` 在连接时设置 option 4。 |
-| `Connect.KillAdbOnExit` / instance option `5` | 退出释放 ADB | 已覆盖 | UI 保存 `kill_adb_on_exit`；`_set_instance_options` 在连接时设置 option 5。 |
-| `Connect.TouchMode` / instance option `2` | `minitouch/maatouch/adb/MaaFwAdb` | 已覆盖 | UI 保存触控模式；`_set_instance_options` 用 `TOUCH_MODE_ALIASES` 规范化后设置 option 2。 |
-| instance option `3 DeploymentWithPause` | 自动战斗/肉鸽/保全暂停下干员 | 已覆盖 | UI 保存 `deployment_with_pause`；`_set_instance_options` 在连接时设置 option 3。 |
-| instance option `6 ClientType` | 连接前设置客户端类型 | 已覆盖 | official adapter 设置 `CLIENT_TYPE_OPTION=6`。 |
-| AttachWindow `UseAttachWindow/ScreencapMethod/MouseMethod/KeyboardMethod` | PC 附加窗口 | Web 不适用 | 当前无 native helper。 |
-
-## 设置页与全局配置
-
-### 配置/任务链/定时
-
-原版证据：`Root.cs:30`、`SpecificConfig.cs:32`、`Timer.cs:32`、`TimerSettingsUserControlModel.cs:34`。当前证据：`web/settingsView.js:1`、`app/models.py:115`、`app/scheduler.py:13`。
-
-| 原版配置 | 当前状态 | 缺口 |
-|---|---|---|
-| 多配置 `Configurations/Current` | 已覆盖 | 当前 profile 存储提供近似能力。 |
-| `InfrastOrder` | 未覆盖 | Web 未实现原版基建房间排序持久化。 |
-| `TaskSelectedIndex` | 部分覆盖 | Web 本地保存 selected task，但不是原版配置键。 |
-| `DragItemIsChecked` | 未覆盖 | 拖拽勾选状态未对齐。 |
-| `Timer.ForceScheduledStart` | 已覆盖 | Web scheduler `force_start`。 |
-| `Timer.ShowWindowBeforeForceScheduledStart` | 仅 UI | Web 保存但无桌面窗口语义。 |
-| `Timer.CustomConfig` | 部分覆盖 | Web slot 可选 profile，但原版提前两分钟切换配置/重启语义未完整实现。 |
-| 单个 Timer `Enable/Config/Hour/Minute` | 已覆盖 | Web `TimerSlot.enabled/profile_name/time`。 |
-| 定时前启动模拟器 | 部分覆盖 | Web 有 `emulator_launch.command/wait_seconds`，但不等价原版 emulator path/additional command 全部语义。 |
-| 后置动作 `PostActions` | 已覆盖 | Web 支持 `exit_game/exit_emulator/sleep/hibernate/shutdown/run_command`；`run_command` 用 `asyncio.create_subprocess_shell` 跑用户命令并带超时（默认 60s），适用于 `docker stop redroid`、备份脚本等场景；`exit_maa` 仍仅模型存在。 |
-
-### 运行/启动/上报
-
-原版证据：`ConfigurationKeys.cs:96`、`GameSettingsUserControlModel.cs:54`、`StartSettingsUserControlModel.cs:78`、`ConfigurationKeys.cs:253`。当前证据：`web/settingsView.js:330`、`web/settingsView.js:422`。
-
-| 原版配置 | 当前状态 | 缺口 |
-|---|---|---|
-| `Start.StartGame` | 已覆盖 | 通过 StartUp `start_game_enabled`。 |
-| `Start.ClientType` | 已覆盖 | profile/client type。 |
-| `Start.RunDirectly` | 仅 UI | 设置页禁用展示。 |
-| `Start.MinimizeDirectly` | Web 不适用 | 浏览器无桌面最小化语义。 |
-| `Start.OpenEmulatorAfterLaunch` | 部分覆盖 | Web 仅定时前命令启动，不是 MAA 启动后自动开模拟器完整流程。 |
-| `Start.EmulatorPath` | 部分覆盖 | Web 用自由命令替代。 |
-| `Start.EmulatorAddCommand` | 部分覆盖 | Web 无独立追加命令字段。 |
-| `Start.EmulatorWaitSeconds` | 已覆盖 | Web `emulatorLaunchWait`。 |
-| `Start.StartsWithScript` | 仅 UI | 设置页禁用展示，后端未执行。 |
-| `Start.EndsWithScript` | 仅 UI | 设置页禁用展示，后端未执行。 |
-| `Start.CopilotWithScript` | 仅 UI | 设置页禁用展示，后端未执行。 |
-| `Start.ManualStopWithScript` | 仅 UI | 设置页禁用展示，后端未执行。 |
-| `Start.BlockSleep` | 仅 UI | 设置页禁用展示，后端未阻止休眠。 |
-| `Start.BlockSleepWithScreenOn` | 仅 UI | 设置页禁用展示，后端未实现。 |
-| `Penguin.EnablePenguin` | 部分覆盖 | mapper 可传，设置页开关禁用展示。 |
-| `Penguin.Id` | 部分覆盖 | mapper 可传，设置页输入禁用展示。 |
-| `Yituliu.EnableYituliu` | 未覆盖 | 无 mapper/UI 执行。 |
-| `TaskTimeoutMinutes` | 已覆盖 | 设置页「外部通知」节内的「任务超时（分钟）」数值输入；`/api/runner/config` 持久化到 `data/runner_config.json`；runner `_run_profile` 用 `asyncio.wait_for` 包裹 `_start_and_finish`，超时后调用 stop + 触发 `timeout` notification 事件。 |
-| `ReminderIntervalMinutes` | 仅 UI | 设置页禁用展示。 |
-
-### 界面/背景/热键/成就
-
-原版证据：`GUI.cs:26`、`ConfigurationKeys.cs:34`、`GuiSettingsUserControlModel.cs:73`、`BackgroundSettingsUserControlModel.cs:39`、`AchievementSettingsUserControlModel.cs:206`。当前证据：`web/settingsView.js:457`、`web/settingsView.js:493`。
-
-| 原版配置 | 当前状态 | 缺口 |
-|---|---|---|
-| `GUI.Localization` | 仅 UI | 语言选择禁用，Web 无多语言系统。 |
-| `GUI.OperNameLanguage` | 仅 UI | 禁用展示。 |
-| `GUI.UseTray` | Web 不适用 | 浏览器无系统托盘；UI 展示禁用。 |
-| `GUI.MinimizeToTray` | Web 不适用 | 浏览器无托盘最小化。 |
-| `GUI.HideCloseButton` | Web 不适用 | WPF 窗口行为。 |
-| `GUI.WindowTitleScrollable` | Web 不适用 | WPF 标题栏行为。 |
-| `GUI.UseNotify` | Web 不适用/未覆盖 | 原生系统通知未实现。 |
-| `GUI.MainTasksInvertNullFunction` | 仅 UI | 禁用展示。 |
-| `GUI.LogItemDateFormatString` | 仅 UI | 禁用展示；日志时间格式未按用户配置切换。 |
-| `GUI.DarkMode` | 仅 UI | 主题选择禁用。 |
-| `GUI.InverseClearMode` | 仅 UI | 禁用展示。 |
-| `GUI.WindowTitlePrefix` | Web 不适用 | 无 WPF 标题前缀。 |
-| `GUI.IgnoreBadModulesAndUseSoftwareRendering` | Web 不适用 | WPF 渲染选项。 |
-| `GUI.UseCardLog` | 已覆盖 | Web 有卡片样式日志开关。 |
-| `GUI.MaxNumberOfLogThumbnails` | 已覆盖 | Web 有缩略图最大数量。 |
-| `GUI.WindowTitleSelectShowList` | Web 不适用 | WPF 标题显示内容。 |
-| `GUI.Background.ImagePath` | 仅 UI | 背景设置禁用，无实际背景文件选择。 |
-| `GUI.Background.StretchMode` | 仅 UI | 禁用展示。 |
-| `GUI.Background.Opacity` | 仅 UI | UI 展示但未实际接入。 |
-| `GUI.Background.BlurEffectRadius` | 仅 UI | UI 展示但未实际接入。 |
-| 热键设置 | 未覆盖 | 当前 settings sections 未启用 hotkey section。 |
-| `Achievement.PopupDisabled` | 未覆盖 | 当前 settings sections 未启用 achievement section。 |
-| `Achievement.PopupAutoClose` | 未覆盖 | 同上。 |
-
-### 远程控制
-
-原版证据：`remote-control-schema.md:18`、`ConfigurationKeys.cs:286`、`RemoteControlUserControlModel.cs:34`。当前证据：`web/settingsView.js:475`。
-
-| 原版配置/协议 | 当前状态 | 缺口 |
-|---|---|---|
-| `RemoteControlGetTaskEndpointUri` | 仅 UI | 输入框禁用，无轮询任务服务。 |
-| `RemoteControlReportStatusUri` | 仅 UI | 输入框禁用，无汇报结果服务。 |
-| `RemoteControlUserIdentity` | 仅 UI | 输入框禁用。 |
-| `RemoteControlDeviceIdentity` | 仅 UI | 输入框禁用，无生成/持久化。 |
-| `RemoteControlPollIntervalMs` | 仅 UI | 数值禁用，无轮询循环。 |
-| 远程任务 `CaptureImage/LinkStart/LinkStop/Toolbox-*` | 未覆盖 | 当前没有官方远控协议执行器。 |
-
-### 外部通知
-
-原版证据：`ConfigurationKeys.cs:292`、`ExternalNotificationSettingsUserControlModel.cs:48`。当前证据：`web/settingsView.js:500`。
-
-| 原版配置 | 当前状态 | 缺口 |
-|---|---|---|
-| `ExternalNotification.Enabled` | 已覆盖 | UI 总开关；后端 `NotificationService` 控制是否调用 webhook。 |
-| `ExternalNotification.SendWhenComplete` | 已覆盖 | UI 复选框；runner 在 `_start_and_finish` 完成路径触发 `complete` 事件。 |
-| `ExternalNotification.EnableDetails` | 已覆盖 | UI 复选框；通知 JSON 是否附加 `details` 字段（profile/state/task counts/last_error）。 |
-| `ExternalNotification.SendWhenError` | 已覆盖 | UI 复选框；runner `error` 事件触发。 |
-| `ExternalNotification.SendWhenTimeout` | 已覆盖 | UI 复选框；runner `_run_profile` 用 `asyncio.wait_for` 监控 `task_timeout_minutes`，超时后 `_handle_timeout` 派发独立的 `timeout` 事件给 NotificationService。 |
-| SMTP `Server/Port/User/Password/UseSsl/RequiresAuthentication/From/To` | 未覆盖 | 无 UI/API/发送器。 |
-| ServerChan `SendKey` | 未覆盖 | 无。 |
-| Discord `BotToken/UserId/WebhookUrl` | 部分覆盖 | 仅可通过通用 Webhook URL 转发；专用字段未实现。 |
-| DingTalk `AccessToken/Secret` | 未覆盖 | 无。 |
-| Telegram `BotToken/ChatId/TopicId` | 未覆盖 | 无。 |
-| Bark `SendKey/Server` | 未覆盖 | 无。 |
-| Qmsg `Server/Key/User/Bot` | 未覆盖 | 无。 |
-| Gotify `Server/Token` | 未覆盖 | 无。 |
-| CustomWebhook `Url/Body` | 已覆盖 | UI 配置 URL/Method/自定义 Header；`/api/notifications/test` 支持发送测试。 |
-
-### 更新/性能/问题反馈/关于
-
-原版证据：`ConfigurationKeys.cs:230`、`VersionUpdateSettingsUserControlModel.cs:207`、`ConfigurationKeys.cs:325`、`GpuOption.cs:42`。当前证据：`web/settingsView.js:511`、`app/api.py:70`。
-
-| 原版配置/功能 | 当前状态 | 缺口 |
-|---|---|---|
-| `VersionUpdate.VersionType` | 仅 UI | 更新渠道禁用，无 updater。 |
-| `VersionUpdate.ResourceUpdateSource` | 仅 UI | 更新源禁用，无资源更新。 |
-| `VersionUpdate.UpdateSource.ForceGithubGlobalSource` | 仅 UI | 禁用展示。 |
-| `VersionUpdate.ResourceUpdateSource.MirrorChyanCdk` | 未覆盖 | 无输入/校验。 |
-| `VersionUpdate.UpdateSource.MirrorChyanCdkExpired` | 未覆盖 | 无。 |
-| `VersionUpdate.StartupUpdateCheck` | 仅 UI | 禁用展示。 |
-| `VersionUpdate.ScheduledUpdateCheck` | 仅 UI | 禁用展示。 |
-| `VersionUpdate.ResourceApi` | 未覆盖 | 无。 |
-| `VersionUpdate.AllowNightlyUpdates` | 未覆盖 | 无。 |
-| `VersionUpdate.HasAcknowledgedNightlyWarning` | 未覆盖 | 无。 |
-| `VersionUpdate.Proxy/ProxyType` | 部分覆盖 | UI 有 HTTP Proxy 字段雏形，但无 updater 使用。 |
-| `AutoDownloadUpdatePackage` | 仅 UI | 禁用展示。 |
-| `AutoInstallUpdatePackage` | 仅 UI | 禁用展示。 |
-| `ShowUpdaterConsole` | 仅 UI | 禁用展示。 |
-| 软件/资源版本显示 | 部分覆盖 | Web `/api/version` 只读取 MaaCore/resource 版本，不执行更新。 |
-| `Performance.UseGpu` | 仅 UI | 性能页禁用展示，未调用 static option。 |
-| `Performance.PreferredGpuDescription` | 未覆盖 | 无 GPU 枚举。 |
-| `Performance.PreferredGpuInstancePath` | 未覆盖 | 无 GPU 枚举。 |
-| `Performance.AllowDeprecatedGpu` | 未覆盖 | 无。 |
-| 问题反馈日志打包 | 仅 UI | 按钮禁用，无日志 zip 生成。 |
-| 打开日志文件夹 | Web 不适用/未覆盖 | 浏览器不能直接打开本地文件夹；可由后端提供下载替代。 |
-| 清空图片缓存 | 仅 UI | 按钮禁用。 |
-| 关于链接 | 已覆盖 | 官网/GitHub/社区链接存在。 |
-
-## 高优先级缺口建议
-
-> 2026-05-08（第十次更新）：补齐 Copilot 抄作业最常用的两个体验差距：神秘代码自动下载（`app/copilot_resolver.py` 支持 `maa://12345` / 纯数字 / `https://prts.plus/copilot/<id>` 三种格式，拉取后缓存到 `data/copilot_cache/maa-prts-{id}.json`，附带评级/上传者 sidecar）+ 作业内容预览（前端开始按钮下方信息卡，关卡/干员/分组/动作数/评级/上传者）。前端粘贴 / 输入 / 选文件后 350ms 防抖触发 `/api/copilot/resolve`，prts.plus 解析成功后自动把本地路径回填到输入框。新增 9 条 resolver 单测 + 3 条 API 端到端测试。
-> 2026-05-08（第九次更新，文档校对）：自动战斗 Copilot/SSSCopilot/ParadoxCopilot 三张表格与代码状态对齐。前几轮已经把 `copilot_list (filename+stage_name+is_raid) / use_sanity_potion / formation / formation_index / add_trust / ignore_requirements / support_unit_usage / support_unit_name / user_additional` 全部端到端打通（参见 `tests/test_api_copilot.py`），但表格仍写「仅 UI / 未覆盖」造成误读，现已修正；同时补齐「神秘代码自动下载 / 作业内容预览 / 作业评分上报 / 文件拖拽」四条真实未实现的差距条目。
-> 2026-05-08（第八次更新）：补齐 Ubuntu 后台 + redroid 静默运行所需的最后一段闭环：`PostAction.type` 新增 `run_command`（`asyncio.create_subprocess_shell` + 可配置超时，stdout/stderr 进入日志），`/api/redroid/status` 改用 `docker inspect --format` 真实查询（区分 running / exited / 不存在 / docker 未安装），主区「完成后」下拉新增「自定义命令…」+ 命令/超时输入。新增 6 条单测覆盖 run_command 成功/失败/空命令与 redroid 状态三种分支；新增 `docs/deployment-redroid-ubuntu.md` 部署手册。
-> 2026-05-07（第七次更新）：实现 ADB 连接失败自动重启（`Connect.AllowADBRestart` / `Connect.AllowADBHardRestart`，分别执行 `adb kill-server` 与 `taskkill /F /IM adb.exe` / `pkill -9 adb`），并补齐任务超时检测（`TaskTimeoutMinutes` + `ExternalNotification.SendWhenTimeout`）：runner 用 `asyncio.wait_for` 监控超时、`/api/runner/config` 持久化到 `data/runner_config.json`、设置页有数值输入与勾选；新增 4 条单元测试覆盖 ADB restart 与 timeout 场景。
-> 2026-05-07（第六次更新）：实现外部通知 Webhook 通道——新增 `NotificationConfig`/`WebhookNotificationConfig` 模型、`NotificationService`（持久化到 `data/notifications.json`、支持 POST/PUT JSON、自定义 Header）、`/api/notifications` GET/PUT 与 `/api/notifications/test` 端点、设置页「外部通知」全功能 UI；`MaaRunnerService` 增加 `run_event_callback`，在完成/失败/停止路径自动派发 webhook。
-> 2026-05-07（第五次更新）：补齐 Fight/Recruit `server` 下拉、Fight `custom_annihilation + annihilation_stage` 子关卡映射、相应 mapper 单元测试。
-> 2026-05-07（第四次更新）：补齐 Recruit 上报/`set_time`/6 星时间/`reserve_level_1`、Fight 一图流上报与 `expiring_medicine` 数量、Roguelike 烧水/密文板/坍缩范式开关、Reclamation Fire 主题，以及 `UserDataUpdate.TriggerInterval`（含 `data/userdata_state.json` 周期跳过实现）。
-
-1. ✅ ~~先补”看起来已可用但参数未真正传递”的字段：Roguelike 投资/坍缩/密文板字段。~~ **已完成**
-2. ✅ ~~`Recruit` extra tag 策略和上报字段~~ **已完成**（`set_time`、6 星时间、企鹅 + 一图流上报、`reserve_level_1` 已落地）。**仍待处理**：`Copilot` 自动战斗页多作业 UI 与后端的二次校准（`copilot_list` 已发送，但 `support_unit_usage`、`support_unit_name`、`user_additional` 与 raid 标记的端到端体验仍需细化）。
-3. 连接层补齐 MaaCore instance option：`TouchMode`、`DeploymentWithPause`、`AdbLiteEnabled`、`KillAdbOnExit` 已实现，剩 MuMu 12 桥接、`RetryOnDisconnected`、`AllowADBRestart` 等仍属仅 UI/未覆盖。
-4. ✅ ~~工具页补结果解析：`Depot`、`OperBox`、`RecruitCalc` callback 数据已落到前端状态。~~ **已完成**
-5. 自动战斗页按 task type 分流：主线 `Copilot`、保全 `SSSCopilot`、悖论 `ParadoxCopilot` 已分流到 `/api/copilot/start` 并按 `task_type` 走不同参数路径；`copilot_list` 多作业循环、`use_sanity_potion`、`add_trust` 等已发送，仍需补齐多作业循环次数与助战指定干员的端到端测试。
-6. 把设置页”禁用展示”的项目拆成三类：后端可实现、需要 native helper、纯桌面不适用，避免后续误认为已经接入。
-7. ✅ ~~`UserDataUpdate.TriggerInterval`~~ **已完成**（`data/userdata_state.json` 持久化周期）。
+1. `/api/tools/run` 与 `/api/copilot/start` 在多 profile 时依赖前端传 `profile_name` 决定用哪套连接配置；不传且 runner 从没跑过时会提示「没有可用的配置」。
+2. 一键长草运行期间禁止使用小工具/自动战斗（MaaCore 单实例），但反过来在小工具跑任务时点「Link Start!」会新建 Asst 实例，旧任务被静默掐断。
+3. `find_playTime_target` 在 MaaCore 是 1/2/3 三种常乐节点子类型，前端只有一个复选框，表达不了 2/3。
+4. 识别结果的 `tools_state.json` 是「读-改-写」，并发 PUT 可能丢更新（实际触发概率极低）。

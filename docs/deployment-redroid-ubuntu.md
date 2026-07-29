@@ -4,8 +4,8 @@
 里的 redroid 容器实现「定时启动模拟器 → 跑长草 → 关掉模拟器 → 静默
 等待下一轮」的完整自动化闭环。
 
-适用版本：`maa-web-control` ≥ 第八次更新（含 `PostAction.run_command` 与
-真实 `/api/redroid/status`）。
+适用版本：`maa-web-control` ≥ 2026-07-29（含 `PostAction.run_command`、真实
+`/api/redroid/status`、`/api/adb/detect` 与识别结果持久化）。
 
 ## 总体链路
 
@@ -62,8 +62,20 @@ python3 -m venv .venv
 pip install -e .
 ```
 
-确认 `data/` 目录可写（uvicorn 进程会在该目录写 profile / scheduler /
-notifications / userdata_state / runner_config 等 JSON）。
+确认 `data/` 目录可写。运行期会在这里生成：
+
+| 文件/目录 | 内容 |
+|---|---|
+| `profiles/*.json` | 任务配置；`hidden_builtins` 记录被删除的内置任务 |
+| `scheduler.json` | 定时槽位、启动命令、后置动作 |
+| `runner_config.json` | 任务超时分钟数 |
+| `notifications.json` | Webhook 通知配置 |
+| `adapter.json` | 适配器类型与 MaaCore 目录 |
+| `userdata_state.json` | 「更新数据」任务的 Daily/Weekly 周期记录 |
+| `tools_state.json` | 仓库/干员/公招识别结果 |
+| `copilot_upload/` `copilot_cache/` | 上传的作业、神秘代码下载的作业 |
+
+备份时整个 `data/` 拷走即可。
 
 如果要使用 official MaaCore（非 dry-run），需要把 MaaCore 的 Linux 编译
 产物（含 `libMaaCore.so`、`resource/`、`Python/`）放到独立目录，例如
@@ -123,11 +135,14 @@ sudo usermod -aG docker maa
 
 2. **连接设置**
    - ADB 地址 `127.0.0.1:5555`；ADB 路径 `adb`。
+   - 不确定端口时点「自动检测连接」，它会扫 `adb devices` 并探测常见模拟器端口后回填。
+   - 旁边的「检查 redroid 容器」等价于 `docker inspect`，可用来确认容器是否已起。
    - 「连接失败后重启 ADB Server」勾上；如果遇到 ADB 进程僵死可加勾
      「连接失败后强制结束 ADB 进程」。
 
 3. **定时执行**
    - 启用 1 个 slot：例如 `04:00` → profile `daily`、强制启动勾上。
+   - 关卡按明日方舟 04:00 日切判断开放日，凌晨跑也不会选错关。
    - 「启动模拟器命令」填：`docker start redroid && sleep 5`，
      等待秒数 `60`（redroid 冷启动通常 30–60s，可按宿主性能调整）。
 
@@ -156,11 +171,12 @@ sudo usermod -aG docker maa
 # 触发一次完整链路（不等定时器）
 curl -X POST http://localhost:8000/api/profiles/daily/run
 
-# 实时查看事件流
-curl -N http://localhost:8000/api/logs/recent?limit=50
+# 查看最近事件（一次性快照；实时流是 WebSocket /api/events）
+curl http://localhost:8000/api/logs/recent?limit=50
 
-# 查看 redroid 容器状态
+# 查看 redroid 容器状态 / 扫描可用设备
 curl http://localhost:8000/api/redroid/status
+curl -X POST http://localhost:8000/api/adb/detect
 ```
 
 预期行为：
@@ -180,6 +196,8 @@ curl http://localhost:8000/api/redroid/status
 | webhook 发不出去 | 设置页「发送测试」直接看响应；服务器若需代理，请把代理写进自定义 Header 或宿主层 `HTTPS_PROXY`。 |
 | redroid 启动慢 | 把 `wait_seconds` 调大，或在 emulator_launch.command 里加 `until adb -s 127.0.0.1:5555 wait-for-device; do sleep 2; done`。 |
 | 想让任务跑完后顺便备份 | 把 `command` 写成多条命令组合：`docker stop redroid && rsync -a /opt/maa-web-control/data/ /backup/`。 |
+| 升级后界面还是旧的 | 后端已对静态资源发 `Cache-Control: no-cache`，正常刷新即可；若仍是旧版按 Ctrl+F5。 |
+| 日志里出现「MaaCore 拒绝了任务 X」 | 该任务的参数组合被 MaaCore 校验拒绝（以前会静默跳过）。按提示检查这条任务的配置，肉鸽策略/主题不匹配是最常见原因。 |
 
 ## 七、回滚
 
