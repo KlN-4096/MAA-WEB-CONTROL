@@ -5,7 +5,7 @@ function renderUiSection() {
       <div class="settingsColumn">
         ${checkLine("使用卡片样式日志", true, "以任务卡片形式展示运行日志（推荐）。", "useCardLog")}
         ${SETTINGS_STATE.useCardLog ? fieldRow("日志缩略图最大数量", numberBox(String(SETTINGS_STATE.logThumbnailMax), "settingsControlL", "logThumbnailMax")) : ""}
-        <p class="settingsGlobalTip">以下选项暂未接入 Web 版：</p>
+        <p class="settingsGlobalTip">以下为桌面端专属能力，浏览器无法实现<span class="unsupportedBadge">暂未接入</span></p>
         ${checkLine("显示托盘图标", true, "", "", true)}
         ${checkLine("最小化时隐藏至托盘", false, "", "", true)}
         ${checkLine("重要信息弹出系统通知", false, "重要事件弹出系统通知。", "", true)}

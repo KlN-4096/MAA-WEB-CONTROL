@@ -18,11 +18,11 @@ function renderRecruitAdvanced(p, escapeHtml) {
       </select>
       <span>高星 Tag 首选（分号分隔）</span>
       <input class="wideInput" id="paramExtraTags" value="${escapeHtml(p.extra_tags || "")}" />
-      <span>最大加急次数（0 表示不限制）</span><input id="paramExpediteTimes" type="number" min="0" value="${numberValue(p.expedite_times, 0)}" />
+      ${unsupportedLine("最大加急次数", "MaaCore RecruitTask 里 expedite_times 标注为 [[maybe_unused]]，读取后并未使用。")}
       ${checkRow("set_time", `自动设置招募时限${hint("关闭后将不会主动设置招募时长（可用于手动调整）", escapeHtml)}`, p.set_time ?? true)}
       ${checkRow("refresh", "自动刷新 3 星 Tags", p.refresh ?? true)}
-      ${checkRow("skip_robot", "无招聘许可时继续尝试刷新 Tags", p.skip_robot ?? true)}
-      ${checkRow("reserve_level_1", "保留 1 星词条并跳过该栏位", p.reserve_level_1 ?? true)}
+      ${checkRow("force_refresh", `无招聘许可时继续尝试刷新 Tags${hint("对应 MaaCore force_refresh。", escapeHtml)}`, p.force_refresh ?? true)}
+      ${checkRow("skip_robot", `不选择 1 星（小车）词条${hint("对应 MaaCore skip_robot：不会点选支援机械 Tag，并直接确认 1 星栏位。", escapeHtml)}`, p.skip_robot ?? true)}
       ${checkRow("confirm_3", "自动确认 3 星", p.confirm_3 ?? true)}
       ${timeRow("time3", p.time3 || "09:00")}
       ${checkRow("confirm_4", "自动确认 4 星", p.confirm_4 ?? true)}
@@ -52,11 +52,10 @@ function collectRecruitParams() {
   addNumber(params, "max_times", "paramRecruitTimes", 99);
   addNumber(params, "extra_tags_mode", "paramRecruitStrategy", 0);
   addValue(params, "extra_tags", "paramExtraTags", "");
-  addNumber(params, "expedite_times", "paramExpediteTimes", 0);
   addBool(params, "set_time", "set_time");
   addBool(params, "refresh", "refresh");
+  addBool(params, "force_refresh", "force_refresh");
   addBool(params, "skip_robot", "skip_robot");
-  addBool(params, "reserve_level_1", "reserve_level_1");
   addBool(params, "confirm_3", "confirm_3");
   addTime(params, "time3", "time3");
   addBool(params, "confirm_4", "confirm_4");

@@ -3,6 +3,8 @@ function renderSettingsView() {
   if (!root) return;
   syncSettingsConfigs();
   syncSettingsFromProfile();
+  // 整页 innerHTML 重建会丢焦点并把滚动条弹回折叠块顶部，重建前后要还原。
+  const restore = captureSettingsFocus();
   root.innerHTML = `
     <aside class="settingsSideNav">${SETTINGS_SECTIONS.map(settingsNavButton).join("")}</aside>
     <section class="settingsContent">
@@ -10,9 +12,40 @@ function renderSettingsView() {
     </section>
   `;
   syncSettingsEditingLock();
-  if (typeof state !== "undefined" && state.currentView === "settings") {
+  const restored = restoreSettingsFocus(restore);
+  if (!restored && typeof state !== "undefined" && state.currentView === "settings") {
     requestAnimationFrame(() => scrollSettingsSection(SETTINGS_STATE.selected, "auto"));
   }
+}
+
+function captureSettingsFocus() {
+  const active = document.activeElement;
+  const field = active?.dataset?.settingsField;
+  if (!field) return null;
+  const scroller = document.querySelector(".content");
+  return {
+    field,
+    scrollTop: scroller ? scroller.scrollTop : 0,
+    selectionStart: typeof active.selectionStart === "number" ? active.selectionStart : null,
+    selectionEnd: typeof active.selectionEnd === "number" ? active.selectionEnd : null
+  };
+}
+
+function restoreSettingsFocus(snapshot) {
+  if (!snapshot) return false;
+  const next = document.querySelector(`[data-settings-field="${snapshot.field}"]`);
+  if (!next) return false;
+  const scroller = document.querySelector(".content");
+  if (scroller) scroller.scrollTop = snapshot.scrollTop;
+  next.focus({ preventScroll: true });
+  if (snapshot.selectionStart !== null && typeof next.setSelectionRange === "function") {
+    try {
+      next.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+    } catch {
+      // number/select 类型不支持选区，忽略
+    }
+  }
+  return true;
 }
 
 function wireSettingsView() {

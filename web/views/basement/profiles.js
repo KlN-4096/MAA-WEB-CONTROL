@@ -34,7 +34,6 @@ async function switchProfileConfig(name) {
 async function flushProfileSave() {
   if (isProfileEditingLocked() || !state.profile) return;
   clearTimeout(state.saveTimer);
-  collectProfileForm();
   collectTaskForm();
   await persistProfile(false, bumpProfileEditVersion());
 }
@@ -104,7 +103,6 @@ async function createProfile(name = "") {
 
 async function saveProfile() {
   if (isProfileEditingLocked()) return state.profile;
-  collectProfileForm();
   collectTaskForm();
   await persistProfile(true, bumpProfileEditVersion());
 }
@@ -142,36 +140,9 @@ function bumpProfileEditVersion() {
   return profileEditVersion;
 }
 
+// 配置的新建/切换/删除统一由设置页「切换配置」节负责（views/settings/profileSync.js）。
 function renderProfiles() {
-  if (!$("profileList")) return;
-  const locked = isProfileEditingLocked();
-  $("profileList").innerHTML = state.profiles.map((name) => {
-    const active = state.profile?.name === name ? " active" : "";
-    const lockedClass = locked ? " locked" : "";
-    return `<button class="profileItem${active}${lockedClass}" data-profile="${escapeHtml(name)}">
-      <strong>${escapeHtml(name)}</strong>
-    </button>`;
-  }).join("");
   syncProfileEditingControls();
-}
-
-function renderProfileForm() {
-  if (!state.profile || !$("profileNameInput")) return;
-  $("profileDescription").textContent = state.profile.description || state.profile.name;
-  $("profileNameInput").value = state.profile.name;
-  $("adbAddressInput").value = state.profile.adb?.address || "";
-  $("clientTypeInput").value = state.profile.adb?.client_type || "";
-  $("descriptionInput").value = state.profile.description || "";
-  syncProfileEditingControls();
-}
-
-function collectProfileForm() {
-  if (isProfileEditingLocked() || !$("profileNameInput")) return;
-  state.profile.name = $("profileNameInput").value.trim() || "daily";
-  state.profile.description = $("descriptionInput").value.trim();
-  state.profile.adb = state.profile.adb || {};
-  state.profile.adb.address = $("adbAddressInput").value.trim();
-  state.profile.adb.client_type = $("clientTypeInput").value.trim();
 }
 
 function isProfileEditingLocked(value = state.runnerState) {
@@ -180,21 +151,7 @@ function isProfileEditingLocked(value = state.runnerState) {
 
 function syncProfileEditingControls() {
   const locked = isProfileEditingLocked();
-  setDisabledByIds([
-    "saveButton",
-    "addTaskButton",
-    "deleteTaskButton",
-    "moveUpButton",
-    "profileNameInput",
-    "descriptionInput",
-    "adbAddressInput",
-    "clientTypeInput",
-    "newProfileButton",
-    "postActionInput"
-  ], locked);
-  document.querySelectorAll("#profileList .profileItem").forEach((button) => {
-    setLockDisabled(button, locked);
-  });
+  setDisabledByIds(["addTaskButton", "deleteTaskButton", "moveUpButton", "postActionInput"], locked);
   document.querySelectorAll("#taskList [data-task-index]").forEach((item) => {
     item.classList.toggle("locked", locked);
     item.draggable = !locked;

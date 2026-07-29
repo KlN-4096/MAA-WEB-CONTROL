@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -135,12 +135,50 @@ ROGUELIKE_THEME_VALUES = {
     "萨卡兹": "Sarkaz",
     "界园": "JieGarden",
 }
+# MaaCore RoguelikeMode (Task/Roguelike/RoguelikeConfig.h)：2 已移除、3(Ending) 未开放，
+# is_valid_mode 只接受 0/1/4/6/7 以及主题专属的 5(萨米) / 10001(萨卡兹) / 20001(界园)。
 ROGUELIKE_STRATEGY_MODE_VALUES = {
     "刷等级": 0,
     "刷源石锭": 1,
-    "刷开局": 2,
-    "刷月度小队": 3,
-    "刷深入调查": 4,
+    "刷开局": 4,
+    "刷坍缩范式": 5,
+    "刷月度小队": 6,
+    "刷深入调查": 7,
+    "刷常乐节点": 20001,
+}
+ROGUELIKE_COLLECTIBLE_MODE = 4
+ROGUELIKE_CLP_PDS_MODE = 5
+ROGUELIKE_FAST_PASS_MODE = 10001
+ROGUELIKE_FIND_PLAYTIME_MODE = 20001
+ROGUELIKE_COMMON_MODES = {0, 1, 4, 6, 7}
+ROGUELIKE_THEME_ONLY_MODES = {
+    ROGUELIKE_CLP_PDS_MODE: "Sami",
+    ROGUELIKE_FAST_PASS_MODE: "Sarkaz",
+    ROGUELIKE_FIND_PLAYTIME_MODE: "JieGarden",
+}
+# MaaCore RoguelikeCustomStartTaskPlugin::load_params 只认这些固定英文键。
+ROGUELIKE_COLLECTIBLE_AWARD_KEYS = {
+    "热水壶": "hot_water",
+    "热水": "hot_water",
+    "hot_water": "hot_water",
+    "护盾": "shield",
+    "盾": "shield",
+    "shield": "shield",
+    "源石锭": "ingot",
+    "ingot": "ingot",
+    "希望": "hope",
+    "hope": "hope",
+    "随机": "random",
+    "random": "random",
+    "钥匙": "key",
+    "key": "key",
+    "骰子": "dice",
+    "dice": "dice",
+    "思绪": "ideas",
+    "构想": "ideas",
+    "ideas": "ideas",
+    "入场券": "ticket",
+    "ticket": "ticket",
 }
 RECLAMATION_THEME_VALUES = {
     "沙洲遗闻": "Tales",
@@ -169,8 +207,32 @@ class TaskMappingError(ValueError):
 
 
 def task_to_append_call(task: TaskDefinition) -> AppendCall | None:
+    calls = task_to_append_calls(task)
+    return calls[0] if calls else None
+
+
+def task_to_append_calls(task: TaskDefinition) -> list[AppendCall]:
+    """一个 Web 任务可能展开成多个 MaaCore 任务（如 UserDataUpdate → Depot + OperBox）。"""
     if not task.enabled:
-        return None
+        return []
+    if task.type == "UserDataUpdate":
+        return _userdata_update_calls(task)
+    call = _single_append_call(task)
+    return [call] if call is not None else []
+
+
+def _userdata_update_calls(task: TaskDefinition) -> list[AppendCall]:
+    """MaaCore 没有 UserDataUpdate 任务类型，原版是在 GUI 层展开成 Depot 与 OperBox。"""
+    params = deepcopy(task.params)
+    calls: list[AppendCall] = []
+    if bool(params.get("update_depot", True)):
+        calls.append(AppendCall(task_id=f"{task.id}:depot", type="Depot", params={"enable": True}))
+    if bool(params.get("update_oper_box", True)):
+        calls.append(AppendCall(task_id=f"{task.id}:operbox", type="OperBox", params={"enable": True}))
+    return calls
+
+
+def _single_append_call(task: TaskDefinition) -> AppendCall | None:
     if task.type not in SUPPORTED_TASK_TYPES:
         raise TaskMappingError(f"Unsupported task type: {task.type}")
 
@@ -198,8 +260,6 @@ def task_to_append_call(task: TaskDefinition) -> AppendCall | None:
         _map_custom(params)
     elif task.type == "CloseDown":
         _map_closedown(params)
-    elif task.type == "UserDataUpdate":
-        _map_userdata_update(params)
 
     params.setdefault("enable", True)
     return AppendCall(task_id=task.id, type=mapped_type, params=params)
@@ -215,17 +275,17 @@ def profile_to_append_calls(
     today = datetime.now().date()
     state_changed = False
     for task in profile.tasks:
-        call = task_to_append_call(task)
-        if call is None:
-            continue
-        if call.type == "UserDataUpdate":
-            interval = str(call.params.get("trigger_interval", "EveryTime"))
+        if task.enabled and task.type == "UserDataUpdate":
+            interval = _userdata_interval(task.params)
             if state_path is not None and _interval_already_satisfied(state.get(task.id), interval, today):
                 continue
-            if state_path is not None:
+            expanded = task_to_append_calls(task)
+            if expanded and state_path is not None:
                 state[task.id] = today.isoformat()
                 state_changed = True
-        calls.append(call)
+            calls.extend(expanded)
+            continue
+        calls.extend(task_to_append_calls(task))
     if state_path is not None and state_changed:
         _save_interval_state(state_path, state)
     return calls
@@ -318,13 +378,10 @@ def _map_fight_resources(params: dict[str, Any]) -> None:
         )
     params["series"] = int(params.get("series", 0))
     params["DrGrandet"] = bool(params.get("DrGrandet", params.get("dr_grandet", False)))
+    # MaaCore FightTask::set_params 优先读 medicine_expire_days，只有该键缺失时才回退到
+    # 已废弃的 expiring_medicine（且只区分 0/非 0）。原版 WPF 也只下发 medicine_expire_days。
     params["medicine_expire_days"] = _medicine_expire_days(params)
-    if "expiring_medicine" in params:
-        params["expiring_medicine"] = _int_or_default(params.get("expiring_medicine"), 0)
-    elif params.get("use_expiring_medicine"):
-        count = _int_or_default(params.get("expiring_medicine_count"), 0)
-        if count > 0:
-            params["expiring_medicine"] = count
+    params.pop("expiring_medicine", None)
 
     drops = _build_drops(params)
     if drops:
@@ -353,13 +410,21 @@ def _map_fight_reporting(params: dict[str, Any]) -> None:
 def _map_recruit(params: dict[str, Any]) -> None:
     select = _recruit_levels_from_list(params.get("select"))
     confirm = _recruit_levels_from_list(params.get("confirm"))
+    # 旧字段 reserve_level_1 与 skip_robot 是同一个语义（原版 NotChooseLevel1）。
+    legacy_reserve = params.pop("reserve_level_1", None)
+    skip_robot = bool(params.get("skip_robot", True if legacy_reserve is None else legacy_reserve))
     if confirm is None:
         confirm = _recruit_confirm_levels(params)
     if select is None:
-        select = list(confirm)
-    if bool(params.pop("reserve_level_1", False)):
+        # 原版只把 4/5 星加进 SelectList（RecruitSettingsUserControlModel.cs:298-308），
+        # 3 星只确认不主动点选。
+        select = [level for level in confirm if level in RECRUIT_SELECTABLE_LEVELS]
+    if skip_robot:
+        # 原版 NotChooseLevel1 = skip_robot=true + ConfirmList.Add(1)
         select = [level for level in select if level != 1]
-        confirm = [level for level in confirm if level != 1]
+        if 1 not in confirm:
+            confirm = [*confirm, 1]
+    params["skip_robot"] = skip_robot
     params["select"] = select
     params["confirm"] = confirm
     params["first_tags"] = _split_tags(params.get("extra_tags", params.get("first_tags", [])))
@@ -368,9 +433,9 @@ def _map_recruit(params: dict[str, Any]) -> None:
     params["set_time"] = bool(params.get("set_time", True))
     params["expedite"] = bool(params.get("expedite", params.get("auto_expedited", False)))
     params["expedite_times"] = int(params.get("expedite_times", params.get("times", params["times"])))
-    params["skip_robot"] = bool(params.get("skip_robot", True))
     params["refresh"] = bool(params.get("refresh", False))
-    params["force_refresh"] = bool(params.get("force_refresh", params.get("refresh", True)))
+    # force_refresh = 无招聘许可时继续尝试刷新 Tags，与 refresh / skip_robot 相互独立。
+    params["force_refresh"] = bool(params.get("force_refresh", True))
     if "server" in params:
         params["server"] = str(params.get("server", "CN"))
     if "report_to_penguin" in params:
@@ -442,12 +507,13 @@ def _map_roguelike(params: dict[str, Any]) -> None:
         mode = _mode_from_prefix(params.get("strategy"), ROGUELIKE_STRATEGY_MODE_VALUES)
         if mode is not None:
             params["mode"] = mode
+    _validate_roguelike_mode(params)
 
     # Squad and roles
     if "squad" in params:
         params["squad"] = str(params.get("squad", ""))
     if "roles" in params:
-        params["roles"] = str(params.get("roles", ""))
+        params["roles"] = _normalize_roguelike_roles(params.get("roles"))
     if "core_char" in params or "operator" in params:
         params["core_char"] = str(params.get("core_char", params.get("operator", "")))
 
@@ -459,9 +525,13 @@ def _map_roguelike(params: dict[str, Any]) -> None:
     if "investment_enabled" in params:
         params["investment_enabled"] = bool(params.get("investment_enabled", True))
     if "investments_count" in params or "invest_count" in params:
-        params["investments_count"] = _int_or_default(
-            params.get("investments_count", params.get("invest_count")), 999
-        )
+        # MaaCore RoguelikeInvestTaskPlugin 默认 INT_MAX，0 表示「一次都不投」而不是「不限制」。
+        count = _int_or_default(params.get("investments_count", params.get("invest_count")), 0)
+        params.pop("invest_count", None)
+        if count > 0:
+            params["investments_count"] = count
+        else:
+            params.pop("investments_count", None)
     if "investment_with_more_score" in params or "invest_with_more_score" in params:
         params["investment_with_more_score"] = bool(
             params.get("investment_with_more_score", params.get("invest_with_more_score", False))
@@ -486,11 +556,9 @@ def _map_roguelike(params: dict[str, Any]) -> None:
     if "use_nonfriend_support" in params:
         params["use_nonfriend_support"] = bool(params.get("use_nonfriend_support", False))
 
-    # Seed
-    if "start_with_seed" in params:
-        params["start_with_seed"] = bool(params.get("start_with_seed", False))
-    if "seed" in params:
-        params["seed"] = str(params.get("seed", ""))
+    # Seed：MaaCore RoguelikeInputSeedTaskPlugin 直接把 start_with_seed 当种子字符串读，
+    # 留空即不启用；不存在 seed 这个键。
+    _map_roguelike_seed(params)
 
     # Monthly squad
     if "monthly_squad_auto_iterate" in params:
@@ -502,32 +570,20 @@ def _map_roguelike(params: dict[str, Any]) -> None:
     if "deep_exploration_auto_iterate" in params:
         params["deep_exploration_auto_iterate"] = bool(params.get("deep_exploration_auto_iterate", True))
 
-    # Sami foldartal
-    if "first_floor_foldartal" in params or "sami_first_floor_foldartal" in params:
-        params["first_floor_foldartal"] = bool(
-            params.get("first_floor_foldartal", params.get("sami_first_floor_foldartal", False))
-        )
-    if "first_floor_foldartals" in params or "sami_first_floor_foldartals" in params:
-        val = params.get("first_floor_foldartals", params.get("sami_first_floor_foldartals", ""))
-        params["first_floor_foldartals"] = _split_tags(val) if isinstance(val, str) else _normalize_string_list(val)
+    # Sami foldartal：first_floor_foldartal 是「期望的密文板名」字符串，
+    # 生活队开局密文板列表的官方键是 start_foldartal_list。
+    _map_roguelike_foldartal(params)
 
     # Collectible mode
-    if "start_with_elite_two" in params:
-        params["start_with_elite_two"] = bool(params.get("start_with_elite_two", False))
-    if "only_start_with_elite_two" in params:
-        params["only_start_with_elite_two"] = bool(params.get("only_start_with_elite_two", False))
+    _map_roguelike_elite_two(params)
     if "collectible_mode_shopping" in params:
         params["collectible_mode_shopping"] = bool(params.get("collectible_mode_shopping", False))
     if "collectible_mode_squad" in params:
         params["collectible_mode_squad"] = str(params.get("collectible_mode_squad", ""))
     if "collectible_mode_start_list" in params:
-        val = params.get("collectible_mode_start_list", {})
-        if isinstance(val, dict):
-            params["collectible_mode_start_list"] = {str(k): bool(v) for k, v in val.items()}
-        elif isinstance(val, str):
-            params["collectible_mode_start_list"] = {item: True for item in _split_tags(val)}
-        elif isinstance(val, list):
-            params["collectible_mode_start_list"] = {str(item): True for item in val if str(item)}
+        params["collectible_mode_start_list"] = _normalize_collectible_awards(
+            params.get("collectible_mode_start_list")
+        )
 
     # CLP_PDS paradigms
     if "expected_collapsal_paradigms" in params:
@@ -546,13 +602,108 @@ def _map_roguelike(params: dict[str, Any]) -> None:
     if "use_foldartal" in params:
         params["use_foldartal"] = bool(params.get("use_foldartal", False))
 
-    # JieGarden 常乐节点 target
-    if "find_playTime_target" in params:
-        params["find_playTime_target"] = bool(params.get("find_playTime_target", False))
+    # JieGarden 常乐节点 target：MaaCore 只在 mode=20001 时读取，且必须是 1~3 的整数，
+    # 缺失或越界会让 verify_and_load_params 直接拒掉整个任务。
+    if params.get("mode") == ROGUELIKE_FIND_PLAYTIME_MODE:
+        target = params.get("find_playTime_target")
+        value = 1 if target in (True, None) else _int_or_default(target, 1)
+        params["find_playTime_target"] = min(3, max(1, value))
+    else:
+        params.pop("find_playTime_target", None)
 
     # Refresh shop with dice
     if "refresh_trader_with_dice" in params:
         params["refresh_trader_with_dice"] = bool(params.get("refresh_trader_with_dice", False))
+
+
+def _validate_roguelike_mode(params: dict[str, Any]) -> None:
+    mode = params.get("mode")
+    if not isinstance(mode, int):
+        return
+    theme = str(params.get("theme", "Sami"))
+    if mode in ROGUELIKE_COMMON_MODES:
+        return
+    required_theme = ROGUELIKE_THEME_ONLY_MODES.get(mode)
+    if required_theme is None:
+        raise TaskMappingError(f"自动肉鸽策略 mode={mode} 不被 MaaCore 支持，请重新选择策略。")
+    if theme != required_theme:
+        raise TaskMappingError(
+            f"自动肉鸽策略 mode={mode} 仅支持 {required_theme} 主题，当前主题为 {theme or '未设置'}。"
+        )
+
+
+def _normalize_roguelike_roles(value: Any) -> str:
+    """UI 展示「稳扎稳打（重装、术师、狙击）」，MaaCore OCR 只认短名「稳扎稳打」。"""
+    text = str(value or "").strip()
+    for separator in ("（", "("):
+        index = text.find(separator)
+        if index > 0:
+            return text[:index].strip()
+    return text
+
+
+def _map_roguelike_seed(params: dict[str, Any]) -> None:
+    raw = params.pop("start_with_seed", None)
+    seed = str(params.pop("seed", "") or "").strip()
+    if isinstance(raw, str) and raw.strip():
+        seed = raw.strip()
+        enabled = True
+    else:
+        enabled = bool(raw)
+    if enabled and seed:
+        params["start_with_seed"] = seed
+
+
+def _map_roguelike_foldartal(params: dict[str, Any]) -> None:
+    raw = params.pop("first_floor_foldartal", params.pop("sami_first_floor_foldartal", None))
+    name = str(params.pop("first_floor_foldartal_name", "") or "").strip()
+    if isinstance(raw, str) and raw.strip():
+        name = raw.strip()
+        enabled = True
+    else:
+        enabled = bool(raw)
+    if enabled and name and params.get("mode") == ROGUELIKE_COLLECTIBLE_MODE:
+        params["first_floor_foldartal"] = name
+
+    if "start_foldartal_list" in params or "first_floor_foldartals" in params or "sami_first_floor_foldartals" in params:
+        value = params.pop("first_floor_foldartals", None)
+        if value is None:
+            value = params.pop("sami_first_floor_foldartals", None)
+        if value is None:
+            value = params.get("start_foldartal_list")
+        items = _split_tags(value) if isinstance(value, str) else _normalize_string_list(value)
+        params.pop("start_foldartal_list", None)
+        if items:
+            params["start_foldartal_list"] = items
+
+
+def _map_roguelike_elite_two(params: dict[str, Any]) -> None:
+    """MaaCore 在 mode != 4 时收到 start_with_elite_two=true 会直接拒绝整个任务。"""
+    if "start_with_elite_two" not in params and "only_start_with_elite_two" not in params:
+        return
+    start = bool(params.pop("start_with_elite_two", False))
+    only = bool(params.pop("only_start_with_elite_two", False))
+    if params.get("mode") != ROGUELIKE_COLLECTIBLE_MODE:
+        return
+    params["start_with_elite_two"] = start
+    params["only_start_with_elite_two"] = only and start
+
+
+def _normalize_collectible_awards(value: Any) -> dict[str, bool]:
+    if isinstance(value, dict):
+        pairs = [(key, bool(flag)) for key, flag in value.items()]
+    elif isinstance(value, str):
+        pairs = [(item, True) for item in _split_tags(value)]
+    elif isinstance(value, list):
+        pairs = [(str(item), True) for item in value if str(item)]
+    else:
+        return {}
+    awards: dict[str, bool] = {}
+    for name, flag in pairs:
+        key = ROGUELIKE_COLLECTIBLE_AWARD_KEYS.get(str(name).strip())
+        if key:
+            awards[key] = flag
+    return awards
 
 
 def _map_reclamation(params: dict[str, Any]) -> None:
@@ -588,13 +739,9 @@ def _map_closedown(params: dict[str, Any]) -> None:
 USERDATA_TRIGGER_INTERVALS = {"EveryTime", "Daily", "Weekly"}
 
 
-def _map_userdata_update(params: dict[str, Any]) -> None:
-    params.setdefault("update_oper_box", bool(params.get("update_oper_box", True)))
-    params.setdefault("update_depot", bool(params.get("update_depot", True)))
+def _userdata_interval(params: dict[str, Any]) -> str:
     interval = str(params.get("trigger_interval", "EveryTime"))
-    if interval not in USERDATA_TRIGGER_INTERVALS:
-        interval = "EveryTime"
-    params["trigger_interval"] = interval
+    return interval if interval in USERDATA_TRIGGER_INTERVALS else "EveryTime"
 
 
 def _map_custom(params: dict[str, Any]) -> None:
@@ -619,11 +766,16 @@ def _select_stage_from_plan(stage_plan: list[Any], weekday: int | None = None) -
     candidates = [_normalize_stage_str(str(stage)) for stage in stage_plan if stage is not None]
     if not candidates:
         return ""
-    current_weekday = datetime.now().weekday() if weekday is None else weekday
+    current_weekday = _maa_weekday() if weekday is None else weekday
     for stage in candidates:
         if not stage or _is_stage_open(stage, current_weekday):
             return stage
     return candidates[0]
+
+
+def _maa_weekday() -> int:
+    """明日方舟 04:00 日切：凌晨 0-4 点仍算前一天（与 options.py / 前端 stageTips 一致）。"""
+    return (datetime.now() - timedelta(hours=4)).weekday()
 
 
 def _is_stage_open(stage: str, weekday: int) -> bool:
@@ -669,6 +821,9 @@ def _normalize_threshold(value: Any) -> float:
     except (TypeError, ValueError):
         threshold = 30.0
     return threshold / 100 if threshold > 1 else threshold
+
+
+RECRUIT_SELECTABLE_LEVELS = {4, 5, 6}
 
 
 def _recruit_confirm_levels(params: dict[str, Any]) -> list[int]:
@@ -731,7 +886,8 @@ def _split_tags(value: Any) -> list[str]:
         return [str(item).strip() for item in value if str(item).strip()]
     if not isinstance(value, str):
         return []
-    return [part.strip() for part in value.replace("；", ";").replace("，", ";").split(";") if part.strip()]
+    normalized = value.replace("；", ";").replace("，", ";").replace(",", ";")
+    return [part.strip() for part in normalized.split(";") if part.strip()]
 
 
 def _recruitment_minutes(value: Any) -> int:

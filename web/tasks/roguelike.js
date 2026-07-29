@@ -19,20 +19,15 @@ function renderRoguelikeAdvanced(p) {
   const isSarkaz = theme === "萨卡兹";
   const isJieGarden = theme === "界园";
   const seedValue = escapeHtmlFallback(p.seed || "");
-  const foldartalsValue = escapeHtmlFallback(
-    Array.isArray(p.first_floor_foldartals) ? p.first_floor_foldartals.join(",") : (p.first_floor_foldartals || "")
-  );
+  const foldartalList = p.first_floor_foldartals ?? p.start_foldartal_list ?? "";
+  const foldartalsValue = escapeHtmlFallback(Array.isArray(foldartalList) ? foldartalList.join(",") : foldartalList);
   const collapsal = escapeHtmlFallback(
     Array.isArray(p.expected_collapsal_paradigms) ? p.expected_collapsal_paradigms.join(",") : (p.expected_collapsal_paradigms || "")
   );
-  const collectibleStartList = escapeHtmlFallback(
-    p.collectible_mode_start_list && typeof p.collectible_mode_start_list === "object" && !Array.isArray(p.collectible_mode_start_list)
-      ? Object.keys(p.collectible_mode_start_list).filter((k) => p.collectible_mode_start_list[k]).join(",")
-      : Array.isArray(p.collectible_mode_start_list)
-        ? p.collectible_mode_start_list.join(",")
-        : (p.collectible_mode_start_list || "")
-  );
   const collectibleSquad = escapeHtmlFallback(p.collectible_mode_squad || "");
+  const foldartalName = escapeHtmlFallback(
+    typeof p.first_floor_foldartal === "string" ? p.first_floor_foldartal : (p.first_floor_foldartal_name || "")
+  );
   return `
     <div class="maaParams wideForm roguelikeAdvanced">
       <span>开始探索 N 次后停止任务</span><input id="paramRoguelikeStarts" type="number" min="0" max="99999" value="${numberValue(p.starts_count, 99999)}" />
@@ -40,15 +35,16 @@ function renderRoguelikeAdvanced(p) {
       <span>最大投资次数${hint("0 = 不限制", escapeHtmlFallback)}</span><input id="paramRoguelikeInvestCount" type="number" min="0" max="99999" value="${numberValue(p.investments_count, 0)}" />
       ${checkRow("stop_when_investment_full", "投资满后停止探索", p.stop_when_investment_full)}
       ${checkRow("investment_with_more_score", `投资后顺带购物${hint("仅刷源石锭策略有效", escapeHtmlFallback)}`, p.investment_with_more_score ?? p.invest_with_more_score)}
-      ${checkRow("use_support_unit", `「开局干员」使用助战${hint("需先填写「开局干员」", escapeHtmlFallback)}`, p.use_support_unit, "mutedCheck", true)}
+      ${checkRow("use_support_unit", `「开局干员」使用助战${hint("需先填写「开局干员」", escapeHtmlFallback)}`, p.use_support_unit)}
       ${checkRow("use_nonfriend_support", "允许使用非好友助战", p.use_nonfriend_support)}
       ${checkRow("stop_at_final_boss", "在第五层 BOSS 前暂停", p.stop_at_final_boss)}
       ${checkRow("stop_at_max_level", "满级后自动停止", p.stop_at_max_level)}
-      ${checkRow("start_with_seed", "使用指定种子开局", p.start_with_seed)}
-      <span>种子${hint("填写后「使用指定种子开局」自动启用", escapeHtmlFallback)}</span><input id="paramRoguelikeSeed" value="${seedValue}" placeholder="留空则不指定" />
+      ${checkRow("start_with_seed", `使用指定种子开局${hint("需同时填写下方种子，两者缺一则不生效。", escapeHtmlFallback)}`, typeof p.start_with_seed === "string" ? Boolean(p.start_with_seed) : p.start_with_seed)}
+      <span>种子</span><input id="paramRoguelikeSeed" value="${seedValue}" placeholder="留空则不指定" />
       ${isMizuki ? checkRow("refresh_trader_with_dice", "水月：用骰子刷新商店", p.refresh_trader_with_dice) : ""}
       ${isSami ? `${checkRow("use_foldartal", "萨米：使用密文板", p.use_foldartal)}
-      ${checkRow("first_floor_foldartal", "萨米：第一层使用远见密文板", p.first_floor_foldartal)}
+      ${checkRow("first_floor_foldartal", `萨米：凹第一层远见密文板${hint("仅「刷开局」策略生效，需填写下方密文板名。", escapeHtmlFallback)}`, Boolean(foldartalName) || p.first_floor_foldartal === true)}
+      <span>└ 期望的密文板名</span><input id="paramRoguelikeFoldartalName" value="${foldartalName}" placeholder="如：生命" />
       <span>萨米：生活队开局密文板${hint("逗号分隔，如：风声,感知,知识", escapeHtmlFallback)}</span><input id="paramRoguelikeFoldartals" value="${foldartalsValue}" placeholder="留空则不指定" />` : ""}
       ${isSarkaz ? `${checkRow("check_collapsal_paradigms", "萨卡兹：检测坍缩范式", p.check_collapsal_paradigms)}
       ${checkRow("double_check_collapsal_paradigms", "萨卡兹：防漏检测（多检一次）", p.double_check_collapsal_paradigms)}
@@ -59,9 +55,14 @@ function renderRoguelikeAdvanced(p) {
       ${p.start_with_elite_two ? checkRow("only_start_with_elite_two", "仅凹精二直升（不满足则重开）", p.only_start_with_elite_two) : ""}
       ${checkRow("collectible_mode_shopping", "烧水启用购物（凹开局结算时进商店）", p.collectible_mode_shopping)}
       <span>烧水分队${hint("覆盖默认分队，仅凹开局模式生效。留空使用主分队", escapeHtmlFallback)}</span><input id="paramRoguelikeCollectibleSquad" value="${collectibleSquad}" placeholder="留空则使用主分队" />
-      <span>凹开局奖励对象${hint("逗号分隔，例：理性,源石锭,赠物", escapeHtmlFallback)}</span><input id="paramRoguelikeCollectibleStart" value="${collectibleStartList}" placeholder="留空则不限定" />
+      <span>凹开局奖励对象${hint("勾选哪些开局奖励值得「烧水」，对应 MaaCore collectible_mode_start_list。", escapeHtmlFallback)}</span>
+      <div class="facilityBox">${collectibleAwardOptions(theme).map((award) => checkRow(
+        `collectibleAward_${award.key}`,
+        award.label,
+        Boolean(collectibleAwardState(p)[award.key])
+      )).join("")}</div>
       <strong class="sectionTitle">以下选项为多任务共用</strong>
-      ${checkRow("delay_abort", "自动肉鸽在战斗结束前延迟「停止」动作", p.delay_abort ?? true)}
+      ${unsupportedRow("自动肉鸽在战斗结束前延迟「停止」动作", "原版是 GUI 层的停止延迟行为，MaaCore 没有该参数。")}
     </div>
   `;
 }
@@ -89,33 +90,49 @@ function collectRoguelikeParams() {
   addBool(params, "refresh_trader_with_dice", "refresh_trader_with_dice");
   addBool(params, "use_foldartal", "use_foldartal");
   addBool(params, "first_floor_foldartal", "first_floor_foldartal");
-  const foldartalsEl = $("paramRoguelikeFoldartals");
-  if (foldartalsEl) {
-    const raw = foldartalsEl.value.trim();
-    if (raw) params.first_floor_foldartals = raw.split(",").map((s) => s.trim()).filter(Boolean);
-  }
+  addValue(params, "first_floor_foldartal_name", "paramRoguelikeFoldartalName", "");
+  addList(params, "first_floor_foldartals", "paramRoguelikeFoldartals");
   addBool(params, "check_collapsal_paradigms", "check_collapsal_paradigms");
   addBool(params, "double_check_collapsal_paradigms", "double_check_collapsal_paradigms");
-  const collapsalEl = $("paramRoguelikeCollapsal");
-  if (collapsalEl) {
-    const raw = collapsalEl.value.trim();
-    if (raw) params.expected_collapsal_paradigms = raw.split(",").map((s) => s.trim()).filter(Boolean);
-  }
+  addList(params, "expected_collapsal_paradigms", "paramRoguelikeCollapsal");
   addBool(params, "find_playTime_target", "find_playTime_target");
   addBool(params, "start_with_elite_two", "start_with_elite_two");
   addBool(params, "only_start_with_elite_two", "only_start_with_elite_two");
   addBool(params, "collectible_mode_shopping", "collectible_mode_shopping");
   addValue(params, "collectible_mode_squad", "paramRoguelikeCollectibleSquad", "");
-  const collectibleStartEl = $("paramRoguelikeCollectibleStart");
-  if (collectibleStartEl) {
-    const raw = collectibleStartEl.value.trim();
-    if (raw) {
-      const items = raw.split(",").map((s) => s.trim()).filter(Boolean);
-      params.collectible_mode_start_list = Object.fromEntries(items.map((item) => [item, true]));
-    }
-  }
-  addBool(params, "delay_abort", "delay_abort");
+  const currentTheme = params.theme
+    || (typeof selectedTask === "function" ? selectedTask()?.params?.theme : "")
+    || "萨卡兹";
+  const awards = collectibleAwardOptions(currentTheme)
+    .filter((award) => $(`collectibleAward_${award.key}`))
+    .map((award) => [award.key, boolOf(`collectibleAward_${award.key}`)]);
+  if (awards.length) params.collectible_mode_start_list = Object.fromEntries(awards);
   return hasGeneralFields ? normalizeRoguelikeParams(params) : params;
+}
+
+// MaaCore RoguelikeCustomStartTaskPlugin 只认这些固定英文键，主题专属项按主题显示。
+const ROGUELIKE_COLLECTIBLE_AWARDS = [
+  { key: "hot_water", label: "热水壶" },
+  { key: "shield", label: "护盾" },
+  { key: "ingot", label: "源石锭" },
+  { key: "hope", label: "希望" },
+  { key: "random", label: "随机奖励" }
+];
+const ROGUELIKE_THEME_AWARDS = {
+  "水月": [{ key: "key", label: "钥匙" }, { key: "dice", label: "骰子" }],
+  "萨卡兹": [{ key: "ideas", label: "思绪" }],
+  "界园": [{ key: "ticket", label: "入场券" }]
+};
+
+function collectibleAwardOptions(theme) {
+  return [...ROGUELIKE_COLLECTIBLE_AWARDS, ...(ROGUELIKE_THEME_AWARDS[theme] || [])];
+}
+
+function collectibleAwardState(p) {
+  const value = p.collectible_mode_start_list;
+  if (Array.isArray(value)) return Object.fromEntries(value.map((item) => [item, true]));
+  if (value && typeof value === "object") return value;
+  return {};
 }
 
 function normalizeRoguelikeParams(params) {

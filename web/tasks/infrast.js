@@ -17,9 +17,9 @@ function renderInfrastAdvanced(p) {
   const rotationVisible = p.mode === "队列轮换" || Number(p.mode) === 20000;
   return `
     <div class="maaParams wideForm">
-      ${customVisible ? '<span>自定义基建文件</span><input class="wideInput" id="paramInfrastFilename" value="' + escapeHtmlFallback(p.filename || p.custom_infrast_file || "") + '" />' : ""}
+      ${customVisible ? renderInfrastFilePicker(p) : ""}
       ${customVisible ? '<span>Plan Index</span><input id="paramInfrastPlanIndex" type="number" min="0" value="' + numberValue(p.plan_index, 0) + '" />' : ""}
-      ${rotationVisible ? '<span>轮换计划</span><input class="wideInput" id="paramInfrastRotation" value="' + escapeHtmlFallback(p.rotation || "") + '" />' : ""}
+      ${rotationVisible ? unsupportedLine("轮换计划", "MaaCore Infrast 没有 rotation 参数，队列轮换的具体计划请写进自定义基建配置文件。") : ""}
       ${checkRow("dorm_trust", "宿舍空余位置蹭信赖", p.dorm_trust)}
       ${checkRow("skip_entered", "不将已进驻的干员放入宿舍", p.skip_entered ?? true)}
       ${checkRow("stone_fragment", "源石碎片自动补货", p.stone_fragment ?? true)}
@@ -29,6 +29,11 @@ function renderInfrastAdvanced(p) {
       ${checkRow("continue_training", "训练完成后继续尝试专精当前技能", p.continue_training)}
     </div>
   `;
+}
+
+function onInfrastFileSelect(select) {
+  const input = $("paramInfrastFilename");
+  if (input && select.value) input.value = select.value;
 }
 
 function collectInfrastParams() {
@@ -48,6 +53,17 @@ function collectInfrastParams() {
   addBool(params, "continue_training", "continue_training");
   addValue(params, "filename", "paramInfrastFilename", "");
   addNumber(params, "plan_index", "paramInfrastPlanIndex", 0);
-  addValue(params, "rotation", "paramInfrastRotation", "");
   return params;
+}
+
+
+// /api/options 已经返回 resource/custom_infrast 下的全部方案文件，不该让用户手敲路径。
+function renderInfrastFilePicker(p) {
+  const current = String(p.filename || p.custom_infrast_file || "");
+  const files = activeClientOptions()?.infrast?.custom_files || UI_OPTIONS?.infrast?.custom_files || [];
+  const options = [{ label: "（手动填写路径）", value: "" }, ...files.map(normalizeOption)];
+  const known = !current || options.some((option) => String(option.value) === current);
+  return `<span>自定义基建文件</span>
+    <select id="paramInfrastFileSelect">${selectOptions(options, known ? current : "", escapeHtmlFallback)}</select>
+    <input class="wideInput" id="paramInfrastFilename" value="${escapeHtmlFallback(current)}" placeholder="resource/custom_infrast 下的相对路径" />`;
 }

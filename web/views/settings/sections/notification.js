@@ -23,7 +23,8 @@ function renderNotificationSection() {
       <button class="settingsButtonSmall" type="button" data-settings-action="saveNotification">保存通知配置</button>
       <button class="settingsButtonSmall" type="button" data-settings-action="testNotification">发送测试</button>
     </div>
-    ${status ? `<p class="settingsLineText">${escapeHtml(status)}</p>` : ""}
+    ${status ? `<p class="settingsLineText ${SETTINGS_STATE.notificationStatusLevel || ""}">${escapeHtml(status)}</p>` : ""}
+    ${SETTINGS_STATE.taskTimeoutStatus ? `<p class="settingsLineText ${SETTINGS_STATE.taskTimeoutStatusLevel || ""}">任务超时：${escapeHtml(SETTINGS_STATE.taskTimeoutStatus)}</p>` : ""}
   `);
 }
 
@@ -50,8 +51,12 @@ async function saveNotificationConfig() {
     });
     if (result && typeof result === "object") SETTINGS_STATE.notification = mergeNotificationState(result);
     SETTINGS_STATE.notificationStatus = "已保存";
+    SETTINGS_STATE.notificationStatusLevel = "ok";
+    if (typeof showToast === "function") showToast("通知配置已保存", "success");
   } catch (e) {
     SETTINGS_STATE.notificationStatus = `保存失败：${e.message || "请求错误"}`;
+    SETTINGS_STATE.notificationStatusLevel = "err";
+    showError(e);
   }
   renderSettingsView();
 }
@@ -67,8 +72,12 @@ async function testNotificationConfig() {
       body: JSON.stringify({ config })
     });
     SETTINGS_STATE.notificationStatus = result?.ok ? "测试已发送" : "测试失败：请检查 Webhook URL 与请求头";
+    SETTINGS_STATE.notificationStatusLevel = result?.ok ? "ok" : "err";
+    if (typeof showToast === "function") showToast(SETTINGS_STATE.notificationStatus, result?.ok ? "success" : "error");
   } catch (e) {
     SETTINGS_STATE.notificationStatus = `测试失败：${e.message || "请求错误"}`;
+    SETTINGS_STATE.notificationStatusLevel = "err";
+    showError(e);
   }
   renderSettingsView();
 }

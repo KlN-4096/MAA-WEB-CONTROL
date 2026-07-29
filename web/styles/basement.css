@@ -1,32 +1,39 @@
 .maaLayout {
   display: grid;
-  grid-template-columns: 210px minmax(400px, 460px) 360px;
-  gap: 28px;
-  min-height: 100%;
-  padding: 31px 20px 34px 62px;
+  grid-template-columns: 210px minmax(360px, 1fr) minmax(300px, 360px);
+  gap: 24px;
+  height: 100%;
+  min-height: 0;
+  padding: 20px 20px 20px 28px;
 }
 
 .taskColumn {
   display: flex;
   flex-direction: column;
-  align-self: start;
+  gap: 10px;
+  min-height: 0;
   width: 210px;
 }
 
 .taskBox {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  min-height: 657px;
+  min-height: 220px;
   border: 1px solid var(--line);
-  border-radius: 5px;
-  padding: 14px 10px 10px;
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  padding: 12px 10px 10px;
 }
 
 .taskList {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 7px;
+  gap: 4px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .taskItem {
@@ -34,11 +41,17 @@
   grid-template-columns: 18px minmax(0, 1fr) 24px;
   align-items: center;
   width: 100%;
-  min-height: 23px;
+  min-height: 26px;
   border: 0;
+  border-radius: var(--radius);
   padding: 0 6px;
   background: transparent;
   text-align: left;
+  transition: background-color var(--t-fast), box-shadow var(--t-fast);
+}
+
+.taskItem:hover {
+  background: var(--hover-bg);
 }
 
 .taskItem.dragging {
@@ -90,10 +103,6 @@
   color: #6f737a;
 }
 
-.taskItem.active .taskNameButton {
-  outline: 1px dotted #3c3c3c;
-}
-
 .taskItem.active .taskConfigButton {
   color: var(--blue);
 }
@@ -111,9 +120,9 @@
 
 .taskButtons {
   display: grid;
-  grid-template-columns: 31px 1fr 1fr;
+  grid-template-columns: 34px 1fr 1fr;
   gap: 0;
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 .taskButtons button {
@@ -179,9 +188,8 @@
 .afterRun {
   display: grid;
   gap: 6px;
-  margin: 14px 25px 11px;
   padding-top: 12px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--line-soft);
   text-align: center;
 }
 
@@ -231,9 +239,9 @@
 }
 
 .linkStart {
-  width: 100px;
-  height: 50px;
-  margin: 0 auto;
+  width: 130px;
+  height: 46px;
+  margin: 4px auto 0;
   border-color: #2f91c7;
   background: linear-gradient(#187fbd, #096fa8);
   color: #f7fbff;
@@ -264,17 +272,18 @@
 .settingsArea {
   display: grid;
   align-content: start;
-  gap: 18px;
-  min-height: 720px;
-  padding-top: 6px;
+  justify-items: center;
+  gap: 16px;
+  min-height: 0;
+  /* 必须保持 visible：任务表单第一行的 ? 气泡是向上弹出的绝对定位元素 */
   overflow: visible;
+  padding: 4px 8px 16px;
 }
 
 .taskEditor {
   display: grid;
   grid-template-columns: minmax(240px, 330px);
   gap: 10px;
-  margin-left: 128px;
   overflow: visible;
 }
 
@@ -372,7 +381,6 @@ input[type="checkbox"] {
   display: grid;
   grid-template-columns: 110px 110px;
   width: 220px;
-  margin-left: 126px;
 }
 
 .modeTabs button {
@@ -395,9 +403,8 @@ input[type="checkbox"] {
 
 .tipsBlock {
   width: 260px;
-  margin-left: 176px;
-  color: var(--text);
-  line-height: 1.35;
+  color: var(--muted);
+  line-height: var(--lh-tight);
   white-space: pre-line;
 }
 
@@ -408,14 +415,15 @@ input[type="checkbox"] {
 
 .eventColumn {
   display: grid;
-  align-content: start;
+  grid-template-rows: auto minmax(120px, 1fr) auto;
   gap: 12px;
-  width: 360px;
+  min-height: 0;
+  height: 100%;
 }
 
 .miniStatus {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
   gap: 6px;
 }
 
@@ -423,9 +431,19 @@ input[type="checkbox"] {
 .eventPanel,
 .placeholderPanel {
   border: 1px solid var(--line-soft);
-  border-radius: 5px;
+  border-radius: var(--radius-lg);
   background: var(--panel);
   padding: 9px;
+}
+
+.eventPanel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.rawLogPanel {
+  grid-template-rows: auto;
 }
 
 .miniStatus span,
@@ -436,7 +454,7 @@ input[type="checkbox"] {
 .miniStatus strong {
   display: block;
   margin-top: 4px;
-  font-size: 13px;
+  font-size: var(--fs-md);
   line-height: 1.25;
   overflow-wrap: anywhere;
   white-space: normal;
@@ -455,9 +473,10 @@ input[type="checkbox"] {
 }
 
 .logList {
-  max-height: 640px;
+  min-height: 0;
   overflow: auto;
   padding-right: 2px;
+  align-content: start;
 }
 
 .rawLogPanel .panelHead {
@@ -465,7 +484,7 @@ input[type="checkbox"] {
 }
 
 .rawLogList {
-  max-height: 280px;
+  max-height: 260px;
 }
 
 .rawLogList[hidden] {
@@ -752,10 +771,79 @@ input[type="checkbox"] {
 }
 
 .taskItem.active {
-  background: #252528;
-  outline: 1px dotted #4a4c50;
+  background: var(--blue-soft);
+  box-shadow: inset 2px 0 0 var(--blue);
+  outline: 0;
 }
 
-.taskItem.active .taskNameButton {
-  outline: 0;
+/* ── 响应式：小屏幕按列堆叠，而不是把日志列裁掉 ─────────── */
+@media (max-width: 1180px) {
+  .maaLayout {
+    grid-template-columns: 210px minmax(0, 1fr);
+    height: auto;
+    min-height: 100%;
+  }
+
+  /* 只作用于一键长草页：.eventColumn 是共享类，作业页/工具页有各自的父网格 */
+  .maaLayout > .eventColumn {
+    grid-column: 1 / -1;
+    height: auto;
+    grid-template-rows: auto auto auto;
+  }
+
+  .maaLayout .logList {
+    max-height: 320px;
+  }
+
+  .taskBox {
+    min-height: 320px;
+  }
+}
+
+@media (max-width: 820px) {
+  .maaLayout {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 16px;
+  }
+
+  .taskColumn {
+    width: 100%;
+  }
+
+  .settingsArea {
+    justify-items: start;
+  }
+}
+
+/* ── 之前在 JS 里用到但样式表里没有定义的类 ───────────── */
+.shortInput,
+.wideForm input.shortInput[type="number"] {
+  width: 76px;
+}
+
+.scrollBox {
+  min-height: 0;
+  overflow: auto;
+}
+
+.unitLabel {
+  margin-left: 6px;
+  color: var(--muted);
+}
+
+.roguelikeAdvanced {
+  align-content: start;
+}
+
+.formNote {
+  color: var(--muted);
+  line-height: var(--lh);
+}
+
+.taskNameButton:hover strong {
+  color: var(--info-fg);
+}
+
+.taskConfigButton:hover {
+  color: var(--blue-fg);
 }

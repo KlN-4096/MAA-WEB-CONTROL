@@ -47,8 +47,13 @@ function fieldRow(label, control, tip = "") {
   </label>`;
 }
 
+// key 支持 "notification.webhook.enabled" 这种点分路径，否则通知节的勾选框永远画不出 checked。
+function settingsValueAt(key) {
+  return String(key).split(".").reduce((node, part) => (node && typeof node === "object" ? node[part] : undefined), SETTINGS_STATE);
+}
+
 function checkLine(label, checked = false, tip = "", key = "", disabled = false) {
-  const value = key ? SETTINGS_STATE[key] : checked;
+  const value = key ? settingsValueAt(key) : checked;
   const attr = key ? ` data-settings-field="${key}"` : "";
   const disabledAttr = disabled ? " disabled" : "";
   return `<span class="settingsCheckLine">
@@ -62,7 +67,8 @@ function checkLine(label, checked = false, tip = "", key = "", disabled = false)
 
 function textBox(value = "", className = "settingsControlL", key = "", attrs = "") {
   const attr = key ? ` data-settings-field="${key}"` : "";
-  return `<input class="${className}" type="text" value="${escapeHtml(value)}"${attr}${attrs} />`;
+  const type = attrs.includes("type=") ? "" : ' type="text"';
+  return `<input class="${className}"${type} value="${escapeHtml(value)}"${attr}${attrs} />`;
 }
 
 function numberBox(value = "", className = "settingsControlS", key = "", attrs = "") {

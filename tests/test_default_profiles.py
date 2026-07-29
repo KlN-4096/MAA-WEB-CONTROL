@@ -68,3 +68,34 @@ class DefaultProfilesTest(unittest.TestCase):
 
         self.assertEqual([task.id for task in completed.tasks[:3]], ["award", "startup", "custom-1"])
         self.assertFalse(completed.tasks[2].enabled)
+
+
+class HiddenBuiltinTaskTest(unittest.TestCase):
+    def test_deleted_builtin_task_is_not_restored(self):
+        """删除内置任务后，GET/PUT 不应再把它补回来。"""
+        profile = Profile(
+            name="daily",
+            tasks=[TaskDefinition(id="startup", type="StartUp")],
+            hidden_builtins=["fight", "roguelike"],
+        )
+
+        completed = complete_profile_tasks(profile)
+        task_ids = [task.id for task in completed.tasks]
+
+        self.assertIn("startup", task_ids)
+        self.assertNotIn("fight", task_ids)
+        self.assertNotIn("roguelike", task_ids)
+        self.assertIn("mall", task_ids)
+        self.assertEqual(completed.hidden_builtins, ["fight", "roguelike"])
+
+    def test_hidden_entry_is_dropped_once_task_comes_back(self):
+        profile = Profile(
+            name="daily",
+            tasks=[TaskDefinition(id="fight", type="Fight")],
+            hidden_builtins=["fight"],
+        )
+
+        completed = complete_profile_tasks(profile)
+
+        self.assertEqual(completed.hidden_builtins, [])
+        self.assertIn("fight", [task.id for task in completed.tasks])

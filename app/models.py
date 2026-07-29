@@ -55,6 +55,8 @@ class Profile(BaseModel):
     description: str = ""
     adb: AdbConfig = Field(default_factory=AdbConfig)
     tasks: list[TaskDefinition] = Field(default_factory=list)
+    # 用户主动删除的内置任务 id，避免每次读写又被模板补回来。
+    hidden_builtins: list[str] = Field(default_factory=list)
 
 
 class AppendCall(BaseModel):
@@ -159,6 +161,7 @@ class UserAdditionalOperator(BaseModel):
 
 class CopilotStartRequest(BaseModel):
     name: str = ""
+    profile_name: str = ""
     task_type: Literal["Copilot", "SSSCopilot", "ParadoxCopilot"] = "Copilot"
     filename: str = ""
     copilot_list: list[CopilotListItem] = Field(default_factory=list)
@@ -196,6 +199,11 @@ class CopilotInfo(BaseModel):
     uploader: str = ""
 
 
+class CopilotUploadRequest(BaseModel):
+    name: str = "copilot.json"
+    content: str
+
+
 class CopilotResolveRequest(BaseModel):
     code: str
 
@@ -210,6 +218,7 @@ class CopilotResolveResponse(BaseModel):
 class ToolRequest(BaseModel):
     tool: str
     params: dict[str, Any] = Field(default_factory=dict)
+    profile_name: str = ""
 
 
 class AdapterConfig(BaseModel):

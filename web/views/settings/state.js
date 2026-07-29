@@ -52,7 +52,6 @@ const SETTINGS_PERSISTED_FIELDS = [
   "showUpdaterConsole",
   "updateChannel",
   "forceGithubGlobalSource",
-  "mirrorChyanCdk",
   "proxyType",
   "proxyAddress",
   "achievementPopupDisabled",
@@ -219,7 +218,7 @@ function restoreSettingsState() {
     "achievementPopupDisabled",
     "achievementPopupAutoClose"
   ].forEach((field) => MaaStorage.copyBoolean(parsed, restored, field));
-  ["clientType", "connectConfig", "adbAddress", "adbPath", "touchMode", "updateChannel", "updateSource", "mirrorChyanCdk", "proxyType", "proxyAddress", "maaAdapterType", "maaCoreDir", "ldExtrasPath"].forEach((field) => MaaStorage.copyString(parsed, restored, field));
+  ["clientType", "connectConfig", "adbAddress", "adbPath", "touchMode", "updateChannel", "updateSource", "proxyType", "proxyAddress", "maaAdapterType", "maaCoreDir", "ldExtrasPath"].forEach((field) => MaaStorage.copyString(parsed, restored, field));
   if (Number.isInteger(parsed.ldExtrasIndex)) restored.ldExtrasIndex = Math.max(0, parsed.ldExtrasIndex);
   if (parsed?.logThumbnailMax !== undefined) restored.logThumbnailMax = clampNumber(parsed.logThumbnailMax, 1, 9999, SETTINGS_STATE.logThumbnailMax);
   if (Array.isArray(parsed.timers)) restored.timers = restoreTimers(parsed.timers);
@@ -242,7 +241,10 @@ function readSettingsStorage() {
 }
 
 function persistSettingsState() {
-  MaaStorage.writeObject(SETTINGS_STORAGE_KEY, MaaStorage.pick(SETTINGS_STATE, SETTINGS_PERSISTED_FIELDS));
+  // 凭据（Mirror酱 CDK、Webhook 请求头）只保存在服务端，不写浏览器本地存储。
+  const payload = MaaStorage.pick(SETTINGS_STATE, SETTINGS_PERSISTED_FIELDS);
+  if (payload.notification?.webhook) payload.notification = { ...payload.notification, webhook: { ...payload.notification.webhook, headers: {} } };
+  MaaStorage.writeObject(SETTINGS_STORAGE_KEY, payload);
 }
 
 function restoreTimers(timers) {

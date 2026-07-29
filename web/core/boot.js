@@ -63,6 +63,7 @@ async function loadLogCards() {
 }
 
 function renderAll() {
+  renderWindowTitle();
   renderView();
 }
 
@@ -70,9 +71,20 @@ function renderMainNav() {
   const nav = document.querySelector(".mainNav");
   if (!nav) return;
   nav.innerHTML = window.MaaFeatures?.list().map((feature) => {
-    const active = feature.id === state.currentView ? " active" : "";
-    return `<button class="navButton${active}" type="button" data-view="${escapeHtml(feature.id)}">${escapeHtml(feature.title)}</button>`;
+    const active = feature.id === state.currentView;
+    return `<button class="navButton${active ? " active" : ""}" type="button" role="tab" aria-selected="${active}" data-view="${escapeHtml(feature.id)}">${escapeHtml(feature.title)}</button>`;
   }).join("") || "";
+}
+
+// 标题栏之前是硬编码的假信息（版本/设备/服务器都可能是错的）。
+function renderWindowTitle() {
+  const el = $("windowTitleText");
+  if (!el) return;
+  const version = SETTINGS_STATE?.webVersion && SETTINGS_STATE.webVersion !== "—" ? ` - v${String(SETTINGS_STATE.webVersion).replace(/^v/, "")}` : "";
+  const client = typeof activeClientType === "function" ? activeClientType() : "";
+  const clientLabel = { Official: "官服", Bilibili: "B服", txwy: "繁中服", YoStarEN: "国际服", YoStarJP: "日服", YoStarKR: "韩服" }[client] || client;
+  const profile = state.profile?.name ? ` - ${state.profile.name}` : "";
+  el.textContent = `MAA Web${version}${profile}${clientLabel ? ` - ${clientLabel}` : ""}`;
 }
 
 function renderView() {
@@ -81,9 +93,14 @@ function renderView() {
     persistCurrentView();
   }
   document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
-  document.querySelectorAll(".navButton").forEach((button) => button.classList.remove("active"));
+  document.querySelectorAll(".navButton").forEach((button) => {
+    button.classList.remove("active");
+    button.setAttribute("aria-selected", "false");
+  });
   $(`view-${state.currentView}`).classList.add("active");
-  document.querySelector(`[data-view="${state.currentView}"]`)?.classList.add("active");
+  const activeNav = document.querySelector(`[data-view="${state.currentView}"]`);
+  activeNav?.classList.add("active");
+  activeNav?.setAttribute("aria-selected", "true");
   setText("viewTitle", window.MaaFeatures?.title(state.currentView) || state.currentView);
   setText("viewSubtitle", state.profile?.name || "");
   window.MaaFeatures?.render(state.currentView, FEATURE_CONTEXT);
@@ -94,6 +111,10 @@ function switchView(event) {
   const button = event.target.closest("[data-view]");
   if (!button) return;
   closeTaskMenus();
+  // 离开小工具页要停掉截图流，否则后端会一直抓屏。
+  if (state.currentView === "tools" && button.dataset.view !== "tools" && typeof stopPeepStream === "function") {
+    stopPeepStream();
+  }
   state.currentView = button.dataset.view;
   persistCurrentView();
   renderView();

@@ -32,24 +32,22 @@ function renderFightAdvanced(p, escapeHtml) {
       ${checkRow("dr_grandet", "饿朗台模式", p.dr_grandet)}
       ${checkRow("use_expiring_medicine", "无限吃 N 小时内过期的理智药", p.use_expiring_medicine ?? true)}
       <div class="subLine">└ <select id="paramMedicineExpireHours">${selectOptions(MEDICINE_EXPIRE_OPTIONS, p.medicine_expire_hours || "48h", escapeHtml)}</select></div>
-      <div class="subLine"><span>过期理智药使用上限${hint("0 = 不限制；可单独限制即将过期理智药的最大使用数量。", escapeHtml)}</span><input id="paramExpiringMedicineCount" type="number" min="0" max="999" class="shortInput" value="${numberValue(p.expiring_medicine_count, 0)}" /></div>
-      ${checkRow("use_activity_expire", "活动结束前 48H 吃当周过期理智药", p.use_activity_expire)}
-      <div class="subLine disabled">└ 暂无活动</div>
-      ${checkRow("hide_series", "隐藏代理倍率", p.hide_series)}
-      ${checkRow("allow_stone_save", "允许使用源石保存状态", p.allow_stone_save)}
+      ${unsupportedLine("过期理智药使用上限", "MaaCore 已废弃 expiring_medicine，改用上面的「N 小时内过期」时限控制。")}
+      ${unsupportedRow("活动结束前 48H 吃当周过期理智药")}
+      ${unsupportedRow("隐藏代理倍率", "原版 WPF 的界面显示开关，不影响实际执行。")}
+      ${unsupportedRow("允许使用源石保存状态", "原版 WPF 的界面行为开关，MaaCore 不消费。")}
       ${checkRow("report_to_penguin", "上报 PenguinStats 掉落数据", p.report_to_penguin)}
       <div class="subLine"><span>企鹅物流 ID（留空自动）</span><input id="paramPenguinId" class="wideInput" value="${escapeHtml(p.penguin_id || "")}" /></div>
       ${checkRow("report_to_yituliu", "上报一图流", p.report_to_yituliu)}
       <div class="subLine"><span>一图流 ID（留空自动）</span><input id="paramYituliuId" class="wideInput" value="${escapeHtml(p.yituliu_id || "")}" /></div>
       ${checkRow("custom_stage_code", `手动输入关卡名${hint(FIGHT_TOOLTIPS.customStage, escapeHtml)}`, p.custom_stage_code)}
-      <span>过期关卡重置为</span><select id="paramStageReset">${selectOptions([{ label: "当前/上次", value: "CurrentStage" }, "不切换"], normalizeStageValue(p.stage_reset), escapeHtml)}</select>
+      ${unsupportedLine("过期关卡重置为", "原版 WPF 的关卡列表重置策略，不参与任务执行。")}
       ${checkRow("use_alternate_stage", "使用备选关卡", p.use_alternate_stage ?? true)}
-      ${checkRow("hide_unavailable_stage", "下拉框中隐藏当日不开关卡", p.hide_unavailable_stage)}
-      ${checkRow("weekly_schedule", "启用周计划", p.weekly_schedule)}
+      ${unsupportedLine("下拉框中隐藏当日不开关卡", "关卡下拉已按当日（04:00 日切）自动过滤，无需该开关。")}
+      ${unsupportedRow("启用周计划", "原版 WPF 的周一至周日关卡计划，Web 版暂未实现。")}
       <strong class="sectionTitle">以下选项为多任务共用</strong>
-      ${checkRow("auto_restart", "游戏掉线时自动重连", p.auto_restart ?? true)}
-      ${checkRow("use_remaining_sanity_stage", "使用剩余理智执行指定关卡", p.use_remaining_sanity_stage)}
-      <div class="subLine"><span>剩余理智关卡</span><input class="wideInput" id="paramRemainingSanityStage" placeholder="留空则同正常关卡" value="${escapeHtml(p.remaining_sanity_stage || "")}" /></div>
+      ${checkRow("auto_restart", `游戏掉线时自动重连${hint("对应 MaaCore Fight.client_type：开启后掉线会自动重启客户端并继续作战。", escapeHtml)}`, p.auto_restart ?? true)}
+      ${unsupportedRow("使用剩余理智执行指定关卡", "MaaCore Fight 不支持该参数。请改用任务列表里的「剩余理智」任务（独立一条 Fight）。")}
       <span>服务器${hint("用于上报数据时区分服务器，默认 CN（官服/B服）", escapeHtml)}</span><select id="paramFightServer">${selectOptions([
         { label: "官服 (CN)", value: "CN" },
         { label: "国际服 (US)", value: "US" },
@@ -85,22 +83,15 @@ function collectFightParams() {
   addBool(params, "dr_grandet", "dr_grandet");
   addBool(params, "use_expiring_medicine", "use_expiring_medicine");
   addValue(params, "medicine_expire_hours", "paramMedicineExpireHours", "48h");
-  addBool(params, "use_activity_expire", "use_activity_expire");
-  addBool(params, "hide_series", "hide_series");
-  addBool(params, "allow_stone_save", "allow_stone_save");
   addBool(params, "report_to_penguin", "report_to_penguin");
   addValue(params, "penguin_id", "paramPenguinId", "");
   addBool(params, "report_to_yituliu", "report_to_yituliu");
   addValue(params, "yituliu_id", "paramYituliuId", "");
-  addNumber(params, "expiring_medicine_count", "paramExpiringMedicineCount", 0);
   addBool(params, "custom_stage_code", "custom_stage_code");
-  addValue(params, "stage_reset", "paramStageReset", "CurrentStage");
   addBool(params, "use_alternate_stage", "use_alternate_stage");
-  addBool(params, "hide_unavailable_stage", "hide_unavailable_stage");
-  addBool(params, "weekly_schedule", "weekly_schedule");
   addBool(params, "auto_restart", "auto_restart");
-  addBool(params, "use_remaining_sanity_stage", "use_remaining_sanity_stage");
-  addValue(params, "remaining_sanity_stage", "paramRemainingSanityStage", "");
   addValue(params, "server", "paramFightServer", "CN");
+  // MaaCore 用 Fight.client_type 是否为空来开关「掉线自动重连」（integration.md:176）。
+  if ($("auto_restart")) params.client_type = boolOf("auto_restart") ? activeClientType() : "";
   return params;
 }

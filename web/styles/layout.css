@@ -29,23 +29,38 @@
 
 .windowTitle {
   gap: 8px;
-  font-size: 13px;
+  min-width: 0;
+  font-size: var(--fs-md);
+}
+
+.windowTitle span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .appIcon {
+  flex: 0 0 auto;
   width: 18px;
   height: 18px;
 }
 
 .windowTools {
-  gap: 18px;
+  gap: 14px;
   color: #d6d6d6;
 }
 
 .windowTools button {
-  width: 24px;
-  min-height: 24px;
+  width: var(--control-h-sm);
+  min-height: var(--control-h-sm);
   padding: 0;
+}
+
+/* 这三个是纯装饰（浏览器里没有窗口按钮），明确弱化并禁止选中 */
+.windowTools .windowDecor {
+  opacity: 0.3;
+  cursor: default;
+  user-select: none;
 }
 
 .mainNav {
@@ -64,9 +79,15 @@
   background: transparent;
 }
 
+.navButton:hover:not(:disabled) {
+  background: var(--hover-bg);
+  border-color: transparent;
+  color: var(--info-fg);
+}
+
 .navButton.active {
   border-bottom-color: var(--blue);
-  color: #28a9ff;
+  color: var(--blue-fg);
 }
 
 .content {
@@ -81,4 +102,5 @@
 .view.active {
   display: block;
   min-height: 100%;
+  height: 100%;
 }

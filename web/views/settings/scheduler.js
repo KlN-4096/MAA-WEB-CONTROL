@@ -44,7 +44,8 @@ async function loadSchedulerConfig() {
       timer.minute = Math.min(59, Math.max(0, parseInt(m, 10) || 0));
       timer.config = slot.profile_name || "";
     });
-    SETTINGS_STATE.forceStart = config.slots.some((s) => s.force_start);
+    // 首次启动时 scheduler.json 还不存在，slots 为空数组，不能用它推翻用户已选的开关。
+    if (config.slots.length) SETTINGS_STATE.forceStart = config.slots.some((s) => s.force_start);
     if (config.post_action && typeof state !== "undefined") {
       state.postAction = currentPostActionPayloadFrom(config.post_action);
       if (typeof renderPostActionControl === "function") renderPostActionControl();
@@ -88,7 +89,12 @@ async function saveRunnerConfig() {
       body: JSON.stringify({ task_timeout_minutes: Number(SETTINGS_STATE.taskTimeoutMinutes ?? 0) })
     });
     SETTINGS_STATE.taskTimeoutStatus = "已保存";
+    SETTINGS_STATE.taskTimeoutStatusLevel = "ok";
+    if (typeof showToast === "function") showToast("任务超时设置已保存", "success");
   } catch (e) {
     SETTINGS_STATE.taskTimeoutStatus = `保存失败：${e.message || "请求错误"}`;
+    SETTINGS_STATE.taskTimeoutStatusLevel = "err";
+    showError(e);
   }
+  if (typeof state !== "undefined" && state.currentView === "settings") renderSettingsView();
 }

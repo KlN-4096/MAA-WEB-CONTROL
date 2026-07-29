@@ -19,17 +19,17 @@
       <header class="titlebar">
         <div class="windowTitle">
           <img class="appIcon" src="/newlogo.ico" alt="" />
-          <span>MAA Web - v0.1.0 - redroid - 官服</span>
+          <span id="windowTitleText">MAA Web</span>
         </div>
         <div class="windowTools">
-          <button id="refreshButton" type="button" title="刷新">⟳</button>
-          <span>─</span>
-          <span>□</span>
-          <span>×</span>
+          <button id="refreshButton" type="button" title="刷新全部数据">⟳</button>
+          <span class="windowDecor" aria-hidden="true">─</span>
+          <span class="windowDecor" aria-hidden="true">□</span>
+          <span class="windowDecor" aria-hidden="true">×</span>
         </div>
       </header>
 
-      <nav class="mainNav" aria-label="主导航"></nav>
+      <nav class="mainNav" role="tablist" aria-label="主导航"></nav>
 
       <main class="content">
         <section id="view-basement" class="view active">
@@ -48,8 +48,7 @@
                 <strong>无动作</strong>
               </div>
               <button id="runButton" type="button" class="linkStart">Link Start!</button>
-              <button id="stopButton" type="button" class="linkStart stopStart ghost">停止</button>
-            </aside>
+                </aside>
 
             <section class="settingsArea">
               <div id="taskEditor" class="taskEditor empty">请选择一个任务</div>
@@ -71,7 +70,7 @@
                   <span>执行日志</span>
                   <button id="clearLogsButton" type="button">清空</button>
                 </div>
-                <div id="logList" class="logList" data-log-list="main"></div>
+                <div id="logList" class="logList" data-log-list="main" aria-live="polite" aria-relevant="additions"></div>
               </div>
               <div class="eventPanel rawLogPanel">
                 <div class="panelHead">
@@ -93,7 +92,7 @@
                   <span>执行日志</span>
                   <button id="copilotClearLogsButton" type="button" data-copilot-log-action="clear">清空</button>
                 </div>
-                <div id="copilotLogList" class="logList" data-log-list="main"></div>
+                <div id="copilotLogList" class="logList" data-log-list="main" aria-live="polite" aria-relevant="additions"></div>
               </div>
               <div class="eventPanel rawLogPanel">
                 <div class="panelHead">
@@ -107,7 +106,18 @@
         </section>
 
         <section id="view-tools" class="view">
-          <div id="toolsViewRoot" class="toolsViewRoot"></div>
+          <div class="toolsLayout">
+            <div id="toolsViewRoot" class="toolsViewRoot"></div>
+            <aside class="eventColumn toolsLogColumn" aria-label="小工具日志">
+              <div class="eventPanel">
+                <div class="panelHead">
+                  <span>执行日志</span>
+                  <button id="toolsClearLogsButton" type="button">清空</button>
+                </div>
+                <div id="toolsLogList" class="logList" data-log-list="main" aria-live="polite" aria-relevant="additions"></div>
+              </div>
+            </aside>
+          </div>
         </section>
 
         <section id="view-settings" class="view">
@@ -123,6 +133,7 @@
     <script src="/core/api.js"></script>
 
     <!-- Shared utilities -->
+    <script src="/shared/toast.js"></script>
     <script src="/shared/logCards.js"></script>
     <script src="/shared/logEvents.js"></script>
 

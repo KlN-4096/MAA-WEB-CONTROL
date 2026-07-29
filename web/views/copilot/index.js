@@ -75,6 +75,8 @@ normalizeCopilotState();
 
 let COPILOT_OPTIONS = null;
 let copilotWired = false;
+let copilotImportMode = false;
+let copilotLaunchedAt = 0;
 const copilotExpandedFolders = {};
 
 function restoreCopilotState() {
@@ -137,7 +139,7 @@ function renderCopilotView() {
       <div class="copilotTop">
         <div class="copilotTabs">${COPILOT_TABS.map(copilotTabButton).join("")}</div>
         ${renderCopilotPathRow()}
-        ${renderCopilotInfoBlock()}
+        <div class="copilotInfoBlock">${renderCopilotInfoBlock()}</div>
       </div>
       <div class="copilotBody">
         <div class="copilotRunColumn">
@@ -179,10 +181,10 @@ function renderCopilotPathRow() {
         <button class="pathDropButton" type="button" data-copilot-action="toggleFiles"${idleDisabledAttr()}>${COPILOT_STATE.filePopupOpen ? "⌃" : "⌄"}</button>
         ${COPILOT_STATE.filePopupOpen ? renderFilePopup() : ""}
       </div>
-      ${iconButton("selectFile", "▢", "作业文件可以直接用鼠标拖进来哦 (oﾟvﾟ)ノ")}
+      ${iconButton("selectFile", "▢", "选择本地作业 JSON（会上传到服务器供 MAA 读取）")}
       ${iconButton("pasteTask", "⧉", "读取剪贴板并添加为作业")}
       ${iconButton("pasteSet", "▤", "读取剪贴板并添加为作业集")}
-      <input id="copilotFilePicker" class="hiddenFileInput" type="file" accept=".json" />
+      <input id="copilotFilePicker" class="hiddenFileInput" type="file" accept=".json"${copilotImportMode ? " multiple" : ""} />
     </div>
   `;
 }
@@ -198,7 +200,8 @@ function renderFilePopup() {
 function renderFileItem(item, depth) {
   const folder = item.is_folder;
   const children = Array.isArray(item.children) ? item.children : [];
-  const path = item.relative_path || item.path || "";
+  // 必须用绝对 path：relative_path 是相对 MAA 目录的，后端按进程 CWD 解析会找不到文件。
+  const path = (folder ? (item.relative_path || item.path) : (item.path || item.relative_path)) || "";
   const escapedPath = escapeHtml(path);
   const expanded = folder && copilotExpandedFolders[path];
   const icon = folder ? (expanded ? "▾" : "▸") : "·";
@@ -223,6 +226,9 @@ function renderCopilotRunButton() {
 }
 
 function renderCopilotInfoBlock() {
+  if (COPILOT_STATE.startError) {
+    return `<div class="copilotInfoLine error">${escapeHtml(COPILOT_STATE.startError)}</div>`;
+  }
   if (COPILOT_STATE.resolveBusy) {
     return '<div class="copilotInfoLine loading">正在解析作业……</div>';
   }
@@ -241,7 +247,14 @@ function renderCopilotInfoBlock() {
     Number.isInteger(info.rating_level) ? `评级 ${info.rating_level}` : "",
     info.uploader ? `by ${escapeHtml(info.uploader)}` : "",
   ].filter(Boolean);
-  return `<div class="copilotInfoLine ok"><span class="copilotInfoMain">${segments.join(" · ")}</span><span class="copilotInfoSource">${escapeHtml(sourceLabel)}</span></div>`;
+  const operNames = opers
+    .map((oper) => (typeof oper === "string" ? oper : `${oper?.name || ""}${oper?.skill ? ` ${oper.skill}技` : ""}`))
+    .filter(Boolean);
+  const detailRows = [
+    info.details ? `<div class="copilotInfoDetail">${escapeHtml(truncate(info.details, 120))}</div>` : "",
+    operNames.length ? `<div class="copilotInfoOpers">${operNames.slice(0, 12).map((name) => `<span>${escapeHtml(name)}</span>`).join("")}${operNames.length > 12 ? `<span class="more">+${operNames.length - 12}</span>` : ""}</div>` : ""
+  ].join("");
+  return `<div class="copilotInfoLine ok"><span class="copilotInfoMain">${segments.join(" · ")}</span><span class="copilotInfoSource">${escapeHtml(sourceLabel)}</span></div>${detailRows}`;
 }
 
 function syncCopilotRunState(runnerState = state.runnerState, shouldRender = true) {
@@ -249,23 +262,23 @@ function syncCopilotRunState(runnerState = state.runnerState, shouldRender = tru
   const previousIdle = COPILOT_STATE.idle;
   const previousRunnerState = COPILOT_STATE.runnerState;
   COPILOT_STATE.runnerState = nextRunnerState;
-  const busy = typeof isRunnerBusy === "function" ? isRunnerBusy(nextRunnerState) : false;
-  const terminal = nextRunnerState === "Completed" || nextRunnerState === "Failed" || nextRunnerState === "Stopped";
-  if (busy) {
-    COPILOT_STATE.launching = false;
-    COPILOT_STATE.idle = false;
-  } else if (terminal) {
-    COPILOT_STATE.launching = false;
-    COPILOT_STATE.idle = true;
-  } else if (COPILOT_STATE.launching) {
-    COPILOT_STATE.idle = false;
-  } else {
-    COPILOT_STATE.idle = true;
-  }
+  // 自动战斗不走 runner 状态机：profile 在跑时禁用按钮，其余时候由本地 launching 标志
+  // 配合 MaaCore 任务链事件（onCopilotChainEvent）决定。
+  const profileBusy = typeof isRunnerBusy === "function" ? isRunnerBusy(nextRunnerState) : false;
+  COPILOT_STATE.idle = !profileBusy && !COPILOT_STATE.launching;
   if (!shouldRender) return;
   if ((previousIdle !== COPILOT_STATE.idle || previousRunnerState !== nextRunnerState) && state.currentView === "copilot") {
     renderCopilotView();
   }
+}
+
+// 由 shared/logEvents.js 在收到 maa.task_chain.* 时调用。
+function onCopilotChainEvent(type, stamp) {
+  if (!COPILOT_STATE.launching || stamp < copilotLaunchedAt) return;
+  COPILOT_STATE.launching = false;
+  if (type === "maa.task_chain.error") COPILOT_STATE.startError = "任务链执行失败，详见运行日志。";
+  syncCopilotRunState(state.runnerState);
+  if (state.currentView === "copilot") renderCopilotView();
 }
 
 function truncate(text, max) {
@@ -435,10 +448,9 @@ function onCopilotChange(event) {
     persistCopilotState();
   }
 
-  if (event.target.id === "copilotFilePicker" && event.target.files?.[0]) {
-    COPILOT_STATE.filename = event.target.files[0].name;
-    persistCopilotState();
-    renderCopilotView();
+  if (event.target.id === "copilotFilePicker" && event.target.files?.length) {
+    uploadCopilotFiles([...event.target.files]).catch(showError);
+    event.target.value = "";
   }
 }
 
@@ -460,6 +472,9 @@ let copilotResolveSeq = 0;
 
 function scheduleCopilotResolve() {
   clearTimeout(copilotResolveTimer);
+  // 输入一变，上一次的解析结果立刻作废，否则「换作业后马上点开始」会跑旧作业。
+  COPILOT_STATE.resolvedPath = "";
+  COPILOT_STATE.resolvedInfo = null;
   const text = (COPILOT_STATE.filename || "").trim();
   if (!text) {
     COPILOT_STATE.resolvedInfo = null;
@@ -499,8 +514,8 @@ async function triggerCopilotResolve(text) {
     COPILOT_STATE.resolvedInfo = result.info;
     COPILOT_STATE.resolvedPath = result.path || "";
     COPILOT_STATE.resolveError = "";
-    const isMystery = /^\s*(?:maa:\/\/|prts\.(?:maa\.)?plus)/i.test(text) || /^\s*\d{1,9}\s*$/.test(text);
-    if (result.path && result.path !== COPILOT_STATE.filename && isMystery) {
+    // 解析成功后一律回填真实路径：无论输入的是神秘代码、prts.plus 链接还是本地路径。
+    if (result.path && result.path !== COPILOT_STATE.filename) {
       COPILOT_STATE.filename = result.path;
       persistCopilotState();
       const input = document.getElementById("copilotFilenameInput");
@@ -515,24 +530,13 @@ async function triggerCopilotResolve(text) {
 }
 
 function refreshCopilotInfoBlock() {
-  const top = document.querySelector(".copilotTop");
-  if (!top) {
+  const container = document.querySelector(".copilotInfoBlock");
+  if (!container) {
     renderCopilotView();
     return;
   }
-  const html = renderCopilotInfoBlock();
-  let block = top.querySelector(".copilotInfoLine");
-  if (!html) {
-    if (block) block.remove();
-    return;
-  }
-  if (block) {
-    block.outerHTML = html;
-  } else {
-    const pathRow = top.querySelector(".copilotPathRow");
-    if (pathRow) pathRow.insertAdjacentHTML("afterend", html);
-    else top.insertAdjacentHTML("beforeend", html);
-  }
+  // 整块替换：信息块包含状态行 + 作业说明 + 干员标签三个同级元素。
+  container.innerHTML = renderCopilotInfoBlock();
 }
 
 async function runCopilotAction(action, payload = {}) {
@@ -542,6 +546,7 @@ async function runCopilotAction(action, payload = {}) {
   const alternate = Boolean(options.alternate);
   const persistedAction = ["pasteTask", "pasteSet", "addTask", "clearTasks", "deleteTask", "selectTask"].includes(action);
   if (action === "start") {
+    copilotLaunchedAt = Date.now();
     COPILOT_STATE.launching = true;
     COPILOT_STATE.filePopupOpen = false;
     syncCopilotRunState(state.runnerState);
@@ -555,9 +560,18 @@ async function runCopilotAction(action, payload = {}) {
     return;
   }
   if (action === "toggleFiles") COPILOT_STATE.filePopupOpen = !COPILOT_STATE.filePopupOpen;
-  if (action === "selectFile") $("copilotFilePicker")?.click();
-  if (action === "pasteTask" || action === "pasteSet") await pasteCopilotText();
-  if (action === "importFiles") $("copilotFilePicker")?.click();
+  // 打开系统文件对话框后必须立刻返回：重渲染会把 file input 换成新元素，
+  // 用户选完文件时 change 只会在已脱离文档的旧节点上派发。
+  if (action === "selectFile") {
+    pickCopilotFiles(false);
+    return;
+  }
+  if (action === "pasteTask") await pasteCopilotText();
+  if (action === "pasteSet") await pasteCopilotSet();
+  if (action === "importFiles") {
+    pickCopilotFiles(true);
+    return;
+  }
   if (action === "addTask") addCopilotTask(alternate);
   if (action === "clearTasks") clearCopilotTasks(alternate);
   if (action === "deleteTask") deleteCopilotTask(copilotPayloadIndex(options));
@@ -598,8 +612,13 @@ function normalizeCopilotState() {
 }
 
 function addCopilotTask(raid) {
-  const name = COPILOT_STATE.taskName || basenameWithoutExt(COPILOT_STATE.filename) || "未命名";
-  COPILOT_STATE.tasks.push({ name, path: COPILOT_STATE.filename, raid, checked: true });
+  const path = copilotFilePath();
+  const name = COPILOT_STATE.taskName || basenameWithoutExt(path) || "未命名";
+  if (!path) {
+    showNotice("请先选择作业文件或填写神秘代码", "warning");
+    return;
+  }
+  COPILOT_STATE.tasks.push({ name, path, raid, checked: true });
 }
 
 function clearCopilotTasks(onlyUnchecked) {
@@ -613,17 +632,71 @@ function selectCopilotTask(index, disableList) {
   if (disableList) COPILOT_STATE.useCopilotList = false;
 }
 
-async function pasteCopilotText() {
-  if (!navigator.clipboard?.readText) return;
-  try {
-    const text = await navigator.clipboard.readText();
-    if (text) {
-      COPILOT_STATE.filename = text.trim();
-      scheduleCopilotResolve();
-    }
-  } catch (error) {
-    console.warn("Clipboard access denied:", error.message);
+function pickCopilotFiles(multiple) {
+  const picker = $("copilotFilePicker");
+  if (!picker) return;
+  picker.multiple = Boolean(multiple);
+  copilotImportMode = Boolean(multiple);
+  picker.click();
+}
+
+// 浏览器出于安全不提供真实路径，必须把作业内容上传到 MAA 能读到的目录。
+async function uploadCopilotFiles(files) {
+  const uploaded = [];
+  for (const file of files) {
+    const content = await file.text();
+    const result = await api("/api/copilot/upload", {
+      method: "POST",
+      body: JSON.stringify({ name: file.name, content })
+    });
+    if (result?.ok && result.path) uploaded.push({ name: basenameWithoutExt(result.name), path: result.path });
   }
+  if (!uploaded.length) return;
+  if (copilotImportMode) {
+    if (!COPILOT_STATE.useCopilotList) COPILOT_STATE.useCopilotList = true;
+    uploaded.forEach((item) => COPILOT_STATE.tasks.push({ name: item.name, path: item.path, raid: false, checked: true }));
+    showNotice(`已导入 ${uploaded.length} 个作业`, "success");
+  } else {
+    COPILOT_STATE.filename = uploaded[0].path;
+    COPILOT_STATE.resolvedPath = uploaded[0].path;
+    showNotice(`已上传作业：${uploaded[0].name}`, "success");
+    scheduleCopilotResolve();
+  }
+  persistCopilotState();
+  renderCopilotView();
+}
+
+async function readClipboardText() {
+  // navigator.clipboard 仅在 https / localhost 可用；局域网 http 访问时必须给出明确提示。
+  if (!navigator.clipboard?.readText) {
+    showNotice("当前不是安全上下文（https/localhost），浏览器禁止读取剪贴板，请手动粘贴到路径框。", "warning");
+    return "";
+  }
+  try {
+    return (await navigator.clipboard.readText()) || "";
+  } catch (error) {
+    showNotice(`读取剪贴板失败：${error?.message || "已被浏览器拒绝"}`, "warning");
+    return "";
+  }
+}
+
+async function pasteCopilotText() {
+  const text = await readClipboardText();
+  if (!text.trim()) return;
+  COPILOT_STATE.filename = text.trim();
+  scheduleCopilotResolve();
+}
+
+// 作业集：剪贴板里每行/每个分号段视为一个作业，批量加入作业列表。
+async function pasteCopilotSet() {
+  const text = await readClipboardText();
+  const entries = text.split(/[\r\n;]+/).map((item) => item.trim()).filter(Boolean);
+  if (!entries.length) return;
+  if (!COPILOT_STATE.useCopilotList) COPILOT_STATE.useCopilotList = true;
+  entries.forEach((entry) => {
+    COPILOT_STATE.tasks.push({ name: basenameWithoutExt(entry) || entry, path: entry, raid: false, checked: true });
+  });
+  showNotice(`已添加 ${entries.length} 个作业到作业列表`, "success");
 }
 
 function basenameWithoutExt(path) {
@@ -640,6 +713,15 @@ function copilotUnavailable() {
 async function fireCopilotStart() {
   if (typeof api !== "function") return;
   const job = copilotStartPayload();
+  if (!job.filename && !job.copilot_list && !job.list) {
+    COPILOT_STATE.launching = false;
+    COPILOT_STATE.startError = "请先选择作业文件或填写神秘代码。";
+    syncCopilotRunState(state.runnerState);
+    showNotice(COPILOT_STATE.startError, "warning");
+    renderCopilotView();
+    return;
+  }
+  COPILOT_STATE.startError = "";
   try {
     const result = await api("/api/copilot/start", {
       method: "POST",
@@ -647,19 +729,30 @@ async function fireCopilotStart() {
     });
     if (!result.ok) {
       COPILOT_STATE.launching = false;
+      COPILOT_STATE.startError = result.message || "启动失败";
+      showNotice(`自动战斗启动失败：${COPILOT_STATE.startError}`, "error");
       syncCopilotRunState(state.runnerState);
+      renderCopilotView();
     }
-  } catch {
+  } catch (error) {
     COPILOT_STATE.launching = false;
+    COPILOT_STATE.startError = error?.message || "请求失败";
+    showError(error);
     syncCopilotRunState(state.runnerState);
+    renderCopilotView();
   }
+}
+
+function copilotFilePath() {
+  // 神秘代码/prts.plus 链接解析后拿到的是本地缓存路径，启动时必须用它而不是原始输入。
+  return COPILOT_STATE.resolvedPath || COPILOT_STATE.filename;
 }
 
 function copilotStartPayload() {
   const payload = {
-    name: COPILOT_STATE.taskName || basenameWithoutExt(COPILOT_STATE.filename) || "copilot",
+    name: COPILOT_STATE.taskName || basenameWithoutExt(copilotFilePath()) || "copilot",
     task_type: copilotTaskType(),
-    filename: COPILOT_STATE.filename
+    filename: copilotFilePath()
   };
   if (payload.task_type === "Copilot") addRegularCopilotPayload(payload);
   if (payload.task_type === "SSSCopilot") addSssCopilotPayload(payload);

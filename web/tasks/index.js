@@ -81,7 +81,7 @@ const ROGUELIKE_OPERATOR_OPTIONS = {
   "萨卡兹": ["", "维什戴尔", "焰影苇草", "凯尔希", "银灰", "锏", "假日威龙陈", "圣约送葬人", "怒潮凛冬", "百炼嘉维尔", "佩佩", "乌尔比安", "海沫", "丰川祥子", "山", "羽毛笔", "休谟斯", "仇白", "煌", "艾丽妮", "帕拉斯", "医生", "风丸", "号角", "古米", "石棉", "斑点", "新约能天使", "梅", "流星", "克洛丝", "令", "稀音", "苏苏洛", "嘉维尔", "安赛尔", "讯使", "芬", "圣聆初雪", "林", "蕾缪安", "提丰", "铅踝", "白雪", "锡人", "跃跃", "芳汀", "松果"],
   "界园": ["", "维什戴尔", "新约能天使", "电弧", "凯尔希", "银灰", "假日威龙陈", "圣约送葬人", "怒潮凛冬", "百炼嘉维尔", "锏", "佩佩", "乌尔比安", "海沫", "丰川祥子", "山", "羽毛笔", "休谟斯", "仇白", "煌", "艾丽妮", "帕拉斯", "风丸", "斩业星熊", "号角", "古米", "石棉", "斑点", "梅", "流星", "克洛丝", "令", "稀音", "苏苏洛", "嘉维尔", "清流", "安赛尔", "讯使", "芬", "圣聆初雪", "林", "蕾缪安", "提丰", "铅踝", "白雪", "罗小黑", "跃跃", "伊桑", "芳汀", "松果"]
 };
-const RECLAMATION_THEMES = ["沙中之火", "沙洲遗闻"];
+const RECLAMATION_THEMES = [{ label: "沙洲遗闻", value: "沙洲遗闻" }, { label: "沙中之火（活动已下线）", value: "沙中之火" }];
 const RECLAMATION_STRATEGIES = ["无存档，通过进出关卡刷生息点数", "有存档，通过组装支援道具刷生息点数"];
 const RECLAMATION_INCREMENT_MODES = ["连点", "长按"];
 const FIGHT_TOOLTIPS = {
@@ -227,7 +227,7 @@ function builtinDefaultParams(type) {
   if (type === "Infrast") return { mode: "常规模式", drone: "贸易站-龙门币", mood: 30, facilities: allFacilities() };
   if (type === "Mall") return { visit_friends: supportsVisitAsMallSubtask(), shopping: true, buy_first: ["招聘许可"], blacklist: ["碳素", "家具零件"] };
   if (type === "Award") return { daily: true, orundum: true };
-  if (type === "Roguelike") return { theme: "萨卡兹", difficulty: "MAX (18)", strategy: ROGUELIKE_STRATEGIES[0], squad: "指挥分队", roles: "稳扎稳打（重装、术师、狙击）", starts_count: 99999, investment_enabled: true, delay_abort: true };
+  if (type === "Roguelike") return { theme: "萨卡兹", difficulty: "MAX (18)", strategy: ROGUELIKE_STRATEGIES[0], squad: "指挥分队", roles: "稳扎稳打（重装、术师、狙击）", starts_count: 99999, investment_enabled: true };
   if (type === "Reclamation") return { theme: "沙洲遗闻", strategy: RECLAMATION_STRATEGIES[1], tool_to_craft: "荧光棒", increment_mode: "连点", max_craft_count: 16 };
   if (type === "CloseDown") return { client_type: "Official" };
   if (type === "UserDataUpdate") return { update_oper_box: true, update_depot: true };
@@ -348,6 +348,17 @@ function checkNumberRow(id, text, inputId, enabled, value, fallback) {
 function checkRow(id, text, value, className = "", disabled = false) {
   const disabledAttr = disabled ? " disabled" : "";
   return `<label class="toggleRow ${className}"><input id="${id}" type="checkbox" ${checked(value)}${disabledAttr} />${text}</label>`;
+}
+
+const UNSUPPORTED_TIP = "MaaCore 未提供该参数，Web 版暂未接入。";
+
+// 明确标注「点了也不会生效」的控件，避免误导（MaaCore 不消费这些参数）。
+function unsupportedRow(text, tip = UNSUPPORTED_TIP) {
+  return `<label class="toggleRow unsupportedRow" title="${escapeHtmlFallback(tip)}"><input type="checkbox" disabled />${text}<span class="unsupportedBadge">暂未接入</span></label>`;
+}
+
+function unsupportedLine(text, tip = UNSUPPORTED_TIP) {
+  return `<div class="subLine unsupportedRow" title="${escapeHtmlFallback(tip)}">${text}<span class="unsupportedBadge">暂未接入</span></div>`;
 }
 
 function timeRow(id, value, disabled = false) {

@@ -24,7 +24,23 @@ function onSettingsClick(event) {
     runSettingsScreenshotTest();
     return;
   }
+  if (event.target.closest("[data-settings-action='clearLogCache']")) {
+    clearLogs().then(() => showNotice("已清空日志与图片缓存", "success")).catch(showError);
+    return;
+  }
+  if (event.target.closest("[data-settings-action='detectAdb']")) {
+    runSettingsAdbDetect();
+    return;
+  }
+  if (event.target.closest("[data-settings-action='redroidStatus']")) {
+    runSettingsRedroidStatus();
+    return;
+  }
   if (event.target.closest("[data-settings-action='applyAdapter']")) {
+    if (isSettingsEditingLocked()) {
+      showNotice("任务运行中，无法切换 MAA 核心", "warning");
+      return;
+    }
     applyAdapterConfig();
     return;
   }
@@ -92,7 +108,8 @@ function onSettingsInput(event) {
     SETTINGS_STATE.newConfigName = event.target.value;
     return;
   }
-  if (updateSettingsField(event.target)) return;
+  // 输入过程中只更新本地状态：逐字符落库会整页重渲染，输入框会掉焦点。
+  if (updateSettingsField(event.target, { commit: false })) return;
   if (updateTimerField(event.target)) persistSettingsState();
 }
 
@@ -131,22 +148,32 @@ function updateTimerField(target) {
   return true;
 }
 
-function updateSettingsField(target) {
+const SETTINGS_NUMBER_RANGES = {
+  logThumbnailMax: [1, 9999],
+  taskTimeoutMinutes: [0, 999],
+  emulatorLaunchWait: [0, 300],
+  ldExtrasIndex: [0, 99]
+};
+
+function settingsFieldValue(field, target) {
+  if (target.type === "checkbox") return target.checked;
+  const range = SETTINGS_NUMBER_RANGES[field];
+  // 数字字段必须存成 number：存字符串会让 localStorage 回读时的类型校验直接丢弃。
+  if (range) return clampNumber(target.value, range[0], range[1], Number(SETTINGS_STATE[field]) || range[0]);
+  return target.value;
+}
+
+function updateSettingsField(target, { commit = true } = {}) {
   const field = target.dataset.settingsField;
   if (!field) return false;
   if (isSettingsEditingLocked()) return true;
   if (field.startsWith("notification.")) {
     return updateNotificationField(field, target);
   }
-  SETTINGS_STATE[field] = target.type === "checkbox"
-    ? target.checked
-    : field === "logThumbnailMax"
-      ? clampNumber(target.value, 1, 9999, SETTINGS_STATE.logThumbnailMax)
-      : field === "taskTimeoutMinutes"
-        ? clampNumber(target.value, 0, 999, SETTINGS_STATE.taskTimeoutMinutes ?? 0)
-        : target.value;
+  SETTINGS_STATE[field] = settingsFieldValue(field, target);
   if (field === "forceGithubGlobalSource") SETTINGS_STATE.forceGithub = SETTINGS_STATE.forceGithubGlobalSource;
   persistSettingsState();
+  if (!commit) return true;
   if (isUpdateSettingsField(field)) {
     saveUpdateConfig();
     if (SETTINGS_CONDITIONAL_FIELDS.has(field)) renderSettingsView();

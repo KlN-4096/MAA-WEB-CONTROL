@@ -2,9 +2,9 @@
   display: grid;
   grid-template-columns: 72px minmax(0, 1fr);
   gap: 8px;
-  border: 1px solid #303238;
+  border: 1px solid var(--card-line);
   border-radius: 4px;
-  background: #202124;
+  background: var(--card-bg);
   padding: 7px 8px 8px 6px;
 }
 
@@ -137,8 +137,8 @@
 
 .maaLogItem.SuccessLogBrush,
 .maaLogItem.RareOperatorLogBrush {
-  border-left-color: #44b87b;
-  color: #c3f0dc;
+  border-left-color: var(--success);
+  color: var(--success-fg);
 }
 
 .maaLogItem.RareOperatorLogBrush,
@@ -147,13 +147,13 @@
 }
 
 .maaLogItem.WarningLogBrush {
-  border-left-color: #c9903a;
+  border-left-color: var(--warning);
   color: #f1d29d;
 }
 
 .maaLogItem.ErrorLogBrush {
   border-left-color: var(--danger);
-  color: #ffb5b5;
+  color: var(--danger-fg);
 }
 
 .maaLogPreview {
@@ -201,10 +201,10 @@
   display: grid;
   grid-template-columns: 72px minmax(0, 1fr);
   gap: 8px;
-  border: 1px solid #303238;
+  border: 1px solid var(--card-line);
   border-left: 3px solid var(--blue);
   border-radius: 4px;
-  background: #202124;
+  background: var(--card-bg);
   padding: 7px 8px 8px 6px;
 }
 
@@ -215,7 +215,7 @@
 }
 
 .logItem.warning {
-  border-left-color: #c9903a;
+  border-left-color: var(--warning);
 }
 
 .logTime {

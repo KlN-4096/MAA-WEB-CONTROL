@@ -60,8 +60,13 @@ function setTaskEnabled(index, enabled) {
   scheduleSave();
 }
 
+const BUILTIN_TASK_IDS = new Set([
+  "startup", "recruit", "infrast", "fight", "remaining-sanity", "mall", "award", "roguelike", "reclamation"
+]);
+
 function addTask(type) {
   if (isProfileEditingLocked()) return;
+  collectTaskForm();
   state.profile.tasks.push(defaultTask(type));
   state.selectedTask = state.profile.tasks.length - 1;
   persistSelectedTask();
@@ -75,7 +80,13 @@ function deleteTask(index) {
   const tasks = state.profile?.tasks || [];
   if (!tasks[index]) return;
   collectTaskForm();
-  tasks.splice(index, 1);
+  const [removed] = tasks.splice(index, 1);
+  // 内置任务要记进 hidden_builtins，否则后端 complete_profile_tasks 会把它补回来。
+  if (removed && BUILTIN_TASK_IDS.has(removed.id)) {
+    const hidden = Array.isArray(state.profile.hidden_builtins) ? state.profile.hidden_builtins : [];
+    if (!hidden.includes(removed.id)) hidden.push(removed.id);
+    state.profile.hidden_builtins = hidden;
+  }
   state.selectedTask = preferredTaskIndex(tasks, Math.min(state.selectedTask, tasks.length - 1));
   persistSelectedTask();
   renderTasks();
@@ -100,12 +111,14 @@ function renameTask(index) {
 }
 
 async function runTaskOnce(index) {
-  const task = state.profile?.tasks?.[index];
-  if (!task) return;
   if (isRunnerBusy()) {
     addLocalLog("warning", "task.once", "当前有任务在运行，请先停止");
     return;
   }
+  // 先收集屏幕上的表单，否则单次运行用的是上一次保存的旧参数。
+  if (index === state.selectedTask) collectTaskForm();
+  const task = state.profile?.tasks?.[index];
+  if (!task) return;
   const title = task.name || task.id;
   addLocalLog("info", "task.once", `单次运行：${title}`);
   try {

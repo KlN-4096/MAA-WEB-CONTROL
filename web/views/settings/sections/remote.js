@@ -1,6 +1,6 @@
 function renderRemoteSection() {
   return settingsColumn(`
-    <p class="settingsGlobalTip">远程控制功能暂未实现，以下选项仅供参考。</p>
+    <p class="settingsGlobalTip">远程控制协议（轮询任务 / 汇报状态）<span class="unsupportedBadge">暂未接入</span></p>
     <p class="settingsLineText">注意：随意填入未知来源的地址可能会导致您的账户受到损失。</p>
     ${fieldRow("获取任务端点", textBox("", "settingsControlXL", "", " disabled"))}
     ${fieldRow("汇报任务端点", textBox("", "settingsControlXL", "", " disabled"))}

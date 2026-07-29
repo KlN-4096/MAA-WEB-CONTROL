@@ -57,6 +57,9 @@ function onTaskEditorChange(event) {
     renderEditor();
     return;
   }
+  if (event.target.id === "paramInfrastFileSelect" && typeof onInfrastFileSelect === "function") {
+    onInfrastFileSelect(event.target);
+  }
   const rerenderFields = new Set(["paramRoguelikeTheme", "paramRoguelikeStrategy", "paramReclamationStrategy", "paramInfrastMode"]);
   if (rerenderFields.has(event.target.id)) {
     collectTaskForm();

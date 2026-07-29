@@ -3,7 +3,7 @@ function renderTimerSection() {
     ? `<p class="settingsGlobalTip">此选项页为全局配置</p>`
     : "";
   const showBefore = SETTINGS_STATE.forceStart
-    ? `<div class="timerShowRow">${settingsCheck("showBeforeForce", "强制定时启动前显示窗口")}</div>`
+    ? `<div class="timerShowRow unsupportedRow" title="浏览器没有窗口可显示，该项为原版桌面端行为。">强制定时启动前显示窗口<span class="unsupportedBadge">暂未接入</span></div>`
     : "";
   return `<div class="timerReplica">
     ${globalTip}

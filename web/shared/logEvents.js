@@ -13,6 +13,7 @@ function addLogItem(item) {
   state.logs.push(event);
   state.logs = state.logs.slice(-1000);
   if (rawLogExpanded) renderRawLogs();
+  if (event.type?.startsWith("maa.task_chain.")) notifyTaskChainEvent(event);
   if (event.type?.startsWith("maa.log.")) {
     handleMaaLogEvent(event);
   } else if (event.type?.startsWith("maa.tools.") && typeof handleToolEvent === "function") {
@@ -20,6 +21,18 @@ function addLogItem(item) {
   } else if (!shouldUseCardLog()) {
     renderLogs();
   }
+}
+
+// 小工具/自动战斗直接驱动 adapter，不经过 runner 状态机，
+// 只能靠 MaaCore 的任务链事件判断「跑完了没有」。
+function notifyTaskChainEvent(event) {
+  const finished = ["maa.task_chain.completed", "maa.task_chain.stopped", "maa.task_chain.error"].includes(event.type);
+  if (!finished) return;
+  // WebSocket 重连时服务端会重放最近 20 条事件，早于本次启动的历史事件不能用来复位状态。
+  const at = Date.parse(event.ts);
+  const stamp = Number.isNaN(at) ? Date.now() : at;
+  if (typeof onCopilotChainEvent === "function") onCopilotChainEvent(event.type, stamp);
+  if (typeof onToolsChainEvent === "function") onToolsChainEvent(event.type, stamp);
 }
 
 function renderLogs() {
@@ -151,7 +164,7 @@ function clearLogs() {
   state.logCards = [];
   renderLogs();
   if (rawLogExpanded) renderRawLogs();
-  return api("/api/logs/clear", { method: "POST" }).catch(showError);
+  return api("/api/logs/clear", { method: "POST" });
 }
 
 function openLogThumbnail(thumbnailId) {
@@ -233,7 +246,12 @@ function renderTooltipContent(data) {
 
 function renderLogLists(selector, html) {
   document.querySelectorAll(selector).forEach((list) => {
+    // innerHTML 重建会把 scrollTop 清零：贴底的继续跟随，回看中的要还原原位置。
+    const stick = isScrolledToBottom(list);
+    const previousTop = list.scrollTop;
     list.innerHTML = html;
+    list.dataset.stick = stick ? "1" : "0";
+    if (!stick) list.scrollTop = previousTop;
   });
 }
 
@@ -246,14 +264,22 @@ function syncRawLogPanels() {
   });
 }
 
+const LOG_STICK_THRESHOLD = 24;
+
+// 只有用户本来就停在底部时才自动跟随，否则回看历史会被新日志拽走。
 function scrollLogListsToBottom(selector) {
   const lists = Array.from(document.querySelectorAll(selector));
   if (!lists.length) return;
   requestAnimationFrame(() => {
     lists.forEach((list) => {
-      list.scrollTop = list.scrollHeight;
+      if (list.dataset.stick !== "0") list.scrollTop = list.scrollHeight;
     });
   });
+}
+
+function isScrolledToBottom(list) {
+  if (!list || !list.scrollHeight) return true;
+  return list.scrollHeight - list.scrollTop - list.clientHeight < LOG_STICK_THRESHOLD;
 }
 
 function renderScreenshotTooltip(data, title) {

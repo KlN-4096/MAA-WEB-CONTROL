@@ -70,9 +70,15 @@ function setText(id, value) {
 }
 
 function showError(error) {
-  addLocalLog("error", "ui.error", error.message || String(error), {
-    what: error.name || "Error"
-  });
+  const message = error?.message || String(error);
+  addLocalLog("error", "ui.error", message, { what: error?.name || "Error" });
+  // 日志列表只存在于「一键长草」「自动战斗」两个视图里，其它视图必须靠 toast 才看得到错误。
+  if (typeof showToast === "function") showToast(message, "error");
+}
+
+function showNotice(message, level = "info") {
+  addLocalLog(level === "error" ? "error" : level === "warning" ? "warning" : "info", "ui.notice", message);
+  if (typeof showToast === "function") showToast(message, level);
 }
 
 function runFeatureAction(featureId, actionName, payload = {}) {

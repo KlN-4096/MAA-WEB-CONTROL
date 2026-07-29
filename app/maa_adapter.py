@@ -84,6 +84,7 @@ class OfficialMaaAdapter:
         self._poll_interval = poll_interval
         self._last_image_error: str | None = None
         self._screenshot_benchmark: dict[str, Any] | None = None
+        self._connected = False
 
     @property
     def callback_events(self) -> list[EventRecord]:
@@ -93,6 +94,12 @@ class OfficialMaaAdapter:
     def task_chain_status(self) -> str | None:
         with self._status_lock:
             return self._task_chain_status
+
+    @property
+    def is_connected(self) -> bool:
+        # 不能只看 _asst 是否创建：_connect_sync 在真正 connect 之前就已经赋值，
+        # 连接失败后仍为非 None，会让小工具/自动战斗永远跳过重连。
+        return self._asst is not None and self._connected
 
     @property
     def screenshot_benchmark(self) -> dict[str, Any] | None:
@@ -111,14 +118,24 @@ class OfficialMaaAdapter:
     async def append_task(self, call: AppendCall) -> int:
         asst = self._require_asst()
         try:
-            return await asyncio.to_thread(asst.append_task, call.type, call.params)
+            task_id = await asyncio.to_thread(asst.append_task, call.type, call.params)
         except Exception as exc:
             raise RuntimeError(f"MaaCore append_task failed for {call.type}.") from exc
+        # AsstAppendTask 在参数校验失败时返回 0 而不是抛异常（Assistant.cpp:258-285），
+        # 不检查就会出现「日志显示已添加、实际任务被静默丢弃」。
+        if not task_id:
+            raise RuntimeError(
+                f"MaaCore 拒绝了任务 {call.type}：参数校验未通过，请检查该任务的配置。"
+            )
+        return task_id
 
-    async def start(self) -> bool:
+    async def start(self, wait: bool = True) -> bool:
+        """wait=False 用于小工具/自动战斗：立刻返回，不阻塞 HTTP 请求到任务链结束。"""
         asst = self._require_asst()
         try:
-            return await asyncio.to_thread(self._start_and_wait_sync, asst)
+            if wait:
+                return await asyncio.to_thread(self._start_and_wait_sync, asst)
+            return await asyncio.to_thread(self._start_sync, asst)
         except Exception as exc:
             raise RuntimeError("MaaCore start failed.") from exc
 
@@ -151,6 +168,7 @@ class OfficialMaaAdapter:
             return None
 
     def _connect_sync(self, profile: Profile) -> bool:
+        self._connected = False
         asst_cls = self._resolve_asst_cls()
         self._user_dir.mkdir(parents=True, exist_ok=True)
         self._screenshot_benchmark = None
@@ -169,7 +187,8 @@ class OfficialMaaAdapter:
         except Exception as exc:
             raise RuntimeError(f"MaaCore connect failed for ADB address: {profile.adb.address}") from exc
         try:
-            return self._connect_with_retry(profile)
+            self._connected = self._connect_with_retry(profile)
+            return self._connected
         except Exception as exc:
             raise RuntimeError(f"MaaCore connect failed for ADB address: {profile.adb.address}") from exc
 
@@ -491,16 +510,14 @@ class OfficialMaaAdapter:
         if extra_what in {"SanityBeforeStage", "FightTimes", "PenguinId"}:
             return  # data-only, no log entry
 
-        if extra_what == "Depot":
-            items = d.get("items") or []
+        # MaaCore 发的是 DepotInfo，details = {done, data: "<{itemId: count} 的 JSON 字符串>"}
+        # （DepotRecognitionTask.cpp:57-75）
+        if extra_what in {"DepotInfo", "Depot"}:
+            items = _parse_depot_items(d)
             done = bool(d.get("done", False))
             if items:
-                lines = [
-                    f"{item.get('itemName') or item.get('itemId') or '未知'} × {item.get('count', 0)}"
-                    for item in items
-                ]
-                preview = lines[:30]
-                text = "仓库识别完成:\n" + "\n".join(preview)
+                lines = [f"{item.get('itemName') or item['itemId']} × {item['count']}" for item in items[:30]]
+                text = "仓库识别完成:\n" + "\n".join(lines)
                 if len(items) > 30:
                     text += f"\n...共 {len(items)} 种"
             else:
@@ -508,21 +525,22 @@ class OfficialMaaAdapter:
             ls.append(text, color_key="InfoLogBrush", split_mode="Before",
                       tooltip={"kind": "depot", "items": items, "done": done}, raw=raw_detail)
             self._publish_callback_event(EventRecord.now(
-                "maa.tools.depot", "仓库识别完成", level="info",
+                "maa.tools.depot", "仓库识别完成" if done else "仓库识别中", level="info",
                 detail={"done": done, "items": items},
             ))
             return
 
-        if extra_what == "OperBox":
-            own = d.get("own_oper") or []
-            not_own = d.get("not_own_oper") or []
+        # MaaCore 发的是 OperBoxInfo，details = {done, all_opers[], own_opers[]}
+        # 未拥有列表由 all_opers 里 own=false 的项算出（OperBoxRecognitionTask.cpp:62-101）。
+        if extra_what in {"OperBoxInfo", "OperBox"}:
+            own, not_own = _split_oper_box(d)
             done = bool(d.get("done", False))
             text = f"干员识别完成: 已拥有 {len(own)} 人，未拥有 {len(not_own)} 人" if done else "干员识别中…"
             ls.append(text, color_key="InfoLogBrush", split_mode="Before",
                       tooltip={"kind": "operbox", "own_count": len(own), "not_own_count": len(not_own), "done": done},
                       raw=raw_detail)
             self._publish_callback_event(EventRecord.now(
-                "maa.tools.operbox", "干员识别完成", level="info",
+                "maa.tools.operbox", "干员识别完成" if done else "干员识别中", level="info",
                 detail={"done": done, "own_oper": own, "not_own_oper": not_own},
             ))
             return
@@ -542,10 +560,16 @@ class OfficialMaaAdapter:
 
         if extra_what == "RecruitResult":
             level = int(d.get("level") or 0)
+            combinations = _parse_recruit_combinations(d)
             color_key = "RareOperatorLogBrush" if level >= 5 else "InfoLogBrush"
             ls.append(f"{level} ★ Tags", color_key=color_key,
                       weight="Bold" if level >= 5 else "Regular",
-                      tooltip={"kind": "recruit_result", "level": level}, raw=raw_detail)
+                      tooltip={"kind": "recruit_result", "level": level, "result": combinations},
+                      raw=raw_detail)
+            self._publish_callback_event(EventRecord.now(
+                "maa.tools.recruit_calc", "公招组合结果", level="info",
+                detail={"what": "result", "level": level, "result": combinations},
+            ))
             return
 
         if extra_what == "RecruitTagsSelected":
@@ -795,6 +819,11 @@ class OfficialMaaAdapter:
         except RuntimeError:
             self._events.publish(event)
 
+    def _start_sync(self, asst: Any) -> bool:
+        with self._status_lock:
+            self._task_chain_status = None
+        return bool(asst.start())
+
     def _start_and_wait_sync(self, asst: Any) -> bool:
         with self._status_lock:
             self._task_chain_status = None
@@ -971,6 +1000,86 @@ def _nested_what(details: Any) -> str:
                 if what:
                     return what
     return _callback_what(details)
+
+
+def _item_id_to_name_map() -> dict[str, str]:
+    """resource/item_index.json: {itemId: {name: ...}}，用于把仓库识别的纯 id 换成物品名。"""
+    from .mapper import _drop_name_to_id_map
+
+    try:
+        return {item_id: name for name, item_id in _drop_name_to_id_map().items()}
+    except Exception:
+        return {}
+
+
+def _parse_depot_items(details: Any) -> list[dict[str, Any]]:
+    """DepotInfo.details["data"] 是 {"itemId": count} 的 JSON 字符串。"""
+    if not isinstance(details, dict):
+        return []
+    raw = details.get("data")
+    data: Any = raw
+    if isinstance(raw, str):
+        try:
+            data = json.loads(raw) if raw.strip() else {}
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(data, dict):
+        return []
+    names = _item_id_to_name_map()
+    items: list[dict[str, Any]] = []
+    for item_id, count in data.items():
+        try:
+            quantity = int(count)
+        except (TypeError, ValueError):
+            continue
+        if quantity < 0:  # 原版会过滤未识别项
+            continue
+        items.append({"itemId": str(item_id), "count": quantity, "itemName": names.get(str(item_id), "")})
+    return items
+
+
+def _split_oper_box(details: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """OperBoxInfo 只给 all_opers/own_opers，未拥有列表由 all_opers 的 own 标志算出。"""
+    if not isinstance(details, dict):
+        return [], []
+    own_raw = details.get("own_opers")
+    all_raw = details.get("all_opers")
+    own = [item for item in own_raw if isinstance(item, dict)] if isinstance(own_raw, list) else []
+    all_opers = [item for item in all_raw if isinstance(item, dict)] if isinstance(all_raw, list) else []
+    owned_ids = {str(item.get("id") or item.get("name")) for item in own}
+    not_own = [
+        item for item in all_opers
+        if not item.get("own") and str(item.get("id") or item.get("name")) not in owned_ids
+    ]
+    return own, not_own
+
+
+def _parse_recruit_combinations(details: Any) -> list[dict[str, Any]]:
+    """RecruitResult.details["result"] = [{tags, opers:[{name,id,level}], level}]。"""
+    if not isinstance(details, dict):
+        return []
+    result = details.get("result")
+    if not isinstance(result, list):
+        return []
+    combinations: list[dict[str, Any]] = []
+    for entry in result:
+        if not isinstance(entry, dict):
+            continue
+        opers = entry.get("opers")
+        combinations.append({
+            "tags": [str(tag) for tag in entry.get("tags", []) if str(tag)],
+            "level": int(entry.get("level") or 0),
+            "opers": [
+                {
+                    "name": str(oper.get("name", "")),
+                    "id": str(oper.get("id", "")),
+                    "level": int(oper.get("level") or 0),
+                }
+                for oper in (opers if isinstance(opers, list) else [])
+                if isinstance(oper, dict)
+            ],
+        })
+    return combinations
 
 
 def _task_name(details: Any) -> str:

@@ -23,6 +23,7 @@ from .models import (
     CopilotResolveRequest,
     CopilotResolveResponse,
     CopilotStartRequest,
+    CopilotUploadRequest,
     NotificationConfig,
     NotificationTestRequest,
     PostAction,
@@ -281,8 +282,10 @@ def create_api_router(
         tool = request.tool
         params = request.params
 
+        # MaaCore Assistant::append_task 里没有 RecruitCalc；原版 WPF 下发的是
+        # Recruit + confirm=[-1]（AutoRecruitTask::is_calc_only_task 靠它判断仅识别）。
         TOOL_TASK_MAP = {
-            "recruit_calc": ("RecruitCalc", {}),
+            "recruit_calc": ("Recruit", {"times": 0, "confirm": [-1]}),
             "depot": ("Depot", {}),
             "operbox": ("OperBox", {}),
             "gacha_once": ("Custom", {"task_names": ["GachaOnce"]}),
@@ -297,25 +300,60 @@ def create_api_router(
         merged = {**default_params, **params}
 
         try:
+            await ensure_adapter_connected(runner, _resolve_tool_profile(store, runner, request.profile_name))
             task_id = await adapter.append_task(AppendCall(
                 task_id=f"tool-{tool}",
                 type=task_type,
                 params=merged,
             ))
-            started = await adapter.start()
+            started = await adapter.start(wait=False)
             return {"ok": started, "task_id": task_id, "tool": tool}
         except Exception as exc:
             return {"ok": False, "message": str(exc), "tool": tool}
+
+    @router.post("/tools/stop")
+    async def stop_tool():
+        await adapter_stop_safe(runner)
+        return {"ok": True}
+
+    @router.get("/tools/state")
+    async def get_tools_state():
+        """识别结果持久化：刷新页面/换设备后仍能看到上次的仓库与干员数据。"""
+        return await asyncio.to_thread(_read_tools_state, project_root)
+
+    @router.put("/tools/state")
+    async def put_tools_state(payload: dict[str, Any]):
+        return await asyncio.to_thread(_write_tools_state, project_root, payload)
+
+    @router.post("/adb/detect")
+    async def detect_adb():
+        return await asyncio.to_thread(_detect_adb_devices, _resolve_status_profile(store, runner))
+
+    @router.post("/copilot/upload")
+    async def upload_copilot(request: CopilotUploadRequest):
+        """浏览器只能拿到文件名，作业内容必须由前端读出后上传到服务端 MAA 能读到的位置。"""
+        try:
+            content = json.loads(request.content)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"不是合法的作业 JSON：{exc}") from exc
+        target_dir = (project_root / "data" / "copilot_upload") if project_root else Path("data/copilot_upload")
+        target_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = Path(request.name or "copilot.json").name
+        if not safe_name.lower().endswith(".json"):
+            safe_name += ".json"
+        target = target_dir / safe_name
+        target.write_text(json.dumps(content, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"ok": True, "path": str(target), "name": safe_name}
 
     # ── Copilot ────────────────────────────────────────────────────
 
     @router.post("/copilot/start")
     async def start_copilot(request: CopilotStartRequest):
-        return await _start_copilot(runner, request)
+        return await _start_copilot(runner, request, _resolve_tool_profile(store, runner, request.profile_name))
 
     @router.post("/copilot/run")
     async def run_copilot(job: CopilotJob):
-        return await _start_copilot(runner, _legacy_copilot_request(job))
+        return await _start_copilot(runner, _legacy_copilot_request(job), _resolve_status_profile(store, runner))
 
     @router.post("/copilot/stop")
     async def stop_copilot():
@@ -447,11 +485,28 @@ async def adapter_stop_safe(runner: MaaRunnerService) -> None:
         pass
 
 
-async def _start_copilot(runner: MaaRunnerService, request: CopilotStartRequest) -> dict[str, Any]:
+async def ensure_adapter_connected(runner: MaaRunnerService, profile: Profile | None) -> None:
+    """小工具/自动战斗直接驱动 adapter，必须自己保证已经连接过一次模拟器。"""
+    if runner.is_running():
+        raise RuntimeError("一键长草任务正在运行，请先停止后再使用该功能。")
+    if getattr(runner.adapter, "is_connected", True):
+        return
+    if profile is None:
+        raise RuntimeError("没有可用的配置，无法连接模拟器。")
+    if not await runner.adapter.connect(profile):
+        raise RuntimeError("连接模拟器失败，请检查连接设置。")
+
+
+async def _start_copilot(
+    runner: MaaRunnerService,
+    request: CopilotStartRequest,
+    profile: Profile | None = None,
+) -> dict[str, Any]:
     try:
         call = _copilot_append_call(request)
+        await ensure_adapter_connected(runner, profile)
         task_id = await runner.adapter.append_task(call)
-        started = await runner.adapter.start()
+        started = await runner.adapter.start(wait=False)
         return {
             "ok": started,
             "name": request.name,
@@ -556,6 +611,17 @@ def _resolve_run_profile(request: RunRequest, store: ProfileStore) -> Profile:
     raise ValueError("Either profile or profile_name is required.")
 
 
+def _resolve_tool_profile(store: ProfileStore, runner: MaaRunnerService, profile_name: str = "") -> Profile | None:
+    """小工具/自动战斗要连接模拟器时用哪套配置：优先前端指定，其次运行器当前配置。"""
+    name = (profile_name or "").strip()
+    if name:
+        try:
+            return store.load(name)
+        except (FileNotFoundError, ValueError):
+            pass
+    return _resolve_status_profile(store, runner)
+
+
 def _resolve_status_profile(store: ProfileStore, runner: MaaRunnerService) -> Profile | None:
     profile = runner.profile()
     if profile is not None:
@@ -656,6 +722,74 @@ def _parse_adb_devices(output: str) -> list[tuple[str, str]]:
         if len(parts) >= 2:
             devices.append((parts[0], parts[1]))
     return devices
+
+
+# 常见模拟器的 ADB 端口（雷电 5555/5557、MuMu 7555、夜神 62001、逍遥 21503、蓝叠 5555…）
+ADB_PROBE_PORTS = [5555, 5556, 5557, 5558, 7555, 16384, 21503, 21513, 59865, 62001, 62025]
+
+
+def _detect_adb_devices(profile: Profile | None) -> dict[str, Any]:
+    """「自动检测连接」：先看 adb devices，再对常见模拟器端口探测一次。"""
+    adb_path = ((profile.adb.adb_path if profile else "") or "adb").strip() or "adb"
+    found: list[str] = []
+    try:
+        listed = subprocess.run(
+            [adb_path, "devices"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5, check=False,
+        )
+    except FileNotFoundError:
+        return {"ok": False, "devices": [], "message": f"找不到 ADB：{adb_path}"}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "devices": [], "message": "adb devices 超时"}
+    found.extend(serial for serial, state in _parse_adb_devices(listed.stdout or "") if state == "device")
+
+    for port in ADB_PROBE_PORTS:
+        address = f"127.0.0.1:{port}"
+        if address in found:
+            continue
+        try:
+            probe = subprocess.run(
+                [adb_path, "connect", address],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3, check=False,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            break
+        text = (probe.stdout or "") + (probe.stderr or "")
+        if "connected to" in text.lower():
+            found.append(address)
+
+    if not found:
+        return {"ok": False, "devices": [], "message": "未检测到可用的模拟器/设备"}
+    return {"ok": True, "devices": found, "address": found[0], "message": f"检测到 {len(found)} 个设备"}
+
+
+def _tools_state_path(project_root: Path | None) -> Path:
+    root = project_root or Path(".")
+    return root / "data" / "tools_state.json"
+
+
+def _read_tools_state(project_root: Path | None) -> dict[str, Any]:
+    path = _tools_state_path(project_root)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_tools_state(project_root: Path | None, payload: dict[str, Any]) -> dict[str, Any]:
+    path = _tools_state_path(project_root)
+    current = _read_tools_state(project_root)
+    current.update({key: value for key, value in payload.items() if key in TOOLS_STATE_KEYS})
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+    return current
+
+
+TOOLS_STATE_KEYS = {"depot", "operbox", "recruit"}
 async def events_socket(websocket: WebSocket, events: EventBus) -> None:
     await websocket.accept()
     queue = events.add_subscriber()

@@ -1,5 +1,5 @@
 .toolsViewRoot {
-  height: calc(100vh - 58px);
+  height: 100%;
   overflow: hidden;
   padding: 20px;
 }
@@ -33,7 +33,7 @@
 
 .toolsTab.active {
   border-color: var(--blue);
-  color: #28a9ff;
+  color: var(--blue-fg);
 }
 
 .toolsTab:not(:first-child) {
@@ -58,6 +58,7 @@
 
 .toolsScroll {
   min-height: 0;
+  overflow: auto;
   padding-top: 8px;
 }
 
@@ -186,11 +187,17 @@
 
 .resultTool {
   grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 10px;
 }
 
 .nestedToolPanel,
-.cardGrid,
+.cardGrid {
+  min-height: 0;
+}
+
 .emptyResultPanel {
+  display: grid;
+  align-content: start;
   min-height: 0;
 }
 
@@ -206,10 +213,6 @@
 
 .depotGrid {
   grid-template-columns: repeat(auto-fill, minmax(186px, 1fr));
-}
-
-.toolEmpty {
-  display: none;
 }
 
 .gachaDisclaimer,
@@ -356,7 +359,7 @@
 }
 
 .miniComboArrow {
-  color: #28a9ff;
+  color: var(--blue-fg);
   font-size: 14px;
 }
 
@@ -426,3 +429,251 @@
   width: 100px;
   height: 50px;
   font-size: 12px;
+}
+
+.toolsTab:hover:not(:disabled) {
+  background: var(--hover-bg);
+}
+
+/* ── 之前完全没有样式的结果区（15 个类零规则） ───────────── */
+.nestedToolPanel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  gap: 8px;
+}
+
+.nestedTabs {
+  display: flex;
+  gap: 0;
+}
+
+.nestedTab {
+  min-width: 120px;
+  min-height: var(--control-h-sm);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  padding: 0 12px;
+}
+
+.nestedTab:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.nestedTab:last-child { border-left: 0; border-radius: 0 var(--radius) var(--radius) 0; }
+
+.nestedTab.active {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  color: var(--blue-fg);
+}
+
+.operList {
+  display: grid;
+  align-content: start;
+  min-height: 0;
+  max-height: 46vh;
+  overflow: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 4px;
+}
+
+.operRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 26px;
+  border-radius: var(--radius-sm);
+  padding: 0 8px;
+}
+
+.operRow:hover {
+  background: var(--hover-bg);
+}
+
+.operName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.operMeta {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.overflowNote {
+  padding: 6px 8px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.cardGrid:not(.depotGrid) {
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+}
+
+.cardGrid {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  max-height: 46vh;
+  overflow: auto;
+  padding: 2px;
+}
+
+.depotItem {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 8px 10px;
+}
+
+.depotItemName {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.depotItemCount {
+  color: var(--text);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+
+.recruitTagResult {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.recruitTagRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.recruitTag {
+  padding: 2px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--blue-soft);
+  color: var(--text);
+}
+
+.recruitSpecialTag {
+  color: var(--warning-fg);
+  font-weight: 600;
+}
+
+.recruitCombos {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.recruitCombo {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 8px 10px;
+}
+
+.comboHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.comboLevel {
+  min-width: 30px;
+  color: var(--text);
+}
+
+.comboLevel.lv5, .comboLevel.lv6 { color: var(--warning-fg); }
+.comboLevel.lv4 { color: var(--info-fg); }
+
+.comboOpers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.comboOper {
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.comboOper.lv5, .comboOper.lv6 { color: var(--warning-fg); }
+
+.comboEmpty {
+  color: var(--muted);
+}
+
+/* 空状态：此前 .toolEmpty 被写成 display:none，emptyResult() 是死代码 */
+.toolEmpty {
+  grid-column: 1 / -1;
+  display: grid;
+  place-items: center;
+  min-height: 120px;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.peepFrame {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.disclaimerHint {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.syncLine {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.toolsLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: 16px;
+  height: 100%;
+  min-height: 0;
+}
+
+.toolsLogColumn {
+  min-height: 0;
+  padding: 20px 20px 20px 0;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+@media (max-width: 1100px) {
+  .toolsLayout {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+
+  .toolsLogColumn {
+    padding: 0 20px 20px;
+  }
+
+  .toolsLogColumn .logList {
+    max-height: 240px;
+  }
+}

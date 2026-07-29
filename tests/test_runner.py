@@ -32,7 +32,7 @@ class FakeRunnerAdapter:
             raise self.append_error
         return 100
 
-    async def start(self):
+    async def start(self, wait: bool = True):
         self.start_calls += 1
         self.started.set()
         while self.wait_for_stop and not self.stop_called:
@@ -50,7 +50,7 @@ class SequenceStatusAdapter(FakeRunnerAdapter):
         super().__init__("Completed")
         self.statuses = list(statuses)
 
-    async def start(self):
+    async def start(self, wait: bool = True):
         await super().start()
         if self.statuses:
             self._task_chain_status = self.statuses.pop(0)
@@ -119,7 +119,7 @@ class RunnerStateTest(unittest.IsolatedAsyncioTestCase):
             captured.append((event_type, payload))
 
         class HangingAdapter(FakeRunnerAdapter):
-            async def start(self):
+            async def start(self, wait: bool = True):
                 await asyncio.sleep(60)
                 return True
 

@@ -20,7 +20,7 @@ function syncSettingsFromProfile() {
     : (adb.client_type || SETTINGS_STATE.clientType);
   SETTINGS_STATE.adbAddress = adb.address || SETTINGS_STATE.adbAddress;
   SETTINGS_STATE.adbPath = adb.adb_path || SETTINGS_STATE.adbPath;
-  SETTINGS_STATE.touchMode = adb.touch_mode || SETTINGS_STATE.touchMode;
+  SETTINGS_STATE.touchMode = touchModeLabel(adb.touch_mode) || SETTINGS_STATE.touchMode;
   SETTINGS_STATE.deploymentWithPause = Boolean(adb.deployment_with_pause);
   SETTINGS_STATE.adbLiteEnabled = Boolean(adb.adb_lite_enabled);
   SETTINGS_STATE.killAdbOnExit = Boolean(adb.kill_adb_on_exit);
@@ -31,14 +31,29 @@ function syncSettingsFromProfile() {
   if (ld && typeof ld === "object") {
     if (typeof ld.enabled === "boolean") SETTINGS_STATE.ldExtrasEnabled = SETTINGS_STATE.connectConfig === "LDPlayer" && ld.enabled;
     if (typeof ld.path === "string" && ld.path) SETTINGS_STATE.ldExtrasPath = ld.path;
+    if (typeof ld.manual_index === "boolean") SETTINGS_STATE.ldManualIndex = ld.manual_index;
     if (Number.isInteger(ld.index)) SETTINGS_STATE.ldExtrasIndex = Math.max(0, ld.index);
   }
   const startup = firstTaskParams("StartUp");
   if (startup) {
     SETTINGS_STATE.autoDetectConnection = startup.auto_detect ?? SETTINGS_STATE.autoDetectConnection;
     SETTINGS_STATE.detectEveryTime = startup.detect_every_time ?? SETTINGS_STATE.detectEveryTime;
-    if (!adb.touch_mode) SETTINGS_STATE.touchMode = startup.touch_mode || SETTINGS_STATE.touchMode;
+    if (!adb.touch_mode) SETTINGS_STATE.touchMode = touchModeLabel(startup.touch_mode) || SETTINGS_STATE.touchMode;
   }
+}
+
+// profile 里存的可能是归一化后的 "minitouch"/"maatouch"，下拉框的值域却是中文标签。
+const TOUCH_MODE_LABELS = {
+  minitouch: "Minitouch（默认）",
+  maatouch: "MaaTouch（实验功能）",
+  adb: "ADB Input（不推荐使用）",
+  maaframework: "MaaFramework（实验功能）"
+};
+
+function touchModeLabel(value) {
+  const text = String(value || "");
+  if (!text) return "";
+  return TOUCH_MODE_LABELS[text.toLowerCase()] || text;
 }
 
 function profileConnectPreset(connectConfig) {
@@ -78,21 +93,33 @@ function applySettingsToProfile() {
 }
 
 function ldPlayerExtrasPayload() {
+  // 切到别的连接配置时只关闭 enabled，路径与实例编号必须保留，否则切回来就没了。
   const enabled = SETTINGS_STATE.connectConfig === "LDPlayer" && SETTINGS_STATE.ldExtrasEnabled;
   return {
     enabled,
-    path: enabled ? SETTINGS_STATE.ldExtrasPath : "",
-    manual_index: enabled && SETTINGS_STATE.ldManualIndex,
-    index: enabled ? Number.parseInt(SETTINGS_STATE.ldExtrasIndex, 10) || 0 : 0,
+    path: SETTINGS_STATE.ldExtrasPath || "",
+    manual_index: Boolean(SETTINGS_STATE.ldManualIndex),
+    index: Number.parseInt(SETTINGS_STATE.ldExtrasIndex, 10) || 0,
   };
 }
 
-function saveSettingsProfile() {
+let settingsSaveTimer = 0;
+
+// 每敲一个字符就 PUT 一次会把服务端旧快照写回 state.profile（绕过 editVersion 保护）。
+function saveSettingsProfile({ immediate = false } = {}) {
   if (isSettingsEditingLocked()) return;
   applySettingsToProfile();
-  if (typeof persistProfile === "function") {
-    persistProfile(false).catch(showError);
+  if (typeof persistProfile !== "function") return;
+  clearTimeout(settingsSaveTimer);
+  const flush = () => {
+    const version = typeof bumpProfileEditVersion === "function" ? bumpProfileEditVersion() : undefined;
+    persistProfile(false, version).catch(showError);
+  };
+  if (immediate) {
+    flush();
+    return;
   }
+  settingsSaveTimer = setTimeout(flush, 400);
 }
 
 async function addLocalConfig() {

@@ -41,7 +41,7 @@ class FakeAdapter:
     async def append_task(self, call):
         return 1
 
-    async def start(self):
+    async def start(self, wait: bool = True):
         return True
 
     async def stop(self):

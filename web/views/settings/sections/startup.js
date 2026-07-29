@@ -18,7 +18,7 @@ function renderStartupSection() {
   return settingsColumn(`
     <div class="settingsSplit">
       <div class="settingsColumn">
-        <p class="settingsGlobalTip" style="text-align:left">以下选项暂未接入 Web 版：</p>
+        <p class="settingsGlobalTip" style="text-align:left">以下为桌面端专属能力<span class="unsupportedBadge">暂未接入</span></p>
         ${checkLine("开机自动启动 MAA", false, "需要系统权限时可能失败。", "", true)}
         ${checkLine("启动 MAA 后直接最小化", true, "", "", true)}
         ${checkLine("启动 MAA 后直接运行", false, "", "", true)}

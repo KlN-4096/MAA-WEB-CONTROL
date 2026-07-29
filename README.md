@@ -103,6 +103,16 @@ kill "$(cat data/runtime/maa-web-control.pid)"
 
 配置会保存到 `data/adapter.json`、`data/scheduler.json`、`data/runner_config.json` 等文件。重启 Web 后端后会自动加载。
 
+其它会自动生成的数据文件：
+
+| 文件 | 用途 |
+|---|---|
+| `data/profiles/*.json` | 任务配置；`hidden_builtins` 记录被删除的内置任务，避免下次读写又被补回 |
+| `data/tools_state.json` | 仓库/干员/公招识别结果，刷新页面或换设备后仍可查看 |
+| `data/copilot_upload/*.json` | 自动战斗页上传的作业（浏览器拿不到本地路径，必须上传到服务端） |
+| `data/copilot_cache/*.json` | 神秘代码 / prts.plus 链接下载的作业缓存 |
+| `data/userdata_state.json` | 「更新数据」任务的 Daily/Weekly 执行周期记录 |
+
 ## 验证
 
 ```bash

@@ -38,11 +38,17 @@ def complete_profile_tasks(profile: Profile) -> Profile:
     for task in profile.tasks:
         ordered_tasks.append(task)
         used_ids.add(task.id)
+    hidden = {task_id for task_id in profile.hidden_builtins if task_id in BUILTIN_TASK_ORDER}
+    # 用户删掉的内置任务不再补回；只有从未出现过的模板才补齐。
+    hidden -= used_ids
     for template in _profile_tasks(set()):
-        if template.id not in used_ids:
+        if template.id not in used_ids and template.id not in hidden:
             ordered_tasks.append(template)
             used_ids.add(template.id)
-    return profile.model_copy(update={"tasks": ordered_tasks}, deep=True)
+    return profile.model_copy(
+        update={"tasks": ordered_tasks, "hidden_builtins": sorted(hidden)},
+        deep=True,
+    )
 
 
 def _profile_tasks(enabled_ids: set[str]) -> list[TaskDefinition]:

@@ -9,30 +9,39 @@ from fastapi.testclient import TestClient
 
 from app.api import create_api_router
 from app.events import EventBus
-from app.models import AppendCall
+from app.models import AppendCall, Profile
 from app.runner import MaaRunnerService
 from app.storage import ProfileStore
 
 
 class RecordingAdapter:
-    def __init__(self):
+    def __init__(self, connected=True):
         self.append_calls = []
         self.start_calls = 0
         self.stop_calls = 0
+        self.connect_calls = 0
+        self._connected = connected
 
     @property
     def task_chain_status(self):
         return "Completed"
 
+    @property
+    def is_connected(self):
+        return self._connected
+
     async def connect(self, profile):
+        self.connect_calls += 1
+        self._connected = True
         return True
 
     async def append_task(self, call: AppendCall):
         self.append_calls.append(call)
         return len(self.append_calls)
 
-    async def start(self):
+    async def start(self, wait: bool = True):
         self.start_calls += 1
+        self.last_start_wait = wait
         return True
 
     async def stop(self):
@@ -270,6 +279,56 @@ class CopilotApiTest(unittest.TestCase):
             app = FastAPI()
             app.include_router(create_api_router(store, MaaRunnerService(adapter, events), events))
             return adapter, TestClient(app)
+
+
+
+class CopilotRuntimeContractTest(unittest.TestCase):
+    """这些断言是为了让「非阻塞启动」「自动连接」两条修复一旦回退就变红。"""
+
+    def _client(self, connected=True):
+        adapter = RecordingAdapter(connected=connected)
+        events = EventBus()
+        runner = MaaRunnerService(adapter, events)
+        directory = tempfile.mkdtemp()
+        store = ProfileStore(Path(directory) / "profiles")
+        store.save(Profile(name="daily"))
+        app = FastAPI()
+        app.include_router(create_api_router(store, runner, events, project_root=Path(directory)))
+        return adapter, TestClient(app)
+
+    def test_start_does_not_block_on_task_chain(self):
+        adapter, client = self._client()
+
+        client.post("/api/copilot/start", json={"name": "x", "filename": "a.json"})
+
+        self.assertIs(adapter.last_start_wait, False)
+
+    def test_start_connects_when_adapter_not_connected(self):
+        adapter, client = self._client(connected=False)
+
+        payload = client.post(
+            "/api/copilot/start",
+            json={"name": "x", "filename": "a.json", "profile_name": "daily"},
+        ).json()
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(adapter.connect_calls, 1)
+
+    def test_tools_run_uses_core_task_types_only(self):
+        adapter, client = self._client()
+        core_types = {
+            "Fight", "StartUp", "CloseDown", "Award", "Mall", "Infrast", "Recruit", "Roguelike",
+            "Copilot", "SSSCopilot", "ParadoxCopilot", "SingleStep", "VideoRecognition",
+            "Depot", "OperBox", "Reclamation", "Custom",
+        }
+
+        for tool in ("recruit_calc", "depot", "operbox", "gacha_once"):
+            client.post("/api/tools/run", json={"tool": tool, "profile_name": "daily"})
+
+        self.assertTrue(adapter.append_calls)
+        for call in adapter.append_calls:
+            self.assertIn(call.type, core_types, f"{call.type} 不是 MaaCore 支持的任务类型")
+        self.assertIs(adapter.last_start_wait, False)
 
 
 if __name__ == "__main__":

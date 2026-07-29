@@ -109,4 +109,13 @@ async def websocket_peep(websocket: WebSocket) -> None:
     await peep_socket(websocket, runner)
 
 
-app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
+class NoCacheStaticFiles(StaticFiles):
+    """前端是免构建的静态文件，浏览器的启发式缓存会让升级后仍加载旧的 CSS/JS。"""
+
+    def file_response(self, *args, **kwargs):  # type: ignore[override]
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
+
+app.mount("/", NoCacheStaticFiles(directory=WEB_DIR, html=True), name="web")

@@ -48,6 +48,7 @@ const MINI_GAMES = [
   { label: "隐秘战线", value: "MiniGame@SecretFront", tip: "在选小队界面开始，如有存档须手动删除。\n第一次打自己看完把教程关了。\n推荐勾选游戏内 ｢继承上一支队伍发回的数据｣" }
 ];
 
+const PEEP_MAX_FPS = 30;
 const TOOLS_STORAGE_KEY = "maa-web.toolsState";
 const TOOLS_PERSISTED_FIELDS = [
   "tab",
@@ -90,6 +91,7 @@ const TOOLS_STATE = {
   operNotOwnList: [],
   operDone: false,
   recruitTags: [],
+  recruitCombinations: [],
   recruitSpecialTag: "",
   recruitSyncTime: "",
   ...restoreToolsState()
@@ -100,6 +102,9 @@ TOOLS_STATE.miniRunning = false;
 TOOLS_STATE.miniDropdownOpen = false;
 
 let toolsWired = false;
+let peepMeasuredFps = 0;
+let peepLastFrameAt = 0;
+let miniGameStartedAt = 0;
 let peepSocket = null;
 
 function restoreToolsState() {
@@ -109,7 +114,7 @@ function restoreToolsState() {
   if (Number.isInteger(parsed.tab) && parsed.tab >= 0 && parsed.tab < TOOL_TABS.length) restored.tab = parsed.tab;
   ["autoTime", "showPotential", "gachaDisclaimer"].forEach((field) => MaaStorage.copyBoolean(parsed, restored, field));
   ["operListTab", "miniGame", "secretEnding", "secretEvent"].forEach((field) => MaaStorage.copyString(parsed, restored, field));
-  if (Number.isFinite(Number(parsed.fps))) restored.fps = clampInt(parsed.fps, 1, 600);
+  if (Number.isFinite(Number(parsed.fps))) restored.fps = clampInt(parsed.fps, 1, PEEP_MAX_FPS);
   if (MaaStorage.isObject(parsed.levels)) {
     restored.levels = { 3: true, 4: true, 5: true, 6: true };
     [3, 4, 5, 6].forEach((level) => {
@@ -151,6 +156,7 @@ function renderToolsView() {
 function wireToolsView() {
   const root = $("toolsViewRoot");
   if (!root || toolsWired) return;
+  $("toolsClearLogsButton")?.addEventListener("click", () => clearLogs().catch(showError));
   root.addEventListener("click", onToolsClick);
   root.addEventListener("change", onToolsChange);
   root.addEventListener("input", onToolsInput);
@@ -184,6 +190,8 @@ function renderRecruitTool() {
       <div class="toolsScroll">
         <p class="toolsInfo recruitInfo">${escapeHtml(TOOLS_STATE.recruitInfo)}</p>
         ${tagsSection}
+        ${renderRecruitCombinations()}
+        ${!hasTags && !TOOLS_STATE.recruitCombinations.length ? emptyResult("还没有识别结果，打开游戏公招界面后点「开始识别」。") : ""}
       </div>
       <div class="recruitBottom">
         <div class="recruitLeft">
@@ -198,6 +206,21 @@ function renderRecruitTool() {
       </div>
     </div>
   `;
+}
+
+// MaaCore RecruitResult 回调里的组合结果才是公招识别真正要看的东西。
+function renderRecruitCombinations() {
+  const combos = TOOLS_STATE.recruitCombinations;
+  if (!combos.length) return "";
+  return `<div class="recruitCombos">${combos.slice(0, 8).map((combo) => {
+    const opers = Array.isArray(combo.opers) ? combo.opers : [];
+    const shown = TOOLS_STATE.showPotential ? opers : opers.filter((oper) => (oper.level || 0) >= 4);
+    const operText = shown.slice(0, 12).map((oper) => `<span class="comboOper lv${oper.level || 0}">${escapeHtml(oper.name || "")}</span>`).join("");
+    return `<div class="recruitCombo">
+      <div class="comboHead"><strong class="comboLevel lv${combo.level || 0}">${combo.level || 0}★</strong>${(combo.tags || []).map((tag) => `<span class="recruitTag">${escapeHtml(tag)}</span>`).join("")}</div>
+      <div class="comboOpers">${operText || '<span class="comboEmpty">无</span>'}</div>
+    </div>`;
+  }).join("")}</div>`;
 }
 
 function renderRecruitLevel(level) {
@@ -233,7 +256,7 @@ function renderOperTabs() {
   const own = TOOLS_STATE.operOwnList;
   const notOwn = TOOLS_STATE.operNotOwnList;
   if (!own.length && !notOwn.length) {
-    return `<section class="nestedToolPanel emptyResultPanel" aria-label="干员识别结果"></section>`;
+    return `<section class="nestedToolPanel emptyResultPanel" aria-label="干员识别结果">${emptyResult("还没有识别结果，点右下角「开始识别」。")}</section>`;
   }
   const list = TOOLS_STATE.operListTab === "have" ? own : notOwn;
   const tabs = [
@@ -244,7 +267,7 @@ function renderOperTabs() {
     `<button class="nestedTab${TOOLS_STATE.operListTab === key ? " active" : ""}" type="button" data-tools-oper-tab="${key}">${escapeHtml(label)}</button>`
   ).join("");
   const rows = list.slice(0, 200).map((op) => {
-    const star = "★".repeat(Math.max(0, (op.rarity ?? 0) + 1));
+    const star = "★".repeat(Math.max(0, Math.min(6, Number(op.rarity) || 0)));
     const elite = op.elite != null ? `精${op.elite}` : "";
     const lv = op.level != null ? `Lv${op.level}` : "";
     return `<div class="operRow"><span class="operName">${escapeHtml(op.name || "")}</span><span class="operMeta">${escapeHtml([star, elite, lv].filter(Boolean).join(" "))}</span></div>`;
@@ -262,7 +285,7 @@ function renderDepotTool() {
   const items = TOOLS_STATE.depotItems;
   const depotGrid = items.length
     ? `<div class="cardGrid depotGrid" aria-label="仓库识别结果">${items.map(renderDepotItem).join("")}</div>`
-    : `<div class="cardGrid depotGrid emptyResultPanel" aria-label="仓库识别结果"></div>`;
+    : `<div class="cardGrid depotGrid emptyResultPanel" aria-label="仓库识别结果">${emptyResult("还没有识别结果，点右下角「开始识别」。")}</div>`;
   return `
     <div class="toolsGrid resultTool">
       ${syncLine("上次同步时间", TOOLS_STATE.depotSyncTime)}
@@ -289,7 +312,7 @@ function renderGachaTool() {
       <div class="gachaDisclaimer">
         <div class="disclaimerLine"><span>请注意，这是</span><strong class="rainbowText">真正的抽卡</strong></div>
         <button class="gachaAgreeButton" type="button" data-tools-action="agreeGacha">知道了</button>
-        <label class="toolCheck disabledCheck"><input type="checkbox" disabled /><span>下次不再提示</span></label>
+        <p class="disclaimerHint">点击「知道了」后本浏览器不再提示。</p>
       </div>
     `;
   }
@@ -300,7 +323,7 @@ function renderGachaTool() {
       <div class="toolButtonRow">
         <button class="toolBigButton" type="button" data-tools-action="gachaOnce"${unavailableAttr("tools")}>寻访一次</button>
         <button class="toolBigButton" type="button" data-tools-action="gachaTen"${unavailableAttr("tools")}>寻访十次</button>
-        <button class="toolBigButton" type="button" data-tools-action="togglePeep"${unavailableAttr("tools")}>Peep!</button>
+        <button class="toolBigButton" type="button" data-tools-action="togglePeep"${unavailableAttr("tools")}>${TOOLS_STATE.peeping ? "Stop!" : "Peep!"}</button>
       </div>
     </div>
   `;
@@ -312,7 +335,7 @@ function renderPeepTool() {
       <div class="peepStage">${TOOLS_STATE.peeping ? `<div class="peepScreen active"><div class="deviceFrame">${fpsBadge()}</div></div>` : `<p>${escapeHtml(TOOL_TEXT.peepTip)}</p>`}</div>
       <div class="peepControls">
         <button class="toolBigButton" type="button" data-tools-action="togglePeep"${unavailableAttr("tools")}>${TOOLS_STATE.peeping ? "Stop!" : "Peep!"}</button>
-        <label class="fpsControl"><span>目标帧率</span><input type="number" min="1" max="600" value="${TOOLS_STATE.fps}" data-tools-field="fps" /></label>
+        <label class="fpsControl"><span>目标帧率</span><input type="number" min="1" max="${PEEP_MAX_FPS}" value="${TOOLS_STATE.fps}" data-tools-field="fps" /></label>
       </div>
     </div>
   `;
@@ -377,6 +400,7 @@ function onToolsClick(event) {
 }
 
 function onToolsChange(event) {
+  if (event.target.id === "paramInfrastFileSelect") return;
   const field = event.target.dataset.toolsField;
   if (!field) return;
   updateToolsField(field, event.target);
@@ -391,7 +415,7 @@ function onToolsInput(event) {
     persistToolsState();
   }
   if (event.target.dataset.toolsField === "fps") {
-    TOOLS_STATE.fps = clampInt(event.target.value, 1, 600);
+    TOOLS_STATE.fps = clampInt(event.target.value, 1, PEEP_MAX_FPS);
     persistToolsState();
   }
 }
@@ -403,7 +427,7 @@ function updateToolsField(field, target) {
   if (field === "miniGame") TOOLS_STATE.miniGame = target.value;
   if (field === "secretEnding") TOOLS_STATE.secretEnding = target.value;
   if (field === "secretEvent") TOOLS_STATE.secretEvent = target.value;
-  if (field === "fps") TOOLS_STATE.fps = clampInt(target.value, 1, 600);
+  if (field === "fps") TOOLS_STATE.fps = clampInt(target.value, 1, PEEP_MAX_FPS);
 }
 
 function setToolsTab(tab) {
@@ -426,6 +450,7 @@ function runToolAction(action) {
   if (action === "startRecruit") {
     TOOLS_STATE.recruitInfo = "正在识别……";
     TOOLS_STATE.recruitTags = [];
+    TOOLS_STATE.recruitCombinations = [];
     TOOLS_STATE.recruitSpecialTag = "";
     TOOLS_STATE.recruitSyncTime = "";
   }
@@ -433,30 +458,23 @@ function runToolAction(action) {
   if (action === "startDepot") TOOLS_STATE.depotInfo = "正在识别……";
   if (action === "copyOper") {
     const list = TOOLS_STATE.operListTab === "have" ? TOOLS_STATE.operOwnList : TOOLS_STATE.operNotOwnList;
-    const text = list.map((op) => op.name || "").filter(Boolean).join("\n");
-    if (navigator.clipboard?.writeText && text) {
-      navigator.clipboard.writeText(text).catch(() => {});
-    }
-    TOOLS_STATE.operInfo = text ? "已复制到剪切板" : "暂无数据，请先识别";
+    const text = list.map((op) => op.name || "").filter(Boolean).join(chr10());
+    exportToolText(text, "干员列表", "operbox.txt", (message) => { TOOLS_STATE.operInfo = message; });
   }
   if (action === "exportArkplanner") {
-    const text = buildDepotExportText("arkplanner");
-    if (navigator.clipboard?.writeText && text) {
-      navigator.clipboard.writeText(text).catch(() => {});
-    }
-    TOOLS_STATE.depotInfo = text ? "已复制（企鹅物流格式）" : "暂无数据，请先识别";
+    exportToolText(buildDepotExportText("arkplanner"), "企鹅物流格式", "depot-penguin.json", (message) => { TOOLS_STATE.depotInfo = message; });
   }
   if (action === "exportLolicon") {
-    const text = buildDepotExportText("lolicon");
-    if (navigator.clipboard?.writeText && text) {
-      navigator.clipboard.writeText(text).catch(() => {});
-    }
-    TOOLS_STATE.depotInfo = text ? "已复制（明日方舟工具箱格式）" : "暂无数据，请先识别";
+    exportToolText(buildDepotExportText("lolicon"), "明日方舟工具箱格式", "depot-toolbox.json", (message) => { TOOLS_STATE.depotInfo = message; });
   }
   if (action === "agreeGacha") TOOLS_STATE.gachaDisclaimer = false;
   if (action === "gachaOnce" || action === "gachaTen") TOOLS_STATE.gachaInfo = GACHA_TIPS[Math.floor(Math.random() * GACHA_TIPS.length)];
   if (action === "togglePeep") { TOOLS_STATE.peeping = !TOOLS_STATE.peeping; managePeepConnection(); }
-  if (action === "startMini") { TOOLS_STATE.miniRunning = !TOOLS_STATE.miniRunning; manageMiniGameTask(); }
+  if (action === "startMini") {
+    TOOLS_STATE.miniRunning = !TOOLS_STATE.miniRunning;
+    if (TOOLS_STATE.miniRunning) miniGameStartedAt = Date.now();
+    manageMiniGameTask();
+  }
   if (action === "toggleMiniDropdown") TOOLS_STATE.miniDropdownOpen = !TOOLS_STATE.miniDropdownOpen;
   if (action === "agreeGacha") persistToolsState();
   fireToolBackend(action);
@@ -525,11 +543,43 @@ function fpsBadge() {
   return `<span class="fpsBadge">${Number(TOOLS_STATE.fps).toFixed(2)} FPS</span>`;
 }
 
+function chr10() {
+  return String.fromCharCode(10);
+}
+
+// 复制失败时降级为下载文件：局域网 http 访问下 navigator.clipboard 不可用。
+function exportToolText(text, label, filename, setMessage) {
+  if (!text) {
+    setMessage('暂无数据，请先识别');
+    showNotice('暂无数据，请先识别', 'warning');
+    return;
+  }
+  copyTextToClipboard(text).then((ok) => {
+    if (ok) {
+      setMessage('已复制（' + label + '）');
+      showNotice('已复制到剪贴板（' + label + '）', 'success');
+    } else {
+      downloadTextFile(text, filename);
+      setMessage('浏览器禁止访问剪贴板，已改为下载文件');
+      showNotice('当前非安全上下文，无法写剪贴板，已改为下载 ' + filename, 'warning');
+    }
+    renderToolsView();
+  });
+}
+
 function clampInt(value, min, max) {
   const parsed = Number.parseInt(value, 10);
   if (Number.isNaN(parsed)) return min;
   return Math.min(max, Math.max(min, parsed));
 }
+
+const TOOL_ACTION_LABELS = {
+  startRecruit: "公招识别",
+  startOper: "干员识别",
+  startDepot: "仓库识别",
+  gachaOnce: "寻访一次",
+  gachaTen: "寻访十次"
+};
 
 const TOOL_BACKEND_MAP = {
   startRecruit: "recruit_calc",
@@ -567,6 +617,7 @@ function fireToolBackend(action) {
       if (action === "startRecruit") TOOLS_STATE.recruitInfo = msg;
       if (action === "startOper") TOOLS_STATE.operInfo = msg;
       if (action === "startDepot") TOOLS_STATE.depotInfo = msg;
+      showNotice(`${TOOL_ACTION_LABELS[action] || "请求"}失败：${msg}`, "error");
     }
     renderToolsView();
   }).catch((error) => {
@@ -574,15 +625,66 @@ function fireToolBackend(action) {
     if (action === "startRecruit") TOOLS_STATE.recruitInfo = msg;
     if (action === "startOper") TOOLS_STATE.operInfo = msg;
     if (action === "startDepot") TOOLS_STATE.depotInfo = msg;
+    showNotice(`${TOOL_ACTION_LABELS[action] || "请求"}失败：${msg}`, "error");
     renderToolsView();
   });
+}
+
+// 由 shared/logEvents.js 在收到 maa.task_chain.* 时调用。
+function onToolsChainEvent(type, stamp) {
+  if (!TOOLS_STATE.miniRunning || stamp < miniGameStartedAt) return;
+  TOOLS_STATE.miniRunning = false;
+  if (typeof state !== "undefined" && state.currentView === "tools") renderToolsView();
+}
+
+// 识别结果存到后端：刷新页面/换设备都不会丢（原版也是落盘的）。
+async function loadToolsStateFromServer() {
+  if (typeof api !== "function") return;
+  try {
+    const data = await api("/api/tools/state");
+    if (!data || typeof data !== "object") return;
+    if (data.depot && Array.isArray(data.depot.items)) {
+      TOOLS_STATE.depotItems = data.depot.items;
+      TOOLS_STATE.depotSyncTime = data.depot.synced_at || "";
+      if (TOOLS_STATE.depotItems.length) TOOLS_STATE.depotInfo = `已加载上次识别结果，共 ${TOOLS_STATE.depotItems.length} 种物品`;
+    }
+    if (data.operbox && Array.isArray(data.operbox.own)) {
+      TOOLS_STATE.operOwnList = data.operbox.own;
+      TOOLS_STATE.operNotOwnList = Array.isArray(data.operbox.not_own) ? data.operbox.not_own : [];
+      TOOLS_STATE.operSyncTime = data.operbox.synced_at || "";
+      if (TOOLS_STATE.operOwnList.length) TOOLS_STATE.operInfo = `已加载上次识别结果，已拥有 ${TOOLS_STATE.operOwnList.length} 人`;
+    }
+    if (data.recruit && Array.isArray(data.recruit.tags)) {
+      TOOLS_STATE.recruitTags = data.recruit.tags;
+      TOOLS_STATE.recruitCombinations = Array.isArray(data.recruit.result) ? data.recruit.result : [];
+      TOOLS_STATE.recruitSyncTime = data.recruit.synced_at || "";
+    }
+    if (typeof state !== "undefined" && state.currentView === "tools") renderToolsView();
+  } catch {
+    // 后端没有历史数据时忽略
+  }
+}
+
+function saveToolsStateToServer(payload) {
+  if (typeof api !== "function") return;
+  api("/api/tools/state", { method: "PUT", body: JSON.stringify(payload) }).catch(() => {});
 }
 
 function handleToolEvent(event) {
   if (!event || !event.type) return;
   if (event.type === "maa.tools.recruit_calc") {
     const detail = event.detail || {};
+    // MaaCore RecruitResult 回调带的组合结果才是公招识别真正要看的东西。
+    if (detail.what === "result") {
+      TOOLS_STATE.recruitCombinations = Array.isArray(detail.result) ? detail.result : [];
+      TOOLS_STATE.recruitSyncTime = new Date().toLocaleTimeString();
+      TOOLS_STATE.recruitInfo = `识别完成，最高可锁定 ${detail.level || 0} 星`;
+      saveToolsStateToServer({
+        recruit: { tags: TOOLS_STATE.recruitTags, result: TOOLS_STATE.recruitCombinations, synced_at: TOOLS_STATE.recruitSyncTime }
+      });
+    }
     if (detail.what === "tags_detected") {
+      TOOLS_STATE.recruitCombinations = [];
       TOOLS_STATE.recruitTags = Array.isArray(detail.tags) ? detail.tags : [];
       TOOLS_STATE.recruitSyncTime = new Date().toLocaleTimeString();
       TOOLS_STATE.recruitInfo = TOOLS_STATE.recruitTags.length
@@ -606,6 +708,9 @@ function handleToolEvent(event) {
     TOOLS_STATE.depotInfo = TOOLS_STATE.depotDone
       ? `识别完成，共 ${TOOLS_STATE.depotItems.length} 种物品`
       : "识别中…";
+    if (TOOLS_STATE.depotDone) {
+      saveToolsStateToServer({ depot: { items: TOOLS_STATE.depotItems, synced_at: TOOLS_STATE.depotSyncTime } });
+    }
     if (typeof state !== "undefined" && state.currentView === "tools" && TOOLS_STATE.tab === 2) {
       renderToolsView();
     }
@@ -620,6 +725,11 @@ function handleToolEvent(event) {
     TOOLS_STATE.operInfo = TOOLS_STATE.operDone
       ? `识别完成，已拥有 ${TOOLS_STATE.operOwnList.length} 人`
       : "识别中…";
+    if (TOOLS_STATE.operDone) {
+      saveToolsStateToServer({
+        operbox: { own: TOOLS_STATE.operOwnList, not_own: TOOLS_STATE.operNotOwnList, synced_at: TOOLS_STATE.operSyncTime }
+      });
+    }
     if (typeof state !== "undefined" && state.currentView === "tools" && TOOLS_STATE.tab === 1) {
       renderToolsView();
     }
@@ -628,16 +738,23 @@ function handleToolEvent(event) {
 }
 
 function buildDepotExportText(format) {
-  const items = TOOLS_STATE.depotItems;
+  // 原版 ToolboxViewModel：企鹅物流要 {"@type":"@penguin-statistics/depot","items":[{id,have,name}]}，
+  // 明日方舟工具箱要扁平的 {itemId: count}。
+  const items = TOOLS_STATE.depotItems.filter((item) => item.itemId && Number(item.count) >= 0);
   if (!items.length) return "";
   if (format === "arkplanner") {
-    const obj = {};
-    items.forEach((item) => { if (item.itemId) obj[item.itemId] = item.count || 0; });
-    return JSON.stringify(obj);
+    return JSON.stringify({
+      "@type": "@penguin-statistics/depot",
+      items: items.map((item) => ({
+        id: String(item.itemId),
+        have: Number(item.count) || 0,
+        name: item.itemName || String(item.itemId)
+      }))
+    });
   }
   if (format === "lolicon") {
-    const obj = { items: {} };
-    items.forEach((item) => { if (item.itemId) obj.items[item.itemId] = item.count || 0; });
+    const obj = {};
+    items.forEach((item) => { obj[String(item.itemId)] = Number(item.count) || 0; });
     return JSON.stringify(obj);
   }
   return "";
@@ -653,14 +770,29 @@ function managePeepConnection() {
 
 function startPeepSocket() {
   if (peepSocket) return;
+  peepMeasuredFps = 0;
+  peepLastFrameAt = 0;
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   peepSocket = new WebSocket(`${protocol}//${location.host}/api/peep`);
   peepSocket.onopen = () => sendPeepRequest();
   peepSocket.onmessage = (event) => {
+    let data = null;
     try {
-      const data = JSON.parse(event.data);
-      if (data.ok && data.data) updatePeepFrame(data.data, data.media_type);
-    } catch (e) { /* ignore parse errors */ }
+      data = JSON.parse(event.data);
+    } catch {
+      data = null;
+    }
+    if (data && data.ok && data.data) {
+      updatePeepFrame(data.data, data.media_type);
+      trackPeepFps();
+    } else if (data && data.message) {
+      // 后端会在截图失败时推送原因，之前被完全丢弃，用户只看到一块黑屏。
+      showNotice(`牛牛监控：${data.message}`, "warning");
+      TOOLS_STATE.peeping = false;
+      closePeepSocket();
+      renderToolsView();
+      return;
+    }
     if (TOOLS_STATE.peeping && peepSocket?.readyState === WebSocket.OPEN) {
       sendPeepRequest();
     }
@@ -669,20 +801,42 @@ function startPeepSocket() {
     peepSocket = null;
     if (TOOLS_STATE.peeping) {
       TOOLS_STATE.peeping = false;
+      showNotice("牛牛监控连接已断开", "warning");
       renderToolsView();
     }
   };
   peepSocket.onerror = () => {
     closePeepSocket();
     TOOLS_STATE.peeping = false;
+    showNotice("牛牛监控连接失败", "error");
     renderToolsView();
   };
+}
+
+function trackPeepFps() {
+  const now = Date.now();
+  if (peepLastFrameAt) {
+    const delta = now - peepLastFrameAt;
+    if (delta > 0) {
+      const instant = 1000 / delta;
+      peepMeasuredFps = peepMeasuredFps ? peepMeasuredFps * 0.7 + instant * 0.3 : instant;
+    }
+  }
+  peepLastFrameAt = now;
+  const badge = document.querySelector(".fpsBadge");
+  if (badge) badge.textContent = `${peepMeasuredFps.toFixed(1)} / ${Number(TOOLS_STATE.fps)} FPS`;
 }
 
 function sendPeepRequest() {
   if (peepSocket?.readyState === WebSocket.OPEN) {
     peepSocket.send(JSON.stringify({ fps: TOOLS_STATE.fps }));
   }
+}
+
+function stopPeepStream() {
+  if (!TOOLS_STATE.peeping) return;
+  TOOLS_STATE.peeping = false;
+  closePeepSocket();
 }
 
 function closePeepSocket() {
@@ -705,23 +859,38 @@ function updatePeepFrame(base64Data, mediaType) {
 }
 
 function manageMiniGameTask() {
-  if (!TOOLS_STATE.miniRunning) {
-    if (typeof api === "function") api("/api/stop", { method: "POST" }).catch(() => {});
-    return;
-  }
   if (typeof api !== "function") return;
-  const params = { task_names: [TOOLS_STATE.miniGame] };
-  if (TOOLS_STATE.miniGame === "MiniGame@SecretFront") {
-    if (TOOLS_STATE.secretEnding) params.secret_ending = TOOLS_STATE.secretEnding;
-    if (TOOLS_STATE.secretEvent) params.secret_event = TOOLS_STATE.secretEvent;
+  if (!TOOLS_STATE.miniRunning) {
+    // 不能用 /api/stop：那是 profile 运行器的停止，会把主页面状态钉死。
+    api("/api/tools/stop", { method: "POST" }).catch(showError);
+    return;
   }
   api("/api/tools/run", {
     method: "POST",
-    body: JSON.stringify({ tool: "custom", params })
-  }).catch(() => {
+    body: JSON.stringify({ tool: "custom", params: { task_names: [miniGameTaskName()] } })
+  }).then((result) => {
+    if (result && result.ok) {
+      showNotice("小游戏任务已发送", "success");
+      return;
+    }
     TOOLS_STATE.miniRunning = false;
+    showNotice(`小游戏启动失败：${result?.message || "未知错误"}`, "error");
+    renderToolsView();
+  }).catch((error) => {
+    TOOLS_STATE.miniRunning = false;
+    showError(error);
     renderToolsView();
   });
+}
+
+// 原版把结局与优先事件拼进任务名本身（ToolboxViewModel.cs:1872），
+// 而不是作为 Custom 任务参数下发——后者 MaaCore 根本不读。
+function miniGameTaskName() {
+  const base = TOOLS_STATE.miniGame;
+  if (base !== "MiniGame@SecretFront") return base;
+  const ending = TOOLS_STATE.secretEnding || "A";
+  const event = TOOLS_STATE.secretEvent ? `@${TOOLS_STATE.secretEvent}` : "";
+  return `${base}@Begin@Ending${ending}${event}`;
 }
 
 const TOOL_ACTION_NAMES = [
@@ -754,7 +923,10 @@ if (window.MaaFeatures) {
     order: 2,
     title: "小工具",
     render: renderToolsView,
-    wire: wireToolsView,
+    wire: (context) => {
+      wireToolsView(context);
+      loadToolsStateFromServer();
+    },
     actions: TOOLS_ACTIONS,
     getState: () => TOOLS_STATE,
     persist: persistToolsState

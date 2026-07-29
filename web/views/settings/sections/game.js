@@ -19,7 +19,7 @@ function renderGameSection() {
     ${yostarTip}
     ${overseasTip}
     ${checkLine("划火柴模式（自动战斗相关）（不稳定，暂不推荐开启）", false, "", "deploymentWithPause")}
-    <p class="settingsGlobalTip">以下选项暂未接入 Web 版：</p>
+    <p class="settingsGlobalTip">以下选项<span class="unsupportedBadge">暂未接入</span>（脚本执行与阻止休眠需要桌面端权限）</p>
     ${fieldRow("开始前脚本", textBox("Example: \"C:\\\\1.cmd\" -minimized", "settingsControlXL", "", " disabled"))}
     ${fieldRow("结束后脚本", textBox("Example: \"C:\\\\1.cmd\" -noWindow", "settingsControlXL", "", " disabled"))}
     <div class="settingsInlinePair">${checkLine("自动战斗时启用上述脚本", false, "", "", true)}${checkLine("手动暂停时启用上述脚本", false, "", "", true)}</div>

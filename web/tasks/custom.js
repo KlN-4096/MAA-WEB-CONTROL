@@ -5,7 +5,7 @@ function renderCustomGeneral(p, escapeHtml) {
     <div class="maaParams wideForm">
       <span>任务名列表${missing ? ' <span class="paramRequiredHint">（必填，否则运行时报错）</span>' : ""}</span>
       <input class="wideInput${missing ? " paramRequired" : ""}" id="paramCustomTaskNames" value="${escapeHtml(names)}" placeholder="GachaOnce;MiniGame@PV" />
-      <p class="formNote">多个任务名以英文分号分隔，例：GachaOnce;GachaTenTimes。Custom 会直接按 task_names 执行 MaaCore 内置任务。</p>
+      <p class="formNote">以英文分号分隔多个候选任务名，例：GachaOnce;GachaTenTimes。MaaCore 只会执行其中第一个匹配上的任务（及其 next），需要连续执行多个请添加多条自定义任务。</p>
     </div>
   `;
 }

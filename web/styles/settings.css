@@ -1,13 +1,6 @@
-.settingsGrid {
-  display: grid;
-  grid-template-columns: 260px minmax(420px, 620px);
-  gap: 22px;
-  padding: 34px;
-}
-
 .settingsViewRoot {
   display: grid;
-  grid-template-columns: 175px minmax(620px, 1fr);
+  grid-template-columns: 175px minmax(0, 1fr);
   align-items: start;
   gap: 20px;
   min-height: 100%;
@@ -38,7 +31,7 @@
 
 .settingsNavItem.active {
   border-color: var(--blue);
-  color: #28a9ff;
+  color: var(--blue-fg);
   background: var(--blue-soft);
 }
 
@@ -236,7 +229,7 @@
 .timerSectionDivider {
   width: 100%;
   height: 1px;
-  background: var(--border, #e0e0e0);
+  background: var(--line-soft);
   margin: 4px 0;
 }
 
@@ -259,7 +252,7 @@
 .timerEmulatorLabel {
   flex: 0 0 72px;
   font-size: 0.88em;
-  color: var(--text-secondary, var(--text));
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 
@@ -276,7 +269,7 @@
 
 .timerEmulatorUnit {
   font-size: 0.88em;
-  color: var(--text-secondary, var(--text));
+  color: var(--text-secondary);
 }
 
 .settingsFormRow {
@@ -471,14 +464,40 @@
   body {
     min-width: 0;
   }
+}
 
-  .maaLayout {
-    grid-template-columns: 210px minmax(420px, 1fr);
-    padding-left: 36px;
+.settingsTextarea {
+  min-height: 76px;
+  padding: 6px 8px;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: var(--fs-xs);
+  line-height: var(--lh);
+}
+
+.settingsNavItem:hover {
+  background: var(--hover-bg);
+  color: var(--info-fg);
+}
+
+.settingsFoldHead:hover {
+  background: var(--hover-bg);
+}
+
+.settingsLineText.ok { color: var(--success-fg); }
+.settingsLineText.err { color: var(--danger-fg); }
+
+/* 小屏：侧边导航改为顶部横向条 */
+@media (max-width: 900px) {
+  .settingsViewRoot {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 16px;
   }
 
-  .eventColumn {
-    grid-column: 1 / -1;
-    width: auto;
+  .settingsSideNav {
+    position: static;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    max-height: none;
+    overflow-x: auto;
   }
 }

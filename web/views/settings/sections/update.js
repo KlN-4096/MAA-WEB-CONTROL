@@ -22,7 +22,7 @@ function renderUpdateSection() {
           { label: "GitHub", value: "Github" },
           { label: "Mirror酱", value: "MirrorChyan" }
         ], SETTINGS_STATE.updateSource, "updateSource", "settingsControlL"))}
-        ${isMirror ? fieldRow("Mirror酱 CDK", textBox(SETTINGS_STATE.mirrorChyanCdk, "settingsControlL", "mirrorChyanCdk")) : ""}
+        ${isMirror ? fieldRow("Mirror酱 CDK", textBox(SETTINGS_STATE.mirrorChyanCdk, "settingsControlL", "mirrorChyanCdk", ' type="password" autocomplete="off"'), "CDK 只保存在服务端 data/update.json，不写入浏览器本地存储。") : ""}
         ${fieldRow("Proxy 类型", selectBox([
           { label: "不使用", value: "" },
           { label: "HTTP Proxy", value: "http" },
@@ -35,7 +35,7 @@ function renderUpdateSection() {
         ${badgeRow("核心版本", SETTINGS_STATE.coreVersion || SETTINGS_STATE.maaVersion)}
         ${badgeRow("资源版本", SETTINGS_STATE.resourceVersion)}
         ${SETTINGS_STATE.resourceTime ? `<p class="settingsLineText">资源时间：${escapeHtml(SETTINGS_STATE.resourceTime)}</p>` : ""}
-        ${status ? `<p class="settingsLineText updateStatusLine">${escapeHtml(status)}</p>` : ""}
+        <p class="settingsLineText updateStatusLine ${SETTINGS_STATE.updateStatusLevel || ""}">${escapeHtml(status)}</p>
         <div class="settingsInlinePair">
           <button class="settingsButtonSmall" type="button" data-settings-action="checkUpdate"${busy ? " disabled" : ""}>检查更新</button>
           <button class="settingsButtonSmall" type="button" data-settings-action="coreUpdate"${busy ? " disabled" : ""}>核心更新</button>
@@ -73,10 +73,26 @@ async function saveUpdateConfig() {
     });
     applyUpdateConfig(result);
     SETTINGS_STATE.updateStatus = "更新设置已保存";
+    SETTINGS_STATE.updateStatusLevel = "ok";
   } catch (e) {
     SETTINGS_STATE.updateStatus = `更新设置保存失败：${e.message || "请求错误"}`;
+    SETTINGS_STATE.updateStatusLevel = "err";
+    showError(e);
   }
-  renderSettingsView();
+  // 只刷状态行：整页重渲染会销毁正在输入的 CDK / Proxy 输入框。
+  refreshUpdateStatusLine();
+}
+
+function refreshUpdateStatusLine() {
+  const line = document.querySelector(".updateStatusLine");
+  const text = updateStatusText();
+  if (!line) {
+    if (typeof state !== "undefined" && state.currentView === "settings") renderSettingsView();
+    return;
+  }
+  line.textContent = text;
+  line.classList.toggle("ok", SETTINGS_STATE.updateStatusLevel === "ok");
+  line.classList.toggle("err", SETTINGS_STATE.updateStatusLevel === "err");
 }
 
 async function checkUpdateNow() {

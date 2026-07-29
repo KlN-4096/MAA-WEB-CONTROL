@@ -1,16 +1,58 @@
 :root {
   color-scheme: dark;
+
+  /* ── 表面 ───────────────────────────────────────────── */
   --bg: #171717;
   --bar: #1f1f1f;
   --panel: #1b1b1b;
   --panel-2: #202020;
+  --card-bg: #202124;
+  --card-line: #303238;
+  --control-bg: #1d1e22;
+  --hover-bg: #2b2b30;          /* 原版 WPF MouseOverRegionBrush */
+  --active-bg: #26272b;
+
+  /* ── 文本 ───────────────────────────────────────────── */
   --text: #f0f0f0;
   --muted: #9a9a9a;
+  --text-secondary: var(--muted);
+
+  /* ── 描边 ───────────────────────────────────────────── */
   --line: #3b3d42;
   --line-soft: #2a2c30;
+  --border: var(--line-soft);
+
+  /* ── 语义色（bg = 底色/描边，fg = 深色底上的前景） ──── */
   --blue: #0087d7;
+  --blue-fg: #28a9ff;
   --blue-soft: rgba(0, 135, 215, 0.18);
   --danger: #d14d4d;
+  --danger-fg: #ff8a8a;
+  --success: #44b87b;
+  --success-fg: #7fd6a2;
+  --warning: #c9903a;
+  --warning-fg: #e0b661;
+  --info-fg: #50bfff;
+
+  /* ── 尺寸 ───────────────────────────────────────────── */
+  --control-h: 30px;
+  --control-h-sm: 24px;
+  --control-h-xs: 22px;
+  --radius: 4px;
+  --radius-lg: 6px;
+  --radius-sm: 3px;
+
+  /* ── 排版 ───────────────────────────────────────────── */
+  --fs-xs: 11px;
+  --fs: 12px;
+  --fs-md: 13px;
+  --fs-lg: 14px;
+  --lh: 1.45;
+  --lh-tight: 1.3;
+
+  /* ── 动效 ───────────────────────────────────────────── */
+  --t-fast: 110ms ease;
+  --t: 160ms ease;
 }
 
 * {
@@ -25,12 +67,13 @@ html {
 body {
   margin: 0;
   height: 100%;
-  min-width: 1120px;
+  min-width: 720px;
   overflow: hidden;
   background: #0f0f0f;
   color: var(--text);
   font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
-  font-size: 12px;
+  font-size: var(--fs);
+  line-height: var(--lh);
 }
 
 button,
@@ -41,17 +84,23 @@ textarea {
 }
 
 button {
-  min-height: 30px;
+  min-height: var(--control-h);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: #1d1d1f;
   color: var(--text);
   cursor: pointer;
+  transition: background-color var(--t-fast), border-color var(--t-fast), color var(--t-fast);
 }
 
 button:hover:not(:disabled) {
   border-color: var(--blue);
-  color: #50bfff;
+  background: var(--hover-bg);
+  color: var(--info-fg);
+}
+
+button:active:not(:disabled) {
+  background: var(--active-bg);
 }
 
 button:disabled {
@@ -63,9 +112,16 @@ input,
 select,
 textarea {
   border: 1px solid var(--line);
-  border-radius: 4px;
-  background: #1d1e22;
+  border-radius: var(--radius);
+  background: var(--control-bg);
   color: var(--text);
+  transition: border-color var(--t-fast);
+}
+
+input:hover:not(:disabled),
+select:hover:not(:disabled),
+textarea:hover:not(:disabled) {
+  border-color: #4c5057;
 }
 
 input:disabled,
@@ -78,7 +134,7 @@ textarea:disabled {
 input,
 select {
   width: 110px;
-  height: 30px;
+  height: var(--control-h);
   padding: 0 8px;
 }
 
@@ -90,7 +146,142 @@ textarea {
   font-family: Consolas, "Cascadia Mono", monospace;
 }
 
+/* 键盘可达性：全站统一焦点环（此前完全缺失） */
+:focus-visible {
+  outline: 2px solid var(--blue-fg);
+  outline-offset: 1px;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--blue-fg);
+  outline-offset: 1px;
+}
+
+input[type="checkbox"] {
+  accent-color: var(--blue);
+}
+
 h2,
 p {
   margin: 0;
+}
+
+/* ── 滚动条（原版 WPF 是细滚动条，浏览器默认 15px 会挤压窄容器） ── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: var(--radius);
+  background: var(--line);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4c5057;
+}
+
+/* ── 全局 toast ─────────────────────────────────────── */
+.toastHost {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 90;
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 380px;
+  padding: 9px 10px 9px 12px;
+  border: 1px solid var(--card-line);
+  border-left: 3px solid var(--muted);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+  animation: toastIn 160ms ease;
+}
+
+.toast.leaving {
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.toast.success { border-left-color: var(--success); }
+.toast.warning { border-left-color: var(--warning); }
+.toast.error { border-left-color: var(--danger); }
+.toast.info { border-left-color: var(--blue); }
+
+.toastText {
+  flex: 1;
+  line-height: var(--lh);
+  overflow-wrap: anywhere;
+}
+
+.toastRepeat {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.toastClose {
+  flex: 0 0 auto;
+  width: 18px;
+  min-height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  line-height: 1;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── 「暂未接入」标记：MaaCore 不消费的参数统一这样呈现 ── */
+.unsupportedRow {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.unsupportedBadge {
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+/* 状态文本 */
+.ok { color: var(--success-fg); }
+.err { color: var(--danger-fg); }
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

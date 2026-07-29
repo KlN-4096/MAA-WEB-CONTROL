@@ -34,16 +34,11 @@ function isRunnerBusy(value = state.runnerState) {
 
 function syncRunnerControls() {
   const runButton = $("runButton");
-  const stopButton = $("stopButton");
   const busy = isRunnerBusy();
   if (runButton) {
     runButton.classList.toggle("stopStart", busy);
     runButton.disabled = runRequestPending || stopRequestPending || state.runnerState === "Stopping";
     runButton.textContent = state.runnerState === "Stopping" ? "停止中" : (busy ? "停止" : "Link Start!");
-  }
-  if (stopButton) {
-    stopButton.classList.add("ghost");
-    stopButton.disabled = true;
   }
   syncProfileEditingControls();
   if (typeof syncSettingsEditingLock === "function") syncSettingsEditingLock();

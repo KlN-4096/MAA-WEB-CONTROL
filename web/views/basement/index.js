@@ -1,7 +1,6 @@
 let basementWired = false;
 
 function renderBasementView() {
-  renderProfileForm();
   renderProfiles();
   renderTasks();
   renderEditor();
@@ -26,7 +25,6 @@ function wireBasementView() {
   addListener("#runButton", "click", () => {
     (isRunnerBusy() ? stopRun() : runProfile()).catch(showError);
   });
-  addListener("#stopButton", "click", () => stopRun().catch(showError));
   addListener("#addTaskButton", "click", onAddTaskButtonClick);
   addListener("#deleteTaskButton", "click", () => runFeatureAction("basement", "clearTasks"));
   addListener("#moveUpButton", "click", () => runFeatureAction("basement", "selectAllTasks"));

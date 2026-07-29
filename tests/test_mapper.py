@@ -1,5 +1,6 @@
 import unittest
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -171,7 +172,7 @@ class TaskMapperTest(unittest.TestCase):
 
         call = task_to_append_call(task)
 
-        self.assertEqual(call.params["select"], [5, 3])
+        self.assertEqual(call.params["select"], [5])
         self.assertEqual(call.params["confirm"], [5, 3])
         self.assertEqual(call.params["first_tags"], ["高级资深干员", "近卫干员"])
         self.assertEqual(call.params["times"], 12)
@@ -184,7 +185,7 @@ class TaskMapperTest(unittest.TestCase):
         task = TaskDefinition(
             id="recruit",
             type="Recruit",
-            params={"select": [4], "confirm": [3, 4], "times": 4},
+            params={"select": [4], "confirm": [3, 4], "times": 4, "skip_robot": False},
         )
 
         call = task_to_append_call(task)
@@ -417,22 +418,61 @@ class TaskMapperTest(unittest.TestCase):
 
         self.assertEqual(call.params["expected_collapsal_paradigms"], ["深化坚守", "领域"])
 
-    def test_recruit_reserve_level_1_strips_robot_tag(self):
+    def test_recruit_skip_robot_confirms_level_one(self):
+        """原版 NotChooseLevel1 = skip_robot=true + ConfirmList.Add(1)。"""
         task = TaskDefinition(
             id="recruit",
             type="Recruit",
             params={
                 "select": [1, 3, 4],
-                "confirm": [1, 3, 4, 5],
-                "reserve_level_1": True,
+                "confirm": [3, 4, 5],
+                "skip_robot": True,
             },
         )
 
         call = task_to_append_call(task)
 
         self.assertNotIn(1, call.params["select"])
+        self.assertIn(1, call.params["confirm"])
+        self.assertTrue(call.params["skip_robot"])
+
+    def test_recruit_legacy_reserve_level_1_maps_to_skip_robot(self):
+        task = TaskDefinition(
+            id="recruit",
+            type="Recruit",
+            params={"confirm": [3, 4], "reserve_level_1": False},
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertFalse(call.params["skip_robot"])
         self.assertNotIn(1, call.params["confirm"])
         self.assertNotIn("reserve_level_1", call.params)
+
+    def test_recruit_select_excludes_three_star(self):
+        """原版只把 4/5 星加入 SelectList，3 星仅确认。"""
+        task = TaskDefinition(
+            id="recruit",
+            type="Recruit",
+            params={"confirm_3": True, "confirm_4": True, "skip_robot": False},
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params["confirm"], [4, 3])
+        self.assertEqual(call.params["select"], [4])
+
+    def test_recruit_force_refresh_is_independent_of_refresh(self):
+        task = TaskDefinition(
+            id="recruit",
+            type="Recruit",
+            params={"refresh": False, "force_refresh": False},
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertFalse(call.params["refresh"])
+        self.assertFalse(call.params["force_refresh"])
 
     def test_closedown_drops_unrelated_params(self):
         task = TaskDefinition(
@@ -485,20 +525,23 @@ class TaskMapperTest(unittest.TestCase):
         self.assertTrue(call.params["report_to_yituliu"])
         self.assertEqual(call.params["yituliu_id"], "lol")
 
-    def test_fight_expiring_medicine_count_emits_field(self):
+    def test_fight_emits_only_medicine_expire_days(self):
+        """MaaCore 优先读 medicine_expire_days，expiring_medicine 已废弃且会被忽略。"""
         task = TaskDefinition(
             id="fight",
             type="Fight",
             params={
                 "stage": "1-7",
                 "use_expiring_medicine": True,
-                "expiring_medicine_count": 5,
+                "medicine_expire_hours": "72h",
+                "expiring_medicine": 5,
             },
         )
 
         call = task_to_append_call(task)
 
-        self.assertEqual(call.params["expiring_medicine"], 5)
+        self.assertEqual(call.params["medicine_expire_days"], 3)
+        self.assertNotIn("expiring_medicine", call.params)
 
     def test_reclamation_fire_theme_maps(self):
         task = TaskDefinition(
@@ -516,13 +559,14 @@ class TaskMapperTest(unittest.TestCase):
             id="roguelike",
             type="Roguelike",
             params={
+                "theme": "萨米",
+                "mode": 4,
                 "use_foldartal": True,
                 "check_collapsal_paradigms": True,
                 "double_check_collapsal_paradigms": True,
                 "collectible_mode_shopping": True,
                 "collectible_mode_squad": "矛头分队",
-                "collectible_mode_start_list": {"理性": True, "源石锭": True},
-                "find_playTime_target": True,
+                "collectible_mode_start_list": {"热水壶": True, "源石锭": True},
             },
         )
 
@@ -533,26 +577,211 @@ class TaskMapperTest(unittest.TestCase):
         self.assertTrue(call.params["double_check_collapsal_paradigms"])
         self.assertTrue(call.params["collectible_mode_shopping"])
         self.assertEqual(call.params["collectible_mode_squad"], "矛头分队")
-        self.assertEqual(call.params["collectible_mode_start_list"], {"理性": True, "源石锭": True})
-        self.assertTrue(call.params["find_playTime_target"])
+        self.assertEqual(call.params["collectible_mode_start_list"], {"hot_water": True, "ingot": True})
 
-    def test_userdata_update_default_interval(self):
-        task = TaskDefinition(id="udu", type="UserDataUpdate", params={})
+    # ---- MaaCore 参数契约回归（对照 MaaCore 源码，防止任务被静默丢弃）----
 
-        call = task_to_append_call(task)
+    def test_roguelike_strategy_maps_to_valid_core_modes(self):
+        """MaaCore is_valid_mode 只接受 0/1/4/5/6/7/10001/20001；旧映射的 2/3 会让任务被丢弃。"""
+        cases = {
+            "刷等级，尽可能稳定地打更多层数": 0,
+            "刷源石锭，投资完成后自动退出": 1,
+            "刷开局，刷取热水壶或精二干员开局": 4,
+            "刷月度小队，尽可能稳定地打更多层数": 6,
+            "刷深入调查，尽可能稳定地打更多层数": 7,
+        }
+        for strategy, expected in cases.items():
+            with self.subTest(strategy=strategy):
+                task = TaskDefinition(
+                    id="roguelike",
+                    type="Roguelike",
+                    params={"theme": "萨卡兹", "strategy": strategy},
+                )
+                self.assertEqual(task_to_append_call(task).params["mode"], expected)
 
-        self.assertEqual(call.params["trigger_interval"], "EveryTime")
+    def test_roguelike_theme_only_strategies_map(self):
+        sami = TaskDefinition(
+            id="rg",
+            type="Roguelike",
+            params={"theme": "萨米", "strategy": "刷坍缩范式，遇到非稀有坍缩范式后直接重开"},
+        )
+        jie = TaskDefinition(
+            id="rg",
+            type="Roguelike",
+            params={"theme": "界园", "strategy": "刷常乐节点，第一层进洞，找不到需要的节点就重开"},
+        )
 
-    def test_userdata_update_invalid_interval_falls_back(self):
+        self.assertEqual(task_to_append_call(sami).params["mode"], 5)
+        self.assertEqual(task_to_append_call(jie).params["mode"], 20001)
+
+    def test_roguelike_rejects_mode_theme_mismatch(self):
+        task = TaskDefinition(id="rg", type="Roguelike", params={"theme": "萨卡兹", "mode": 5})
+
+        with self.assertRaisesRegex(TaskMappingError, "Sami"):
+            task_to_append_call(task)
+
+    def test_roguelike_rejects_removed_mode(self):
+        task = TaskDefinition(id="rg", type="Roguelike", params={"theme": "萨卡兹", "mode": 2})
+
+        with self.assertRaises(TaskMappingError):
+            task_to_append_call(task)
+
+    def test_roguelike_roles_use_short_ocr_names(self):
         task = TaskDefinition(
-            id="udu",
-            type="UserDataUpdate",
-            params={"trigger_interval": "Hourly"},
+            id="rg",
+            type="Roguelike",
+            params={"theme": "萨卡兹", "roles": "稳扎稳打（重装、术师、狙击）"},
+        )
+
+        self.assertEqual(task_to_append_call(task).params["roles"], "稳扎稳打")
+
+    def test_roguelike_seed_is_sent_as_string(self):
+        enabled = TaskDefinition(
+            id="rg",
+            type="Roguelike",
+            params={"theme": "萨卡兹", "start_with_seed": True, "seed": "abc123"},
+        )
+        disabled = TaskDefinition(
+            id="rg",
+            type="Roguelike",
+            params={"theme": "萨卡兹", "start_with_seed": False, "seed": "abc123"},
+        )
+
+        call_enabled = task_to_append_call(enabled)
+        call_disabled = task_to_append_call(disabled)
+
+        self.assertEqual(call_enabled.params["start_with_seed"], "abc123")
+        self.assertNotIn("seed", call_enabled.params)
+        self.assertNotIn("start_with_seed", call_disabled.params)
+        self.assertNotIn("seed", call_disabled.params)
+
+    def test_roguelike_investments_count_zero_is_omitted(self):
+        zero = TaskDefinition(
+            id="rg",
+            type="Roguelike",
+            params={"theme": "萨卡兹", "investment_enabled": True, "investments_count": 0},
+        )
+        limited = TaskDefinition(
+            id="rg",
+            type="Roguelike",
+            params={"theme": "萨卡兹", "investments_count": 30},
+        )
+
+        self.assertNotIn("investments_count", task_to_append_call(zero).params)
+        self.assertEqual(task_to_append_call(limited).params["investments_count"], 30)
+
+    def test_roguelike_elite_two_only_sent_in_collectible_mode(self):
+        wrong_mode = TaskDefinition(
+            id="rg",
+            type="Roguelike",
+            params={"theme": "萨卡兹", "mode": 0, "start_with_elite_two": True},
+        )
+        collectible = TaskDefinition(
+            id="rg",
+            type="Roguelike",
+            params={
+                "theme": "萨卡兹",
+                "mode": 4,
+                "start_with_elite_two": True,
+                "only_start_with_elite_two": True,
+            },
+        )
+        orphan_only = TaskDefinition(
+            id="rg",
+            type="Roguelike",
+            params={"theme": "萨卡兹", "mode": 4, "only_start_with_elite_two": True},
+        )
+
+        self.assertNotIn("start_with_elite_two", task_to_append_call(wrong_mode).params)
+        self.assertTrue(task_to_append_call(collectible).params["only_start_with_elite_two"])
+        self.assertFalse(task_to_append_call(orphan_only).params["only_start_with_elite_two"])
+
+    def test_roguelike_foldartal_uses_official_keys(self):
+        task = TaskDefinition(
+            id="rg",
+            type="Roguelike",
+            params={
+                "theme": "萨米",
+                "mode": 4,
+                "first_floor_foldartal": True,
+                "first_floor_foldartal_name": "生命",
+                "first_floor_foldartals": "风声,感知",
+            },
         )
 
         call = task_to_append_call(task)
 
-        self.assertEqual(call.params["trigger_interval"], "EveryTime")
+        self.assertEqual(call.params["first_floor_foldartal"], "生命")
+        self.assertEqual(call.params["start_foldartal_list"], ["风声", "感知"])
+        self.assertNotIn("first_floor_foldartals", call.params)
+
+    def test_roguelike_find_playtime_target_requires_mode(self):
+        jie = TaskDefinition(
+            id="rg",
+            type="Roguelike",
+            params={"theme": "界园", "mode": 20001, "find_playTime_target": True},
+        )
+        other = TaskDefinition(
+            id="rg",
+            type="Roguelike",
+            params={"theme": "界园", "mode": 0, "find_playTime_target": True},
+        )
+
+        self.assertEqual(task_to_append_call(jie).params["find_playTime_target"], 1)
+        self.assertNotIn("find_playTime_target", task_to_append_call(other).params)
+
+    def test_userdata_update_expands_to_depot_and_operbox(self):
+        """MaaCore 没有 UserDataUpdate 任务类型，必须展开成 Depot / OperBox。"""
+        profile = Profile(
+            name="daily",
+            tasks=[
+                TaskDefinition(
+                    id="udu",
+                    type="UserDataUpdate",
+                    params={"update_depot": True, "update_oper_box": True},
+                )
+            ],
+        )
+
+        calls = profile_to_append_calls(profile)
+
+        self.assertEqual([call.type for call in calls], ["Depot", "OperBox"])
+
+    def test_userdata_update_respects_toggles(self):
+        profile = Profile(
+            name="daily",
+            tasks=[
+                TaskDefinition(
+                    id="udu",
+                    type="UserDataUpdate",
+                    params={"update_depot": False, "update_oper_box": True},
+                )
+            ],
+        )
+
+        calls = profile_to_append_calls(profile)
+
+        self.assertEqual([call.type for call in calls], ["OperBox"])
+
+    def test_stage_plan_uses_maa_four_am_daycut(self):
+        """凌晨 0-4 点应按前一天判断关卡开放（与 options.py 一致）。"""
+        monday_2am = datetime(2026, 5, 11, 2, 0)  # 周一凌晨 = 游戏内周日
+        with patch("app.mapper.datetime") as fake_datetime:
+            fake_datetime.now.return_value = monday_2am
+            fake_datetime.side_effect = datetime
+            self.assertEqual(mapper._maa_weekday(), 6)
+
+    def test_userdata_update_never_emits_unknown_core_task(self):
+        task = TaskDefinition(id="udu", type="UserDataUpdate", params={})
+
+        calls = mapper.task_to_append_calls(task)
+
+        self.assertEqual([call.type for call in calls], ["Depot", "OperBox"])
+        self.assertNotIn("UserDataUpdate", [call.type for call in calls])
+
+    def test_userdata_update_invalid_interval_falls_back(self):
+        self.assertEqual(mapper._userdata_interval({"trigger_interval": "Hourly"}), "EveryTime")
+        self.assertEqual(mapper._userdata_interval({"trigger_interval": "Weekly"}), "Weekly")
 
     def test_profile_skips_userdata_update_within_daily_interval(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -571,8 +800,8 @@ class TaskMapperTest(unittest.TestCase):
             first = profile_to_append_calls(profile, state_path=state_path)
             second = profile_to_append_calls(profile, state_path=state_path)
 
-            self.assertEqual(len(first), 1)
-            self.assertEqual(len(second), 0)
+            self.assertEqual([call.type for call in first], ["Depot", "OperBox"])
+            self.assertEqual(second, [])
 
     def test_fight_custom_annihilation_replaces_stage(self):
         task = TaskDefinition(
@@ -649,8 +878,22 @@ class TaskMapperTest(unittest.TestCase):
             first = profile_to_append_calls(profile, state_path=state_path)
             second = profile_to_append_calls(profile, state_path=state_path)
 
-            self.assertEqual(len(first), 1)
-            self.assertEqual(len(second), 1)
+            self.assertEqual([call.type for call in first], ["Depot", "OperBox"])
+            self.assertEqual([call.type for call in second], ["Depot", "OperBox"])
+
+
+    def test_roguelike_find_playtime_target_is_always_sent_in_that_mode(self):
+        """界园「刷常乐节点」若不下发 1~3 的 target，MaaCore 会拒掉整个任务链。"""
+        task = TaskDefinition(
+            id="rg",
+            type="Roguelike",
+            params={"theme": "界园", "strategy": "刷常乐节点，第一层进洞，找不到需要的节点就重开"},
+        )
+
+        call = task_to_append_call(task)
+
+        self.assertEqual(call.params["mode"], 20001)
+        self.assertEqual(call.params["find_playTime_target"], 1)
 
 
 if __name__ == "__main__":

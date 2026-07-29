@@ -7,9 +7,8 @@ function renderIssueSection() {
         <a class="settingsLink" href="https://github.com/MaaAssistantArknights/MaaAssistantArknights/issues" target="_blank" rel="noreferrer">问题反馈 (GitHub Issues)</a>
       </div>
       <div class="settingsColumn">
-        <button class="settingsButtonSmall" type="button" disabled>生成日志压缩包</button>
-        <button class="settingsButtonSmall" type="button" disabled>打开日志文件夹</button>
-        <span class="settingsCheckLine"><button class="settingsButtonSmall" type="button" disabled>清空图片缓存</button>${settingsTip("清理调试截图缓存。")}</span>
+        <span class="settingsCheckLine"><button class="settingsButtonSmall" type="button" data-settings-action="clearLogCache">清空日志与图片缓存</button>${settingsTip("清空运行日志卡片与截图缩略图缓存。")}</span>
+        <p class="settingsLineText">生成日志压缩包 / 打开日志文件夹<span class="unsupportedBadge">暂未接入</span></p>
       </div>
     </div>
   `);

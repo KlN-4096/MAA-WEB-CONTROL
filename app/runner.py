@@ -43,29 +43,40 @@ class MaaAdapter(Protocol):
     @property
     def task_chain_status(self) -> str | None: ...
 
+    @property
+    def is_connected(self) -> bool: ...
+
     async def connect(self, profile: Profile) -> bool: ...
 
     async def append_task(self, call: AppendCall) -> int: ...
 
-    async def start(self) -> bool: ...
+    async def start(self, wait: bool = True) -> bool: ...
 
     async def stop(self) -> bool: ...
 
 
 class DryRunMaaAdapter:
+    def __init__(self) -> None:
+        self._connected = False
+
     @property
     def task_chain_status(self) -> str | None:
         return "Completed"
 
+    @property
+    def is_connected(self) -> bool:
+        return self._connected
+
     async def connect(self, profile: Profile) -> bool:
         await asyncio.sleep(0.05)
+        self._connected = True
         return True
 
     async def append_task(self, call: AppendCall) -> int:
         await asyncio.sleep(0.02)
         return abs(hash((call.task_id, call.type))) % 100000 + 1
 
-    async def start(self) -> bool:
+    async def start(self, wait: bool = True) -> bool:
         await asyncio.sleep(0.1)
         return True
 
@@ -155,9 +166,16 @@ class MaaRunnerService:
         self._task = asyncio.create_task(self._run_profile(profile))
         return self.status()
 
+    def is_running(self) -> bool:
+        return self._task is not None and not self._task.done()
+
     async def stop(self) -> RunnerStatus:
-        self._stop_requested = True
-        self._status.state = "Stopping"
+        # 小工具 / 自动战斗直接驱动 adapter，没有 _run_profile 协程会把 Stopping 改回来；
+        # 此时置状态会让「一键长草」永久变成忙碌态。
+        running = self.is_running()
+        if running:
+            self._stop_requested = True
+            self._status.state = "Stopping"
         self._logs.append("正在停止……", color_key="WarningLogBrush", split_mode="Before")
         self._events.publish(EventRecord.now("runner.stopping", "Stop requested."))
         await self._adapter.stop()
