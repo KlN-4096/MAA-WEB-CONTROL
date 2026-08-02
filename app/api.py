@@ -435,11 +435,11 @@ def create_api_router(
             raise HTTPException(status_code=501, detail="Update service not initialized")
         return await update_service.update_resource((request or UpdateRequest()).client_type)
 
-    @router.post("/update/core")
+    @router.post("/update/core", status_code=202)
     async def post_core_update(request: UpdateRequest | None = None):
         if update_service is None:
             raise HTTPException(status_code=501, detail="Update service not initialized")
-        return await update_service.update_core((request or UpdateRequest()).client_type)
+        return update_service.start_core_update((request or UpdateRequest()).client_type)
 
     # ── Notifications ──────────────────────────────────────────────
 

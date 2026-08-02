@@ -36,6 +36,10 @@ from .update_helpers import (
 
 CHECK_INTERVAL_SECONDS = 30
 CORE_UPDATE_BUSY_STATES = {"Connecting", "AppendingTasks", "Running", "Stopping"}
+CORE_UPDATE_RUNNING = "running"
+CORE_UPDATE_COMPLETED = "completed"
+CORE_UPDATE_FAILED = "failed"
+CORE_UPDATE_RESTARTING = "restarting"
 YJ_CLIENT_TIMEZONE = {"Official": 8, "Bilibili": 8, "txwy": 8, "YoStarEN": -7, "YoStarJP": 9, "YoStarKR": 9}
 
 
@@ -55,6 +59,10 @@ class UpdateService:
         self._restart_callback = restart_callback
         self._config = UpdateConfig()
         self._task: asyncio.Task[None] | None = None
+        self._startup_task: asyncio.Task[dict[str, Any]] | None = None
+        self._core_update_task: asyncio.Task[None] | None = None
+        self._core_action: dict[str, Any] = {}
+        self._stopping = False
         self._checking = False
         self._last_yj_key = ""
         self._last_result: dict[str, Any] = {}
@@ -66,7 +74,10 @@ class UpdateService:
 
     @property
     def state(self) -> dict[str, Any]:
-        return dict(self._last_result)
+        result = dict(self._last_result)
+        if self._core_action:
+            result["core_action"] = dict(self._core_action)
+        return result
 
     def update_config(self, config: UpdateConfig) -> UpdateConfig:
         self._config = config.model_copy(deep=True)
@@ -90,11 +101,15 @@ class UpdateService:
     def start(self) -> None:
         if self._task and not self._task.done():
             return
+        self._stopping = False
         self._task = asyncio.create_task(self._tick_loop())
         if self._config.startup_update_check:
-            asyncio.create_task(self.check_and_auto_update(self._current_client_type(), reason="startup"))
+            self._startup_task = asyncio.create_task(
+                self.check_and_auto_update(self._current_client_type(), reason="startup")
+            )
 
     async def stop(self) -> None:
+        self._stopping = True
         task = self._task
         if task and not task.done():
             task.cancel()
@@ -103,6 +118,14 @@ class UpdateService:
             except asyncio.CancelledError:
                 pass
         self._task = None
+        startup_task = self._startup_task
+        if startup_task and not startup_task.done():
+            startup_task.cancel()
+            await asyncio.gather(startup_task, return_exceptions=True)
+        self._startup_task = None
+        core_update_task = self._core_update_task
+        if core_update_task and not core_update_task.done():
+            await asyncio.gather(asyncio.shield(core_update_task), return_exceptions=True)
 
     async def check_updates(self, client_type: str = DEFAULT_CLIENT_TYPE) -> dict[str, Any]:
         if self._checking:
@@ -144,9 +167,72 @@ class UpdateService:
         checked: dict[str, Any] | None = None,
         manual: bool = True,
     ) -> dict[str, Any]:
+        action = self.start_core_update(client_type, checked=checked, manual=manual)
+        if not action.get("accepted"):
+            return action
+        task = self._core_update_task
+        if task is not None:
+            await asyncio.gather(asyncio.shield(task), return_exceptions=True)
+        return dict(self._core_action)
+
+    def start_core_update(
+        self,
+        client_type: str = DEFAULT_CLIENT_TYPE,
+        *,
+        checked: dict[str, Any] | None = None,
+        manual: bool = True,
+    ) -> dict[str, Any]:
+        if self._stopping:
+            return {
+                "ok": False,
+                "accepted": False,
+                "existing": False,
+                "state": CORE_UPDATE_FAILED,
+                "message": "服务正在停止，无法启动核心更新",
+            }
+        if self._core_update_task and not self._core_update_task.done():
+            return {**self._core_action, "accepted": True, "existing": True, "message": "核心更新正在进行"}
+        action = {
+            "ok": True,
+            "accepted": True,
+            "existing": False,
+            "state": CORE_UPDATE_RUNNING,
+            "message": "核心更新已开始",
+        }
+        self._set_core_action(action)
+        self._events.publish(EventRecord.now("update.core.started", action["message"], detail=action))
+        self._core_update_task = asyncio.create_task(self._run_core_update(client_type, checked, manual))
+        self._core_update_task.add_done_callback(self._handle_core_update_done)
+        return dict(action)
+
+    async def _run_core_update(
+        self,
+        client_type: str,
+        checked: dict[str, Any] | None,
+        manual: bool,
+    ) -> None:
         result = await asyncio.to_thread(self._update_core_sync, client_type, checked, manual)
-        self._last_result = {**self.state, "core_action": result}
-        return result
+        self._set_core_action({**result, "accepted": False, "existing": False, "state": _core_action_state(result)})
+
+    def _handle_core_update_done(self, task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        error = task.exception()
+        if error is None:
+            return
+        action = {
+            "ok": False,
+            "accepted": False,
+            "existing": False,
+            "state": CORE_UPDATE_FAILED,
+            "message": str(error) or "核心更新失败",
+        }
+        self._set_core_action(action)
+        self._events.publish(EventRecord.now("update.core.failed", action["message"], level="error", detail=action))
+
+    def _set_core_action(self, action: dict[str, Any]) -> None:
+        self._core_action = dict(action)
+        self._last_result = {**self._last_result, "core_action": dict(action)}
 
     @property
     def _project_root(self) -> Path:
@@ -396,3 +482,11 @@ def _can_update_with_maa_cli(core_dir: Path) -> bool:
         return False
     maa_cli = core_dir / "maa"
     return maa_cli.is_file() and os.access(maa_cli, os.X_OK)
+
+
+def _core_action_state(result: dict[str, Any]) -> str:
+    if not result.get("ok"):
+        return CORE_UPDATE_FAILED
+    if result.get("restart_scheduled"):
+        return CORE_UPDATE_RESTARTING
+    return CORE_UPDATE_COMPLETED

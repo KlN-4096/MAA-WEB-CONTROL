@@ -1,3 +1,6 @@
+const CORE_UPDATE_POLL_INTERVAL_MS = 2000;
+const CORE_UPDATE_POLL_LIMIT = 300;
+
 function renderUpdateSection() {
   const isGithub = SETTINGS_STATE.updateSource === "Github";
   const isMirror = SETTINGS_STATE.updateSource === "MirrorChyan";
@@ -100,7 +103,25 @@ async function checkUpdateNow() {
 }
 
 async function updateCoreNow() {
-  return runUpdateRequest("core", "/api/update/core", "正在处理核心更新……");
+  if (typeof api !== "function" || SETTINGS_STATE.updateBusy) return;
+  const previousVersion = SETTINGS_STATE.coreVersion;
+  SETTINGS_STATE.updateBusy = "core";
+  SETTINGS_STATE.updateStatus = "正在启动核心更新……";
+  SETTINGS_STATE.updateStatusLevel = "";
+  renderSettingsView();
+  try {
+    const result = await api("/api/update/core", {
+      method: "POST",
+      body: JSON.stringify({ client_type: updateClientType() })
+    });
+    applyUpdateResult("core", result);
+    await waitForCoreUpdate(previousVersion);
+  } catch (e) {
+    SETTINGS_STATE.updateStatus = `更新失败：${e.message || "请求错误"}`;
+    SETTINGS_STATE.updateStatusLevel = "err";
+  }
+  SETTINGS_STATE.updateBusy = "";
+  renderSettingsView();
 }
 
 async function updateResourceNow() {
@@ -118,12 +139,8 @@ async function runUpdateRequest(kind, path, busyText) {
       body: JSON.stringify({ client_type: updateClientType() })
     });
     applyUpdateResult(kind, result);
-    if (result?.restart_scheduled) {
-      refreshVersionAfterRestart();
-    } else {
-      await loadVersionInfo();
-      await refreshOptionsAfterResourceUpdate(kind, result);
-    }
+    await loadVersionInfo();
+    await refreshOptionsAfterResourceUpdate(kind, result);
   } catch (e) {
     SETTINGS_STATE.updateStatus = `更新失败：${e.message || "请求错误"}`;
   }
@@ -131,14 +148,44 @@ async function runUpdateRequest(kind, path, busyText) {
   renderSettingsView();
 }
 
-function refreshVersionAfterRestart() {
-  setTimeout(() => loadVersionInfo(), 8000);
-}
-
 async function refreshOptionsAfterResourceUpdate(kind, result) {
   if (kind !== "resource" || result?.ok === false || typeof loadOptions !== "function") return;
   await loadOptions();
   if (typeof renderAll === "function") renderAll();
+}
+
+async function waitForCoreUpdate(previousVersion) {
+  for (let attempt = 0; attempt < CORE_UPDATE_POLL_LIMIT; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, CORE_UPDATE_POLL_INTERVAL_MS));
+    let data;
+    try {
+      data = await api(`/api/version?client_type=${encodeURIComponent(updateClientType())}`);
+    } catch (e) {
+      SETTINGS_STATE.updateStatus = "核心已安装，等待服务重启……";
+      refreshUpdateStatusLine();
+      continue;
+    }
+    applyVersionInfo(data);
+    const action = data.update?.core_action;
+    if (action?.state === "failed") {
+      throw new Error(action.message || "核心更新失败");
+    }
+    if (action?.state === "completed") {
+      SETTINGS_STATE.updateStatus = action.message || "核心更新完成";
+      SETTINGS_STATE.updateStatusLevel = "ok";
+      return;
+    }
+    if (data.core_version && previousVersion && data.core_version !== previousVersion) {
+      SETTINGS_STATE.updateStatus = `核心已更新到 ${data.core_version}`;
+      SETTINGS_STATE.updateStatusLevel = "ok";
+      return;
+    }
+    SETTINGS_STATE.updateStatus = action?.state === "restarting"
+      ? "核心已安装，等待服务重启……"
+      : "核心正在后台更新……";
+    refreshUpdateStatusLine();
+  }
+  throw new Error("等待核心更新结果超时");
 }
 
 function applyVersionInfo(data) {
