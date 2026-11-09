@@ -23,6 +23,14 @@ GUI_STAGE_ACTIVITY_URLS = (
     f"{MAA_API_BASE}/{GUI_STAGE_ACTIVITY_API}",
     f"{MAA_API_FALLBACK_BASE}/{GUI_STAGE_ACTIVITY_API}",
 )
+# 在线资源增量：官方 API 的 tasks.json（MaaWpfGui 的 StageManager/MaaApiService 取的是同一个地址）。
+# 新活动关卡（如 YW-8）的任务定义不在 MaaResource 资源包里、也不在 core 自带的
+# resource/tasks/Stages/ 里，只在这个增量里能拿到，所以必须单独同步一份。
+INCREMENTAL_TASKS_API = "resource/tasks.json"
+INCREMENTAL_TASKS_URLS = (
+    f"{MAA_API_BASE}/{INCREMENTAL_TASKS_API}",
+    f"{MAA_API_FALLBACK_BASE}/{INCREMENTAL_TASKS_API}",
+)
 MIRROR_USER_AGENT = "MaaWpfGui"
 MIRROR_SP_ID = "maa-web-control"
 FULL_PACKAGE_KEEP = {"cache", "config", "data", "debug", "MAA.Updater.exe"}

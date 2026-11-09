@@ -21,6 +21,7 @@ from .update_checking import UpdateChecker
 from .update_helpers import (
     GITHUB_RESOURCE_ZIP,
     GUI_STAGE_ACTIVITY_URLS,
+    INCREMENTAL_TASKS_URLS,
     MIRROR_USER_AGENT,
     extract_archive,
     extract_zip,
@@ -358,7 +359,10 @@ class UpdateService:
         extract_zip(package_path, extract_dir)
         merge_dir(github_resource_root(extract_dir), core_dir / "resource")
         stage_activity = self._sync_stage_activity_metadata(core_dir)
-        return self._resource_updated(client_type, stage_activity=stage_activity)
+        incremental_tasks = self._sync_incremental_tasks(core_dir)
+        return self._resource_updated(
+            client_type, stage_activity=stage_activity, incremental_tasks=incremental_tasks
+        )
 
     def _install_mirror_resource(self, core_dir: Path, url: str, client_type: str) -> dict[str, Any]:
         package_path = self._cache_dir / "MaaResourceMirrorchyan.zip"
@@ -369,7 +373,10 @@ class UpdateService:
         shutil.rmtree(extract_dir, ignore_errors=True)
         package_path.unlink(missing_ok=True)
         stage_activity = self._sync_stage_activity_metadata(core_dir)
-        return self._resource_updated(client_type, stage_activity=stage_activity)
+        incremental_tasks = self._sync_incremental_tasks(core_dir)
+        return self._resource_updated(
+            client_type, stage_activity=stage_activity, incremental_tasks=incremental_tasks
+        )
 
     def _sync_stage_activity_metadata(self, core_dir: Path) -> dict[str, Any]:
         target = core_dir / "cache" / "gui" / "StageActivityV2.json"
@@ -390,11 +397,53 @@ class UpdateService:
                 temp.unlink(missing_ok=True)
         return {"ok": False, "path": str(target), "message": "关卡列表元数据同步失败", "errors": errors}
 
-    def _resource_updated(self, client_type: str, *, stage_activity: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _sync_incremental_tasks(self, core_dir: Path) -> dict[str, Any]:
+        """同步官方 API 的在线资源增量（tasks.json）。
+
+        MaaCore 只在「已加载的资源里存在该关卡的任务定义」时接受这个关卡名
+        （StageNavigationTask::set_stage_name -> Task.get(name) 命中，或名字匹配主线正则）。
+        新活动关卡（例如 YW-8）两个条件都不满足：定义既不在 MaaResource 资源包里
+        （它只有数据层），也不在 core 自带的 resource/tasks/Stages/ 里（那份随内核包发布）。
+
+        MaaWpfGui 的做法是：把官方 API 的 resource/tasks.json 落到 cache/resource/tasks/tasks.json，
+        再把 cache 目录当作增量资源根加载（见 MaaWpfGui AsstProxy.LoadResource / CopyTasksJson）。
+        本项目的 resource_incremental_roots() 在 core_dir/cache/resource/ 存在时已经会把
+        core_dir/cache 交给 Asst.load(incremental_path=...)，这里只差把文件放进去。
+
+        注意：目标必须是 tasks/tasks.json（v5.15.4 起的新目录结构），不能只放 tasks.json；
+        父目录必须真的建出来，resource_incremental_roots() 的判定就是 cache/resource/ 是不是目录。
+        """
+        target = core_dir / "cache" / "resource" / "tasks" / "tasks.json"
+        errors: list[str] = []
+        for url in INCREMENTAL_TASKS_URLS:
+            temp = self._cache_dir / f"tasks-{uuid4().hex}.json"
+            try:
+                self._download_file(url, temp)
+                data = json.loads(temp.read_text(encoding="utf-8"))
+                if not isinstance(data, dict) or not data:
+                    raise RuntimeError("响应不是有效的任务增量 JSON")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(temp, target)
+                return {"ok": True, "source": url, "path": str(target)}
+            except Exception as exc:
+                errors.append(f"{url}: {exc}")
+            finally:
+                temp.unlink(missing_ok=True)
+        return {"ok": False, "path": str(target), "message": "任务增量同步失败", "errors": errors}
+
+    def _resource_updated(
+        self,
+        client_type: str,
+        *,
+        stage_activity: dict[str, Any] | None = None,
+        incremental_tasks: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         info = get_maa_version_info(self._runner, project_root=self._project_root, client_type=client_type)
         detail = {"version": info.get("resource_version"), "resource_time": info.get("resource_time")}
         if stage_activity is not None:
             detail["stage_activity"] = stage_activity
+        if incremental_tasks is not None:
+            detail["incremental_tasks"] = incremental_tasks
         if stage_activity is not None and not stage_activity.get("ok"):
             self._events.publish(EventRecord.now(
                 "update.resource.stage_activity_failed",
@@ -402,9 +451,21 @@ class UpdateService:
                 level="warning",
                 detail=stage_activity,
             ))
+        if incremental_tasks is not None and not incremental_tasks.get("ok"):
+            self._events.publish(EventRecord.now(
+                "update.resource.incremental_tasks_failed",
+                "任务增量同步失败。",
+                level="warning",
+                detail=incremental_tasks,
+            ))
         self._events.publish(EventRecord.now("update.resource.updated", "资源已更新。", detail=detail))
         self._reload_resources_when_possible(client_type)
-        message = "资源已更新" if not stage_activity or stage_activity.get("ok") else "资源已更新，但关卡列表元数据同步失败"
+        failed = [
+            name
+            for name, result in (("关卡列表元数据", stage_activity), ("任务增量", incremental_tasks))
+            if result is not None and not result.get("ok")
+        ]
+        message = "资源已更新" if not failed else f"资源已更新，但{'、'.join(failed)}同步失败"
         return {"ok": True, "message": message, **detail}
 
     def _reload_resources_when_possible(self, client_type: str) -> None:
