@@ -474,6 +474,39 @@ class TaskMapperTest(unittest.TestCase):
         self.assertFalse(call.params["refresh"])
         self.assertFalse(call.params["force_refresh"])
 
+    def test_switch_theme_maps_candidates_in_queue_order(self):
+        task = TaskDefinition(
+            id="restore-theme",
+            type="SwitchTheme",
+            params={"themes": [" 夜间 ", "", " 银凇", "  "], "client_type": "Official"},
+        )
+        profile = Profile(
+            name="daily",
+            tasks=[
+                TaskDefinition(id="award", type="Award"),
+                task,
+                TaskDefinition(id="closedown", type="CloseDown"),
+            ],
+        )
+
+        calls = profile_to_append_calls(profile)
+
+        self.assertEqual([call.type for call in calls], ["Award", "SwitchTheme", "CloseDown"])
+        self.assertEqual(calls[1].params, {"themes": ["夜间", "银凇"], "enable": True})
+        self.assertEqual(task.params["themes"], [" 夜间 ", "", " 银凇", "  "])
+
+    def test_switch_theme_blank_candidates_are_passed_to_core(self):
+        for params in ({}, {"themes": ["", "  "]}):
+            with self.subTest(params=params):
+                task = TaskDefinition(id="switch-theme", type="SwitchTheme", params=params)
+                call = task_to_append_call(task)
+                self.assertEqual(call.params, {"themes": [], "enable": True})
+
+    def test_switch_theme_rejects_invalid_candidate_types(self):
+        for themes in ("夜间", ["日间", 1], None):
+            with self.subTest(themes=themes), self.assertRaisesRegex(TaskMappingError, "themes"):
+                task_to_append_call(TaskDefinition(id="switch-theme", type="SwitchTheme", params={"themes": themes}))
+
     def test_closedown_drops_unrelated_params(self):
         task = TaskDefinition(
             id="closedown",

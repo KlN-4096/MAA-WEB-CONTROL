@@ -1,6 +1,6 @@
 const TASK_TYPES = [
   "StartUp", "Recruit", "Infrast", "Fight", "Custom", "Mall",
-  "Award", "Roguelike", "Reclamation", "CloseDown", "UserDataUpdate"
+  "Award", "Roguelike", "Reclamation", "SwitchTheme", "CloseDown", "UserDataUpdate"
 ];
 
 const TASK_NAMES = {
@@ -13,11 +13,12 @@ const TASK_NAMES = {
   Award: "领取奖励",
   Roguelike: "自动肉鸽",
   Reclamation: "生息演算",
+  SwitchTheme: "更换主题",
   CloseDown: "关闭游戏",
   UserDataUpdate: "更新数据"
 };
 
-const NO_ADVANCED_TASKS = new Set(["Award", "CloseDown", "UserDataUpdate"]);
+const NO_ADVANCED_TASKS = new Set(["Award", "SwitchTheme", "CloseDown", "UserDataUpdate"]);
 const REPLACE_COLLECTED_PARAM_TASKS = new Set(["CloseDown"]);
 const STARTUP_CLIENT_TYPES = [
   { label: "官服", value: "Official" },
@@ -229,6 +230,7 @@ function builtinDefaultParams(type) {
   if (type === "Award") return { daily: true, orundum: true };
   if (type === "Roguelike") return { theme: "萨卡兹", difficulty: "MAX (18)", strategy: ROGUELIKE_STRATEGIES[0], squad: "指挥分队", roles: "稳扎稳打（重装、术师、狙击）", starts_count: 99999, investment_enabled: true };
   if (type === "Reclamation") return { theme: "沙洲遗闻", strategy: RECLAMATION_STRATEGIES[1], tool_to_craft: "荧光棒", increment_mode: "连点", max_craft_count: 16 };
+  if (type === "SwitchTheme") return { themes: [] };
   if (type === "CloseDown") return { client_type: "Official" };
   if (type === "UserDataUpdate") return { update_oper_box: true, update_depot: true };
   return {};
@@ -266,6 +268,7 @@ function renderGeneral(task, escapeHtmlFn) {
   if (task.type === "Award") return renderAwardGeneral(p);
   if (task.type === "Roguelike") return renderRoguelikeGeneral(p, escapeHtmlFn);
   if (task.type === "Reclamation") return renderReclamationGeneral(p, escapeHtmlFn);
+  if (task.type === "SwitchTheme") return renderSwitchThemeGeneral(p, escapeHtmlFn);
   if (task.type === "CloseDown") return renderCloseDownGeneral(p, escapeHtmlFn);
   if (task.type === "UserDataUpdate") return renderUserDataUpdateGeneral(p);
   return renderJsonParams(p, escapeHtmlFn);
@@ -286,6 +289,17 @@ function renderAdvanced(task, escapeHtmlFn) {
 
 function renderJsonParams(p, escapeHtmlFn) {
   return `<label>参数 JSON<textarea id="taskParamsInput">${escapeHtmlFn(formatJson(p))}</textarea></label>`;
+}
+
+function renderSwitchThemeGeneral(p, escapeHtmlFn) {
+  const names = Array.isArray(p.themes) ? p.themes.join("\n") : "";
+  return `
+    <div class="maaParams wideForm">
+      <label for="paramSwitchThemeNames">候选主题</label>
+      <textarea id="paramSwitchThemeNames" class="wideInput" rows="4" placeholder="夜间">${escapeHtmlFn(names)}</textarea>
+      <p class="formNote">填写游戏内显示的主题名，每行一个。填多个时随机选一个，留空则跳过。</p>
+    </div>
+  `;
 }
 
 function renderCloseDownGeneral(p, escapeHtmlFn) {
@@ -327,6 +341,7 @@ function collectParams(type) {
   if (type === "Award") return collectAwardParams();
   if (type === "Roguelike") return collectRoguelikeParams();
   if (type === "Reclamation") return collectReclamationParams();
+  if (type === "SwitchTheme") return { themes: valueOf("paramSwitchThemeNames", "").split(/\r?\n/).map((name) => name.trim()).filter(Boolean) };
   if (type === "CloseDown") return collectCloseDownParams();
   if (type === "UserDataUpdate") return collectUserDataUpdateParams();
   return $("taskParamsInput") ? parseJsonField("taskParamsInput") : {};

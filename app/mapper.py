@@ -19,6 +19,7 @@ SUPPORTED_TASK_TYPES = {
     "Recruit",
     "Mall",
     "Award",
+    "SwitchTheme",
     "Roguelike",
     "Copilot",
     "SSSCopilot",
@@ -252,6 +253,14 @@ def _single_append_call(task: TaskDefinition) -> AppendCall | None:
         _map_mall(params)
     elif task.type == "Award":
         _map_award(params)
+    elif task.type == "SwitchTheme":
+        themes = params.get("themes", [])
+        if not isinstance(themes, list) or any(not isinstance(theme, str) for theme in themes):
+            raise TaskMappingError("更换主题的 themes 必须是字符串列表。")
+        params = {
+            "themes": [name for theme in themes if (name := theme.strip())],
+            "enable": params.get("enable", True),
+        }
     elif task.type == "Roguelike":
         _map_roguelike(params)
     elif task.type == "Reclamation":

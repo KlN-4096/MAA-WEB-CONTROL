@@ -118,6 +118,12 @@ CAPABILITIES: dict[str, Any] = {
                 "monthly_card": False,
             },
         },
+        "SwitchTheme": {
+            "enabled": True,
+            "title": "更换主题",
+            "supports_advanced": False,
+            "default_params": {"themes": []},
+        },
         "Roguelike": {
             "enabled": True,
             "title": "自动肉鸽",

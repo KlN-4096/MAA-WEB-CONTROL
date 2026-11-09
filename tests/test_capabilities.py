@@ -24,6 +24,15 @@ class CapabilitiesTest(unittest.TestCase):
         self.assertIn("Fight", capabilities["tasks"])
         self.assertTrue(capabilities["tasks"]["Fight"]["supports_advanced"])
         self.assertTrue(capabilities["tasks"]["StartUp"]["supports_advanced"])
+        self.assertEqual(
+            capabilities["tasks"]["SwitchTheme"],
+            {
+                "enabled": True,
+                "title": "更换主题",
+                "supports_advanced": False,
+                "default_params": {"themes": []},
+            },
+        )
 
     def test_api_capabilities_route_returns_payload(self):
         with tempfile.TemporaryDirectory() as directory:

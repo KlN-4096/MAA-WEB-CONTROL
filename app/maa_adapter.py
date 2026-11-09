@@ -441,6 +441,12 @@ class OfficialMaaAdapter:
             return
 
     def _append_sub_task_log(self, what: str, details: Any, raw_detail: dict[str, Any]) -> None:
+        if what == "SubTaskCompleted" and isinstance(details, dict) and details.get("taskchain") == "SwitchTheme":
+            result = SWITCH_THEME_RESULT_LOGS.get(str(_sub_details(details).get("task", "")))
+            if result is not None:
+                text, color = result
+                self._log_service.append(text, color_key=color, raw=raw_detail)
+            return
         if what == "SubTaskError":
             if _sub_task_name(details) == "ProcessTask":
                 return
@@ -452,6 +458,13 @@ class OfficialMaaAdapter:
         # Actual event payload lives in details["details"].
         d = _sub_details(details)
         ls = self._log_service
+
+        if extra_what == "SwitchThemeSkipped":
+            ls.append("未填写候选主题，跳过更换主题", color_key="InfoLogBrush", raw=raw_detail)
+            return
+        if extra_what == "SwitchThemeNotFound":
+            ls.append(f"未找到主题: {d.get('theme', '')}", color_key="ErrorLogBrush", raw=raw_detail)
+            return
 
         # ── 作战 ──────────────────────────────────────────────────────────────
         if extra_what == "StageDrops":
@@ -974,7 +987,14 @@ TASK_DISPLAY_NAMES = {
     "Copilot": "自动战斗",
     "Roguelike": "肉鸽",
     "Reclamation": "生息演算",
+    "SwitchTheme": "更换主题",
     "CloseDown": "关闭游戏",
+}
+
+SWITCH_THEME_RESULT_LOGS = {
+    "SwitchThemeByNameConfirmTheme": ("已更换主题", "SuccessLogBrush"),
+    "SwitchThemeByNameAlreadySet": ("已是目标主题，无需更换", "InfoLogBrush"),
+    "SwitchThemeByNameLockedTheme": ("目标主题尚未解锁，未更换", "ErrorLogBrush"),
 }
 
 FACILITY_DISPLAY_NAMES = {

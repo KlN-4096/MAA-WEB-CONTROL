@@ -512,6 +512,45 @@ class OfficialMaaAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(log_event.detail["tooltip"], tooltip)
         self.assertEqual(adapter.screenshot_benchmark, tooltip)
 
+    async def test_switch_theme_callbacks_show_outcome_in_execution_log(self):
+        with tempfile.TemporaryDirectory() as directory:
+            events = EventBus()
+            logs = MaaLogService(events)
+            adapter = OfficialMaaAdapter(
+                core_dir=Path("D:/MAA"),
+                python_dir=None,
+                user_dir=Path(directory),
+                asst_cls=FakeAsst,
+                events=events,
+                log_service=logs,
+                poll_interval=0,
+            )
+
+            await adapter.connect(Profile(name="daily"))
+            callback = FakeAsst.instances[0].callback
+            callback(10001, b'{"taskchain":"SwitchTheme"}', None)
+            for message, payload in [
+                (20003, {"what": "SwitchThemeSkipped"}),
+                (20003, {"what": "SwitchThemeNotFound", "details": {"theme": "银凇"}}),
+                (20002, {"details": {"task": "SwitchThemeByNameLockedTheme"}}),
+                (20002, {"details": {"task": "SwitchThemeByNameAlreadySet"}}),
+                (20002, {"details": {"task": "SwitchThemeByNameConfirmTheme"}}),
+            ]:
+                callback(message, json.dumps({"taskchain": "SwitchTheme", **payload}).encode(), None)
+
+        items = [item for card in logs.cards() for item in card["items"]]
+        self.assertEqual(
+            [(item["content"], item["color_key"]) for item in items],
+            [
+                ("开始任务: 更换主题", "MessageLogBrush"),
+                ("未填写候选主题，跳过更换主题", "InfoLogBrush"),
+                ("未找到主题: 银凇", "ErrorLogBrush"),
+                ("目标主题尚未解锁，未更换", "ErrorLogBrush"),
+                ("已是目标主题，无需更换", "InfoLogBrush"),
+                ("已更换主题", "SuccessLogBrush"),
+            ],
+        )
+
     async def test_process_task_subtask_error_stays_out_of_execution_log(self):
         with tempfile.TemporaryDirectory() as directory:
             events = EventBus()

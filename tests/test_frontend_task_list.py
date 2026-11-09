@@ -6,6 +6,66 @@ from pathlib import Path
 
 
 class FrontendTaskListTest(unittest.TestCase):
+    def test_switch_theme_can_be_added_edited_and_rendered_from_saved_params(self):
+        if shutil.which("node") is None:
+            self.skipTest("node is not available")
+
+        script = textwrap.dedent(
+            r"""
+            const assert = require("node:assert/strict");
+            const fs = require("fs");
+            const vm = require("vm");
+            const elements = {
+              taskIdInput: { value: "restore-theme" },
+              taskNameInput: { value: "更换主题" },
+              taskTypeInput: { value: "SwitchTheme" },
+              taskStrategyInput: { value: "{}" },
+              paramSwitchThemeNames: { value: " 夜间 \r\n\r\n 银凇<& \r\n" },
+            };
+            const context = {
+              assert,
+              window: {},
+              document: { getElementById: (id) => elements[id] || null },
+              MaaStorage: { get: () => null },
+              isProfileEditingLocked: () => false,
+              collectTaskForm: () => {},
+              persistSelectedTask: () => {},
+              renderEditor: () => {},
+              scheduleSave: () => {},
+            };
+            vm.createContext(context);
+            for (const file of ["web/core/state.js", "web/tasks/index.js", "web/views/basement/taskList.js"]) {
+              vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+            }
+            vm.runInContext(`
+              renderTasks = () => {};
+              state.profile = { tasks: [defaultTask("Award")] };
+              assert.equal(addTaskTypeOptions().find((option) => option.id === "SwitchTheme").title, "更换主题");
+              addTask("SwitchTheme");
+              const task = state.profile.tasks[1];
+              assert.equal(task.type, "SwitchTheme");
+              assert.equal(task.name, "更换主题");
+              assert.equal(JSON.stringify(task.params), '{"themes":[]}');
+              assert.equal(taskSupportsAdvanced(task.type), false);
+              collectTaskEditor(task);
+              const saved = JSON.parse(JSON.stringify(task));
+              assert.equal(JSON.stringify(saved.params), '{"themes":["夜间","银凇<&"]}');
+              assert.ok(renderGeneral(saved, escapeHtml).includes("夜间\\n银凇&lt;&amp;</textarea>"));
+              $("paramSwitchThemeNames").value = "";
+              collectTaskEditor(saved);
+              assert.equal(JSON.stringify(saved.params), '{"themes":[]}');
+            `, context);
+            """
+        )
+        result = subprocess.run(
+            ["node", "-e", script],
+            cwd=Path(__file__).resolve().parents[1],
+            encoding="utf-8",
+            capture_output=True,
+            timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
     def test_drop_reorders_original_dragged_task_after_index_shift(self):
         if shutil.which("node") is None:
             self.skipTest("node is not available")
