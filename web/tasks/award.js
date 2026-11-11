@@ -7,6 +7,7 @@ function renderAwardGeneral(p) {
       ${checkRow("orundum", "领取幸运墙的每日合成玉奖励", p.orundum ?? true)}
       ${checkRow("limited_orundum", "领取限时开采许可的每日合成玉奖励", p.limited_orundum)}
       ${checkRow("monthly_card", "领取周年赠送月卡奖励", p.monthly_card)}
+      ${checkRow("signinevent", "领取限时签到活动奖励", p.signinevent)}
     </div>
   `;
 }
@@ -19,5 +20,6 @@ function collectAwardParams() {
   addBool(params, "orundum", "orundum");
   addBool(params, "limited_orundum", "limited_orundum");
   addBool(params, "monthly_card", "monthly_card");
+  addBool(params, "signinevent", "signinevent");
   return params;
 }

@@ -1,0 +1,23 @@
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f6f8; --bar: #e9ecf0; --panel: #fff; --panel-2: #f3f4f7;
+  --card-bg: #fff; --card-line: #d5dae2; --control-bg: #fff;
+  --hover-bg: #e5edf7; --active-bg: #dce8f5;
+  --text: #172333; --muted: #586575; --line: #bbc5d1; --line-soft: #d8dfe7;
+  --blue-fg: #006bb0; --danger-fg: #a82028; --success-fg: #17613b; --warning-fg: #795000; --info-fg: #08659c;
+}
+[data-theme="light"] :is(button,input,select,textarea) { background: var(--control-bg); color: var(--text); }
+[data-theme="light"] :is(.maaLogTime,.maaLogEndTime,.windowTools) { color: var(--muted); }
+[data-theme="light"] :is(.taskBox,.taskEditor,.settingsFold,.toolsPanel,.logList,.postActionBox,.profileBar,.taskColumn,.eventColumn) { background-color: var(--panel); color: var(--text); }
+.windowShell.customBackground { position: relative; isolation: isolate; background: var(--bg); }
+.windowShell.customBackground::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-image: var(--custom-background); background-size: var(--background-size);
+  background-position: center; background-repeat: var(--background-repeat);
+  opacity: var(--background-opacity); filter: blur(var(--background-blur));
+}
+.customBackground :is(.taskBox,.taskEditor,.settingsFold,.toolsPanel,.logList,.eventColumn) {
+  background-color: color-mix(in srgb, var(--panel) 82%, transparent);
+}
+.pixelPreview { display: block; image-rendering: pixelated; max-width: 100%; border: 1px solid var(--line); margin: 12px 0; }
+.toolsScroll > label { display: block; margin: 8px 0; }

@@ -63,6 +63,7 @@ async function loadLogCards() {
 }
 
 function renderAll() {
+  if (typeof applyAppearance === "function") applyAppearance();
   renderWindowTitle();
   renderView();
 }
@@ -209,6 +210,8 @@ async function boot() {
   if (typeof loadVersionInfo === "function") await loadVersionInfo();
   if (typeof loadAdapterConfig === "function") await loadAdapterConfig();
   if (typeof loadNotificationConfig === "function") loadNotificationConfig();
+  if (typeof loadInferenceConfig === "function") loadInferenceConfig();
+  if (typeof loadRemoteConfig === "function") loadRemoteConfig();
   if (typeof loadRunnerConfig === "function") loadRunnerConfig();
   renderAll();
 }

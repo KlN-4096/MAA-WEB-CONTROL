@@ -1,4 +1,11 @@
 function renderReclamationGeneral(p, escapeHtml) {
+  if (["重启锚点", "RelaunchAnchor"].includes(p.theme)) {
+    return `<div class="maaParams wideForm">
+      <label>生息演算主题<select id="paramReclamationTheme">${selectOptions(RECLAMATION_THEMES, "重启锚点", escapeHtml)}</select></label>
+      <label>目标关卡<select id="paramReclamationMode">${selectOptions([{label:"RA-1",value:16},{label:"RA-4",value:48},{label:"RA-15",value:32}], p.mode ?? 16, escapeHtml)}</select></label>
+      <p class="formNote">重启锚点使用独立流程；繁中服尚未适配。请先完成教程并准备好对应关卡。</p>
+    </div>`;
+  }
   return `
     <div class="maaParams wideForm">
       <span>生息演算主题</span><select id="paramReclamationTheme">${selectOptions(RECLAMATION_THEMES, p.theme || "沙洲遗闻", escapeHtml)}</select>
@@ -21,6 +28,7 @@ function renderReclamationGeneral(p, escapeHtml) {
 }
 
 function renderReclamationAdvanced(p, escapeHtml) {
+  if (["重启锚点", "RelaunchAnchor"].includes(p.theme)) return '<p class="formNote">重启锚点没有沙洲遗闻的制造、清商店选项。</p>';
   const archiveMode = (p.strategy || RECLAMATION_STRATEGIES[1]) === RECLAMATION_STRATEGIES[1];
   const disabled = archiveMode ? "" : " disabled";
   return `
@@ -36,7 +44,12 @@ function renderReclamationAdvanced(p, escapeHtml) {
 function collectReclamationParams() {
   const params = {};
   addValue(params, "theme", "paramReclamationTheme", "沙洲遗闻");
+  if ($("paramReclamationMode")) {
+    addNumber(params, "mode", "paramReclamationMode", 16);
+    return params;
+  }
   addValue(params, "strategy", "paramReclamationStrategy", RECLAMATION_STRATEGIES[1]);
+  if ($("paramReclamationStrategy")) params.mode = params.strategy === RECLAMATION_STRATEGIES[0] ? 0 : 1;
   addValue(params, "tool_to_craft", "paramReclamationTool", "荧光棒");
   addValue(params, "increment_mode", "paramReclamationIncrement", "连点");
   addNumber(params, "max_craft_count", "paramReclamationCraftCount", 16);

@@ -22,7 +22,11 @@ function renderRecruitAdvanced(p, escapeHtml) {
       ${checkRow("set_time", `自动设置招募时限${hint("关闭后将不会主动设置招募时长（可用于手动调整）", escapeHtml)}`, p.set_time ?? true)}
       ${checkRow("refresh", "自动刷新 3 星 Tags", p.refresh ?? true)}
       ${checkRow("force_refresh", `无招聘许可时继续尝试刷新 Tags${hint("对应 MaaCore force_refresh。", escapeHtml)}`, p.force_refresh ?? true)}
-      ${checkRow("skip_robot", `不选择 1 星（小车）词条${hint("对应 MaaCore skip_robot：不会点选支援机械 Tag，并直接确认 1 星栏位。", escapeHtml)}`, p.skip_robot ?? true)}
+      <label>保留以下标签的槽位（逗号分隔标准标签名）
+        <input id="paramPreserveTags" value="${escapeHtml((p.preserve_tags ?? ((p.skip_robot ?? p.reserve_level_1 ?? true) ? ["支援机械"] : [])).join(","))}" />
+      </label>
+      <p class="formNote">命中任一标签后保留槽位，不刷新、不招募；清空表示不保留。外服也填写中文标准标签名。</p>
+      <label>三星招聘许可保留数量（0 关闭）<input id="paramPermitReserve" type="number" min="0" value="${numberValue(p.level3_recruitment_permit_reserve, 0)}" /></label>
       ${checkRow("confirm_3", "自动确认 3 星", p.confirm_3 ?? true)}
       ${timeRow("time3", p.time3 || "09:00")}
       ${checkRow("confirm_4", "自动确认 4 星", p.confirm_4 ?? true)}
@@ -55,7 +59,8 @@ function collectRecruitParams() {
   addBool(params, "set_time", "set_time");
   addBool(params, "refresh", "refresh");
   addBool(params, "force_refresh", "force_refresh");
-  addBool(params, "skip_robot", "skip_robot");
+  addList(params, "preserve_tags", "paramPreserveTags");
+  addNumber(params, "level3_recruitment_permit_reserve", "paramPermitReserve", 0);
   addBool(params, "confirm_3", "confirm_3");
   addTime(params, "time3", "time3");
   addBool(params, "confirm_4", "confirm_4");

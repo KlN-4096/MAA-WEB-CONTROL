@@ -33,3 +33,11 @@
   min-height: 240px;
   margin: 34px auto;
 }
+.planEditor { width: min(100%, 600px); }
+.planRow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0; padding: 14px; border: 1px solid var(--border); border-radius: 8px; }
+.planRow label { min-width: 0; }
+.planRow input, .planRow select { width: 100%; }
+.planRow .buttonRow { grid-column: 1 / -1; }
+@media (max-width: 620px) { .planRow { grid-template-columns: 1fr; } }
+.recordsTable { width: 100%; border-collapse: collapse; margin: 12px 0; }
+.recordsTable th, .recordsTable td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border-color, #ddd); overflow-wrap: anywhere; }

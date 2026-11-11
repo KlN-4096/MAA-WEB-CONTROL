@@ -33,7 +33,7 @@ const context = {
 };
 context.$ = (id) => elements[id] || null;
 vm.createContext(context);
-for (const file of ["web/tasks/index.js", "web/tasks/fight.js", "web/tasks/recruit.js", "web/tasks/roguelike.js"]) {
+for (const file of ["web/tasks/index.js", "web/tasks/fight.js", "web/tasks/recruit.js", "web/tasks/roguelike.js", "web/tasks/roguelike-modern.js", "web/tasks/progression.js", "web/tasks/inventory.js"]) {
   vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
 }
 vm.runInContext("$ = (id) => __elements[id] || null;", Object.assign(context, { __elements: elements }));
@@ -128,7 +128,6 @@ class FrontendTaskFormTest(unittest.TestCase):
             "use_activity_expire",
             "hide_series",
             "allow_stone_save",
-            "weekly_schedule",
             "use_remaining_sanity_stage",
             "expiring_medicine_count",
             "stage_reset",
@@ -140,7 +139,7 @@ class FrontendTaskFormTest(unittest.TestCase):
             {
                 "refresh": True,
                 "force_refresh": False,
-                "skip_robot": True,
+                "paramPreserveTags": "支援机械",
                 "reserve_level_1": True,
                 "paramExpediteTimes": "3",
             },
@@ -149,7 +148,8 @@ class FrontendTaskFormTest(unittest.TestCase):
 
         self.assertTrue(params["refresh"])
         self.assertFalse(params["force_refresh"])
-        self.assertTrue(params["skip_robot"])
+        self.assertEqual(params["preserve_tags"], ["支援机械"])
+        self.assertNotIn("skip_robot", params)
         self.assertNotIn("reserve_level_1", params)
         self.assertNotIn("expedite_times", params)
 

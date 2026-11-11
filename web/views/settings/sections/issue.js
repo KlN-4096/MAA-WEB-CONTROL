@@ -8,7 +8,7 @@ function renderIssueSection() {
       </div>
       <div class="settingsColumn">
         <span class="settingsCheckLine"><button class="settingsButtonSmall" type="button" data-settings-action="clearLogCache">清空日志与图片缓存</button>${settingsTip("清空运行日志卡片与截图缩略图缓存。")}</span>
-        <p class="settingsLineText">生成日志压缩包 / 打开日志文件夹<span class="unsupportedBadge">暂未接入</span></p>
+        <a class="settingsLink" href="/api/logs/archive" download>下载日志压缩包（网页日志 + 核心日志）</a>
       </div>
     </div>
   `);

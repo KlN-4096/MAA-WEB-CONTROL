@@ -1,6 +1,6 @@
 [project]
 name = "maa-web-control"
-version = "0.1.0"
+version = "0.3.0"
 description = "LAN web console for orchestrating MaaAssistantArknights tasks."
 license = "AGPL-3.0-only"
 license-files = ["LICENSE", "LICENSE.spdx"]
@@ -10,6 +10,7 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "pydantic>=2.7",
     "Pillow>=10.3",
+    "regex>=2024.11.6",
 ]
 
 [project.optional-dependencies]

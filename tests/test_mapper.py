@@ -177,7 +177,7 @@ class TaskMapperTest(unittest.TestCase):
         self.assertEqual(call.params["first_tags"], ["高级资深干员", "近卫干员"])
         self.assertEqual(call.params["times"], 12)
         self.assertTrue(call.params["expedite"])
-        self.assertFalse(call.params["skip_robot"])
+        self.assertEqual(call.params["preserve_tags"], [])
         self.assertEqual(call.params["recruitment_time"]["3"], 300)
         self.assertEqual(call.params["recruitment_time"]["5"], 450)
 
@@ -302,7 +302,7 @@ class TaskMapperTest(unittest.TestCase):
         call = task_to_append_call(task)
 
         self.assertEqual(call.params["theme"], "JieGarden")
-        self.assertEqual(call.params["difficulty"], 18)
+        self.assertEqual(call.params["difficulty"], 2147483647)
         self.assertEqual(call.params["mode"], 1)
         self.assertEqual(call.params["starts_count"], 7)
 
@@ -418,8 +418,8 @@ class TaskMapperTest(unittest.TestCase):
 
         self.assertEqual(call.params["expected_collapsal_paradigms"], ["深化坚守", "领域"])
 
-    def test_recruit_skip_robot_confirms_level_one(self):
-        """原版 NotChooseLevel1 = skip_robot=true + ConfirmList.Add(1)。"""
+    def test_recruit_skip_robot_migrates_to_preserved_tag_without_adding_confirmation(self):
+        """v6.22 preserve_tags 接管保留槽位；不再偷偷开启一星确认。"""
         task = TaskDefinition(
             id="recruit",
             type="Recruit",
@@ -432,9 +432,10 @@ class TaskMapperTest(unittest.TestCase):
 
         call = task_to_append_call(task)
 
-        self.assertNotIn(1, call.params["select"])
-        self.assertIn(1, call.params["confirm"])
-        self.assertTrue(call.params["skip_robot"])
+        self.assertIn(1, call.params["select"])
+        self.assertNotIn(1, call.params["confirm"])
+        self.assertEqual(call.params["preserve_tags"], ["支援机械"])
+        self.assertNotIn("skip_robot", call.params)
 
     def test_recruit_legacy_reserve_level_1_maps_to_skip_robot(self):
         task = TaskDefinition(
@@ -445,7 +446,7 @@ class TaskMapperTest(unittest.TestCase):
 
         call = task_to_append_call(task)
 
-        self.assertFalse(call.params["skip_robot"])
+        self.assertEqual(call.params["preserve_tags"], [])
         self.assertNotIn(1, call.params["confirm"])
         self.assertNotIn("reserve_level_1", call.params)
 
@@ -576,16 +577,15 @@ class TaskMapperTest(unittest.TestCase):
         self.assertEqual(call.params["medicine_expire_days"], 3)
         self.assertNotIn("expiring_medicine", call.params)
 
-    def test_reclamation_fire_theme_maps(self):
+    def test_reclamation_closed_fire_theme_is_rejected(self):
         task = TaskDefinition(
             id="recl",
             type="Reclamation",
             params={"theme": "沙中之火", "strategy": "无存档，通过进出关卡刷生息点数"},
         )
 
-        call = task_to_append_call(task)
-
-        self.assertEqual(call.params["theme"], "Fire")
+        with self.assertRaises(TaskMappingError):
+            task_to_append_call(task)
 
     def test_roguelike_collectible_mode_fields_pass_through(self):
         task = TaskDefinition(

@@ -27,6 +27,15 @@ function renderInfrastAdvanced(p) {
       ${checkRow("clue_exchange", "进行线索交流", p.clue_exchange ?? true)}
       ${checkRow("send_clue", "赠送线索", p.send_clue ?? true)}
       ${checkRow("continue_training", "训练完成后继续尝试专精当前技能", p.continue_training)}
+      ${!customVisible && !rotationVisible ? `
+      <strong class="sectionTitle">常规模式组合</strong>
+      ${checkRow("fiammetta_recovery_enabled", "使用菲亚梅塔恢复心情", p.fiammetta_recovery_enabled)}
+      <label>恢复候选（最多三名，逗号分隔）<input id="paramFiammettaTargets" value="${escapeHtmlFallback((p.fiammetta_targets || ["清流", "可露希尔", "但书"]).join(","))}" /></label>
+      <p class="formNote">支持：清流、可露希尔、但书、巫恋、龙舌兰、歌蕾蒂娅、琴柳、承曦格雷伊、温蒂、槐琥、至简、旅骨。按心情和可用性选择。</p>
+      ${checkRow("use_pinus_sylvestris", "红松骑士团", p.use_pinus_sylvestris)}
+      ${checkRow("use_perception_information", "感知信息（优先于人间烟火）", p.use_perception_information)}
+      ${checkRow("use_worldly_plight", "人间烟火", p.use_worldly_plight)}
+      ${checkRow("use_abyssal_hunter", "深海猎人（不与红松同时参与）", p.use_abyssal_hunter)}` : ""}
     </div>
   `;
 }
@@ -51,6 +60,8 @@ function collectInfrastParams() {
   addBool(params, "clue_exchange", "clue_exchange");
   addBool(params, "send_clue", "send_clue");
   addBool(params, "continue_training", "continue_training");
+  for (const key of ["fiammetta_recovery_enabled", "use_pinus_sylvestris", "use_perception_information", "use_worldly_plight", "use_abyssal_hunter"]) addBool(params, key, key);
+  addList(params, "fiammetta_targets", "paramFiammettaTargets");
   addValue(params, "filename", "paramInfrastFilename", "");
   addNumber(params, "plan_index", "paramInfrastPlanIndex", 0);
   return params;

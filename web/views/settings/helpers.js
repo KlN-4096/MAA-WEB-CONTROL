@@ -53,7 +53,7 @@ function settingsValueAt(key) {
 }
 
 function checkLine(label, checked = false, tip = "", key = "", disabled = false) {
-  const value = key ? settingsValueAt(key) : checked;
+  const value = key ? settingsValueAt(key) ?? checked : checked;
   const attr = key ? ` data-settings-field="${key}"` : "";
   const disabledAttr = disabled ? " disabled" : "";
   return `<span class="settingsCheckLine">
@@ -123,7 +123,8 @@ function defaultNotificationState() {
     send_on_stopped: false,
     send_on_timeout: true,
     include_details: true,
-    webhook: { enabled: false, url: "", method: "POST", headers: {} }
+    send_on_start: false, log_count: 0, log_pattern: "", history_lines: 0, blacklist: [], channels: [],
+    webhook: { enabled: false, url: "", method: "POST", headers: {}, body_template: "" }
   };
 }
 
@@ -159,11 +160,18 @@ function mergeNotificationState(data) {
     send_on_stopped: Boolean(data.send_on_stopped),
     send_on_timeout: data.send_on_timeout !== false,
     include_details: data.include_details !== false,
+    send_on_start: Boolean(data.send_on_start),
+    log_count: Number(data.log_count || 0),
+    log_pattern: String(data.log_pattern || ""),
+    history_lines: Number(data.history_lines || 0),
+    blacklist: Array.isArray(data.blacklist) ? data.blacklist : [],
+    channels: Array.isArray(data.channels) ? data.channels.map((item)=>({...item, options:{...(item.options || {})}})) : [],
     webhook: {
       enabled: Boolean(data.webhook?.enabled),
       url: typeof data.webhook?.url === "string" ? data.webhook.url : "",
       method: data.webhook?.method === "PUT" ? "PUT" : "POST",
-      headers: data.webhook?.headers && typeof data.webhook.headers === "object" ? { ...data.webhook.headers } : {}
+      headers: data.webhook?.headers && typeof data.webhook.headers === "object" ? { ...data.webhook.headers } : {},
+      body_template: String(data.webhook?.body_template || "")
     }
   };
 }

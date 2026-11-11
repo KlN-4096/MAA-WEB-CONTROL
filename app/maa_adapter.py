@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
 from copy import deepcopy
 import json
 import os
@@ -13,8 +14,9 @@ from typing import Any, Mapping
 
 from .events import EventBus
 from .image_codec import encode_log_preview
+from .inference import prepare_inference, read_inference_config
 from .logs import MaaLogService
-from .models import AppendCall, EventRecord, Profile
+from .models import AppendCall, EventRecord, InferenceConfig, Profile
 from .resource_paths import normalize_client_type, resource_incremental_roots
 from .runner import DryRunMaaAdapter, MaaAdapter
 
@@ -27,6 +29,7 @@ KILL_ADB_ON_EXIT_OPTION = 5
 CLIENT_TYPE_OPTION = 6
 SCREENSHOT_BUFFER_SIZE = 32 * 1024 * 1024
 LOG_THUMBNAIL_CAPTURE_DELAY = 0.4
+CALLBACK_DRAIN_TIMEOUT_SECONDS = 10.0
 TASK_CHAIN_EVENTS = {
     "TaskChainStart": ("maa.task_chain.start", None, "Task chain started.", "info"),
     "TaskChainCompleted": ("maa.task_chain.completed", "Completed", "Task chain completed.", "info"),
@@ -67,6 +70,7 @@ class OfficialMaaAdapter:
         events: EventBus | None = None,
         log_service: MaaLogService | None = None,
         poll_interval: float = 0.5,
+        inference_config: InferenceConfig | None = None,
     ) -> None:
         self._core_dir = core_dir
         self._python_dir = python_dir
@@ -85,6 +89,18 @@ class OfficialMaaAdapter:
         self._last_image_error: str | None = None
         self._screenshot_benchmark: dict[str, Any] | None = None
         self._connected = False
+        self.inference_config = inference_config or InferenceConfig()
+        self._inference_library: Any = None
+        self._inference_prepared = False
+        self._queued_ids: set[int] = set()
+        self._active_ids: set[int] = set()
+        self._terminal = asyncio.Event()
+        self.connection_target: tuple[str, str, str] | None = None
+        self.resources_loaded = False
+        self._has_started = False
+        self._faulted = False
+        self._capture_results: dict[int, bool] = {}
+        self._capture_result_changed = asyncio.Event()
 
     @property
     def callback_events(self) -> list[EventRecord]:
@@ -113,12 +129,23 @@ class OfficialMaaAdapter:
 
     async def connect(self, profile: Profile) -> bool:
         self._loop = asyncio.get_running_loop()
-        return await asyncio.to_thread(self._connect_sync, profile)
+        operation = asyncio.create_task(asyncio.to_thread(self._connect_sync, profile))
+        try:
+            return await asyncio.shield(operation)
+        except asyncio.CancelledError:
+            await operation
+            raise
 
     async def append_task(self, call: AppendCall) -> int:
         asst = self._require_asst()
+        operation = asyncio.create_task(asyncio.to_thread(asst.append_task, call.type, call.params))
         try:
-            task_id = await asyncio.to_thread(asst.append_task, call.type, call.params)
+            task_id = await asyncio.shield(operation)
+        except asyncio.CancelledError:
+            task_id = await operation
+            if task_id:
+                self._queued_ids.add(task_id)
+            raise
         except Exception as exc:
             raise RuntimeError(f"MaaCore append_task failed for {call.type}.") from exc
         # AsstAppendTask 在参数校验失败时返回 0 而不是抛异常（Assistant.cpp:258-285），
@@ -127,15 +154,27 @@ class OfficialMaaAdapter:
             raise RuntimeError(
                 f"MaaCore 拒绝了任务 {call.type}：参数校验未通过，请检查该任务的配置。"
             )
+        self._queued_ids.add(task_id)
         return task_id
 
     async def start(self, wait: bool = True) -> bool:
         """wait=False 用于小工具/自动战斗：立刻返回，不阻塞 HTTP 请求到任务链结束。"""
         asst = self._require_asst()
         try:
-            if wait:
-                return await asyncio.to_thread(self._start_and_wait_sync, asst)
-            return await asyncio.to_thread(self._start_sync, asst)
+            self._loop = asyncio.get_running_loop()
+            self._terminal.clear()
+            self._active_ids, self._queued_ids = self._queued_ids, set()
+            operation = asyncio.create_task(asyncio.to_thread(self._start_sync, asst))
+            try:
+                started = await asyncio.shield(operation)
+            except asyncio.CancelledError:
+                # 不让尚未返回的原生 start 在调用者 stop 之后迟到启动。
+                self._has_started = bool(await operation)
+                raise
+            self._has_started = started
+            if started and wait:
+                await self.wait_until_idle()
+            return started
         except Exception as exc:
             raise RuntimeError("MaaCore start failed.") from exc
 
@@ -143,7 +182,21 @@ class OfficialMaaAdapter:
         if self._asst is None:
             return True
         try:
-            return await asyncio.to_thread(self._asst.stop)
+            stopped = await asyncio.to_thread(self._asst.stop)
+            self._queued_ids.clear()
+            if self._has_started:
+                deadline = time.monotonic() + CALLBACK_DRAIN_TIMEOUT_SECONDS
+                while await asyncio.to_thread(self._asst.running):
+                    if time.monotonic() >= deadline:
+                        self._faulted = True
+                        raise RuntimeError("MaaCore 停止后未确认空闲，请重启服务后再运行任务。")
+                    await asyncio.sleep(max(self._poll_interval, 0.01))
+                # stop 可能抢在 TaskChainStart 之前清空队列，此时 Core 不发结束回调。
+                # 这里只确认显式停止，不将无回调的自然结束当作成功。
+                self._has_started = False
+                self._set_task_chain_status("Stopped")
+                self._terminal.set()
+            return stopped
         except Exception as exc:
             raise RuntimeError("MaaCore stop failed.") from exc
 
@@ -154,7 +207,9 @@ class OfficialMaaAdapter:
         buffer.  The buffer needs to cover high-DPI emulator frames too; 5 MB
         is not enough for some 4K PNG captures.
         """
-        asst = self._require_asst()
+        return await self._read_image(self._require_asst())
+
+    async def _read_image(self, asst: Any) -> bytes | None:
         get_img = getattr(asst, "get_image", None)
         self._last_image_error = None
         if not callable(get_img):
@@ -167,8 +222,44 @@ class OfficialMaaAdapter:
             self._last_image_error = f"{type(exc).__name__}: {exc}"
             return None
 
+    async def capture_image(self) -> bytes | None:
+        asst = self._require_asst()
+        target = self.connection_target
+        # v6.22 官方 Python wrapper 未包装此导出；固定 ABI 为 (handle, bool) -> int。
+        library = getattr(type(asst), "_Asst__lib", None)
+        handle = getattr(asst, "_Asst__ptr", None)
+        if library is None or handle is None:
+            raise RuntimeError("当前核心包装器不支持主动截图")
+        capture = library.AsstAsyncScreencap
+        capture.argtypes = [ctypes.c_void_p, ctypes.c_bool]
+        capture.restype = ctypes.c_int
+        call_id = await asyncio.to_thread(capture, handle, False)
+        if call_id <= 0:
+            raise RuntimeError("MaaCore 主动截图失败")
+        deadline = asyncio.get_running_loop().time() + CALLBACK_DRAIN_TIMEOUT_SECONDS
+        while call_id not in self._capture_results:
+            self._capture_result_changed.clear()
+            try:
+                await asyncio.wait_for(self._capture_result_changed.wait(), max(0, deadline - asyncio.get_running_loop().time()))
+            except TimeoutError as exc:
+                raise RuntimeError("主动截图没有返回成功确认，未发送缓存画面。") from exc
+        if not self._capture_results.pop(call_id):
+            raise RuntimeError("主动截图失败，未发送缓存画面。")
+        if self._asst is not asst or self.connection_target != target:
+            raise RuntimeError("截图期间连接已改变，未发送画面。")
+        image = await self._read_image(asst)
+        if self._asst is not asst or self.connection_target != target:
+            raise RuntimeError("截图期间连接已改变，未发送画面。")
+        return image
+
     def _connect_sync(self, profile: Profile) -> bool:
+        if self._faulted:
+            raise RuntimeError("MaaCore 上次停止结果未知，请重启服务后再连接。")
+        self._queued_ids.clear()
+        self._active_ids.clear()
+        self._terminal.clear()
         self._connected = False
+        self.connection_target = None
         asst_cls = self._resolve_asst_cls()
         self._user_dir.mkdir(parents=True, exist_ok=True)
         self._screenshot_benchmark = None
@@ -188,6 +279,8 @@ class OfficialMaaAdapter:
             raise RuntimeError(f"MaaCore connect failed for ADB address: {profile.adb.address}") from exc
         try:
             self._connected = self._connect_with_retry(profile)
+            if self._connected:
+                self.connection_target = (profile.adb.adb_path, profile.adb.address, profile.adb.client_type)
             return self._connected
         except Exception as exc:
             raise RuntimeError(f"MaaCore connect failed for ADB address: {profile.adb.address}") from exc
@@ -301,12 +394,19 @@ class OfficialMaaAdapter:
                 raise RuntimeError(f"MaaCore rejected {label}: {value}")
 
     def _load_resources(self, asst_cls: type[Any], profile: Profile) -> bool:
+        self.prepare_inference()
         if not asst_cls.load(self._core_dir, user_dir=self._user_dir):
             return False
         for root in resource_incremental_roots(self._core_dir, profile.adb.client_type):
             if not asst_cls.load(self._core_dir, incremental_path=root):
                 return False
+        self.resources_loaded = True
         return True
+
+    def prepare_inference(self) -> None:
+        if not self._inference_prepared:
+            self._inference_library = prepare_inference(self._core_dir, self.inference_config, self._user_dir)
+            self._inference_prepared = True
 
     def _resolve_asst_cls(self) -> type[Any]:
         if self._asst_cls is not None:
@@ -342,6 +442,35 @@ class OfficialMaaAdapter:
         self._publish_callback_event(event)
         for semantic_event in self._semantic_callback_events(message, decoded_details):
             self._publish_callback_event(semantic_event)
+        if message == 4 and isinstance(decoded_details, dict) and decoded_details.get("what") == "Screencap":
+            if self._loop is not None and self._loop.is_running():
+                self._loop.call_soon_threadsafe(self._accept_capture_result, decoded_details)
+            else:
+                self._accept_capture_result(decoded_details)
+        if message in (3, 10004):
+            loop = self._loop
+            if loop is not None and loop.is_running():
+                loop.call_soon_threadsafe(self._accept_terminal, message, decoded_details)
+            else:
+                self._accept_terminal(message, decoded_details)
+
+    def _accept_capture_result(self, details: dict[str, Any]) -> None:
+        call_id = details.get("async_call_id")
+        if type(call_id) is int:
+            self._capture_results[call_id] = details.get("details", {}).get("ret") is True
+            if len(self._capture_results) > 32:
+                self._capture_results.pop(next(iter(self._capture_results)))
+            self._capture_result_changed.set()
+
+    def _accept_terminal(self, message: int, details: Any) -> None:
+        if not isinstance(details, dict):
+            return
+        if message == 3 and self._active_ids and not self._active_ids.issubset(set(details.get("finished_tasks", []))):
+            return
+        if message == 10004 and details.get("taskid") not in self._active_ids and details.get("taskid") is not None:
+            return
+        # 与原始事件按同一回调线程顺序入 loop；置位时账本已消费此前回调。
+        self._terminal.set()
 
     def _semantic_callback_events(self, message: int, details: Any) -> list[EventRecord]:
         # "what" is meaningful only for ConnectionInfo (msg=2) and SubTaskExtraInfo (msg=20003).
@@ -358,6 +487,8 @@ class OfficialMaaAdapter:
         # ── TaskChain events (10001 / 10002 / 10000 / 10004 / 3) ──────────────
         msg_name = _MSG_EVENT_MAP.get(message, "")
         if msg_name in TASK_CHAIN_EVENTS:
+            if self._active_ids and isinstance(details, dict) and details.get("taskid") is not None and details["taskid"] not in self._active_ids:
+                return []
             if self._log_service is not None:
                 self._append_task_chain_log(msg_name, details, detail)
             event_type, final_status, text, level = TASK_CHAIN_EVENTS[msg_name]
@@ -382,7 +513,7 @@ class OfficialMaaAdapter:
 
     def _set_task_chain_status(self, status: str) -> None:
         with self._status_lock:
-            if self._task_chain_status in {"Failed", "Stopped"} and status == "Completed":
+            if self._task_chain_status == "Failed" or (self._task_chain_status == "Stopped" and status == "Completed"):
                 return
             self._task_chain_status = status
 
@@ -459,6 +590,21 @@ class OfficialMaaAdapter:
         d = _sub_details(details)
         ls = self._log_service
 
+        if extra_what == "OperProgressDetail":
+            text = f"干员培养: {d.get('name', '')} — {d.get('result', '')} {d.get('result_detail', '')}".strip()
+            values = {key: d[key] for key in ("elite", "skill_level", "skill_mastery", "role") if key in d}
+            if values:
+                text += "\n" + json.dumps(values, ensure_ascii=False)
+            ls.append(text, color_key="ErrorLogBrush" if d.get("result") == "Failed" else "InfoLogBrush", raw=raw_detail)
+            return
+        if extra_what in EXTRA_INFO_MESSAGES:
+            keys = ("name", "facility", "itemName", "quantity", "count", "reason", "stage", "status", "phase", "tags", "tag", "message", "done", "total", "color")
+            visible = {key: d[key] for key in keys if key in d}
+            text = EXTRA_INFO_MESSAGES[extra_what]
+            if visible:
+                text += "\n" + json.dumps(visible, ensure_ascii=False)
+            ls.append(text, color_key="WarningLogBrush" if "Failed" in extra_what or "Aborted" in extra_what else "InfoLogBrush", raw=raw_detail)
+            return
         if extra_what == "SwitchThemeSkipped":
             ls.append("未填写候选主题，跳过更换主题", color_key="InfoLogBrush", raw=raw_detail)
             return
@@ -837,21 +983,21 @@ class OfficialMaaAdapter:
             self._task_chain_status = None
         return bool(asst.start())
 
-    def _start_and_wait_sync(self, asst: Any) -> bool:
-        with self._status_lock:
-            self._task_chain_status = None
-        if not asst.start():
-            return False
-        # AsstStart is asynchronous; wait until the C++ thread actually sets running=True
-        # before entering the completion poll, otherwise the loop exits immediately.
-        deadline = time.time() + 10.0
-        while not asst.running():
-            if time.time() > deadline:
-                break
-            time.sleep(0.1)
-        while asst.running():
-            time.sleep(self._poll_interval)
-        return True
+    async def wait_until_idle(self) -> None:
+        asst = self._require_asst()
+        idle_since: float | None = None
+        while True:
+            running = await asyncio.to_thread(asst.running)
+            if running:
+                idle_since = None
+            elif self._terminal.is_set():
+                self._has_started = False
+                return
+            else:
+                idle_since = idle_since or time.monotonic()
+                if time.monotonic() - idle_since > CALLBACK_DRAIN_TIMEOUT_SECONDS:
+                    raise RuntimeError("MaaCore 已空闲但未收到对应任务的结束回调，不能确认执行结果。")
+            await asyncio.sleep(max(self._poll_interval, 0.01))
 
     def _require_asst(self) -> Any:
         if self._asst is None:
@@ -902,6 +1048,7 @@ def create_maa_adapter(
         asst_cls=asst_cls,
         events=events,
         log_service=log_service,
+        inference_config=read_inference_config(project_root),
     )
 
 
@@ -988,7 +1135,21 @@ TASK_DISPLAY_NAMES = {
     "Roguelike": "肉鸽",
     "Reclamation": "生息演算",
     "SwitchTheme": "更换主题",
+    "OperProgress": "干员培养",
     "CloseDown": "关闭游戏",
+}
+
+EXTRA_INFO_MESSAGES = {
+    "InfrastRecycleProduct": "回收站收获",
+    "RecruitPreservedTag": "公招保留命中标签的槽位",
+    "RecruitPermitReserved": "公招：招聘许可达到保留阈值",
+    "RecruitPermitCountRecognitionFailed": "招聘许可数量识别失败，本次跳过三星招募",
+    "BlackFlowStartRun": "黑流树海开局进度",
+    "BlackFlowScrapTradeAborted": "黑流树海交易终止",
+    "AnnihilationEntryNotFound": "未找到剿灭入口，本次跳过",
+    "VisitFriendsFailed": "拜访好友未完成",
+    "MaterialSynthesis": "材料合成进度",
+    "PixelPaintProgress": "像素画进度",
 }
 
 SWITCH_THEME_RESULT_LOGS = {

@@ -44,7 +44,9 @@ function renderFightAdvanced(p, escapeHtml) {
       ${unsupportedLine("过期关卡重置为", "原版 WPF 的关卡列表重置策略，不参与任务执行。")}
       ${checkRow("use_alternate_stage", "使用备选关卡", p.use_alternate_stage ?? true)}
       ${unsupportedLine("下拉框中隐藏当日不开关卡", "关卡下拉已按当日（04:00 日切）自动过滤，无需该开关。")}
-      ${unsupportedRow("启用周计划", "原版 WPF 的周一至周日关卡计划，Web 版暂未实现。")}
+      ${checkRow("weekly_schedule","启用周计划（按区服 04:00 换日）",p.weekly_schedule)}
+      <p class="formNote">每行填写当日候选关卡，分号分隔；当天留空则跳过此作战任务。</p>
+      ${["周一","周二","周三","周四","周五","周六","周日"].map((day,i)=>`<label>${day}<input id="fightWeek${i}" value="${escapeHtml((p.weekly_plan?.[String(i)] || []).join(";"))}"/></label>`).join("")}
       <strong class="sectionTitle">以下选项为多任务共用</strong>
       ${checkRow("auto_restart", `游戏掉线时自动重连${hint("对应 MaaCore Fight.client_type：开启后掉线会自动重启客户端并继续作战。", escapeHtml)}`, p.auto_restart ?? true)}
       ${unsupportedRow("使用剩余理智执行指定关卡", "MaaCore Fight 不支持该参数。请改用任务列表里的「剩余理智」任务（独立一条 Fight）。")}
@@ -90,6 +92,8 @@ function collectFightParams() {
   addBool(params, "custom_stage_code", "custom_stage_code");
   addBool(params, "use_alternate_stage", "use_alternate_stage");
   addBool(params, "auto_restart", "auto_restart");
+  addBool(params, "weekly_schedule", "weekly_schedule");
+  if ($("fightWeek0")) params.weekly_plan = Object.fromEntries(Array.from({length:7},(_,i)=>[String(i),valueOf(`fightWeek${i}`,"").split(/[;\n]/).map((value)=>value.trim()).filter(Boolean)]));
   addValue(params, "server", "paramFightServer", "CN");
   // MaaCore 用 Fight.client_type 是否为空来开关「掉线自动重连」（integration.md:176）。
   if ($("auto_restart")) params.client_type = boolOf("auto_restart") ? activeClientType() : "";

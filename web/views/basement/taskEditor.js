@@ -60,7 +60,7 @@ function onTaskEditorChange(event) {
   if (event.target.id === "paramInfrastFileSelect" && typeof onInfrastFileSelect === "function") {
     onInfrastFileSelect(event.target);
   }
-  const rerenderFields = new Set(["paramRoguelikeTheme", "paramRoguelikeStrategy", "paramReclamationStrategy", "paramInfrastMode"]);
+  const rerenderFields = new Set(["paramRoguelikeTheme", "paramRoguelikeStrategy", "paramReclamationTheme", "paramReclamationStrategy", "paramInfrastMode"]);
   if (rerenderFields.has(event.target.id)) {
     collectTaskForm();
     renderTasks();
@@ -89,6 +89,16 @@ function onTaskEditorChange(event) {
 function onTaskEditorClick(event) {
   if (isProfileEditingLocked()) {
     event.preventDefault();
+    return;
+  }
+  const progressButton = event.target.closest("[data-progress-action]");
+  if (progressButton) {
+    editProgressPlans(progressButton);
+    return;
+  }
+  const inventoryButton = event.target.closest("[data-inventory-action]");
+  if (inventoryButton) {
+    editInventoryTargets(inventoryButton);
     return;
   }
   const stageButton = event.target.closest("[data-stage-action]");

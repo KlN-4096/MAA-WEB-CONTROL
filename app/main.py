@@ -11,10 +11,12 @@ from fastapi.staticfiles import StaticFiles
 from .api import create_api_router, events_socket, peep_socket
 from .default_profiles import build_default_profiles
 from .events import EventBus
+from .execution_ledger import ExecutionLedger
 from .logs import MaaLogService
 from .maa_adapter import create_maa_adapter
 from .notifications import NotificationService
 from .runner import MaaRunnerService
+from .remote_control import RemoteControlService
 from .scheduler import SchedulerService
 from .storage import ProfileStore
 from .update_service import UpdateService
@@ -59,6 +61,7 @@ runner = MaaRunnerService(
     userdata_state_path=USERDATA_STATE_PATH,
     run_event_callback=notification_service.dispatch_run_event,
     task_timeout_minutes=_initial_task_timeout_minutes(),
+    ledger=ExecutionLedger(PROJECT_ROOT / "data" / "execution_ledger.json", event_bus),
 )
 
 
@@ -71,6 +74,7 @@ async def _scheduler_run_callback(profile_name: str) -> None:
 
 
 scheduler = SchedulerService(event_bus, SCHEDULER_CONFIG, run_callback=_scheduler_run_callback)
+remote_service = RemoteControlService(PROJECT_ROOT / "data" / "remote_control.json", profile_store, runner, event_bus)
 update_service = UpdateService(UPDATE_CONFIG, UPDATE_CACHE, runner, event_bus, restart_callback=_schedule_process_restart)
 
 app = FastAPI(title="MAA Web Control", version=WEB_VERSION)
@@ -83,20 +87,25 @@ app.include_router(create_api_router(
     project_root=PROJECT_ROOT,
     notifications=notification_service,
     update_service=update_service,
+    remote=remote_service,
 ))
 
 
 @app.on_event("startup")
 async def on_startup() -> None:
+    notification_service.start()
     scheduler.start()
     update_service.start()
+    remote_service.start()
 
 
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
+    await remote_service.shutdown()
     await update_service.stop()
     await scheduler.stop()
     await runner.shutdown()
+    await notification_service.shutdown()
 
 
 @app.websocket("/api/events")

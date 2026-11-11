@@ -26,6 +26,12 @@ CAPABILITIES: dict[str, Any] = {
         "defaults": ["daily-shoucai", "daily-shualizhi"],
     },
     "tasks": {
+        "DepotMaintain": {
+            "enabled": True,
+            "title": "库存保持",
+            "supports_advanced": False,
+            "default_params": {"targets": [], "update_depot": True},
+        },
         "StartUp": {
             "enabled": True,
             "title": "开始唤醒",
@@ -123,6 +129,12 @@ CAPABILITIES: dict[str, Any] = {
             "title": "更换主题",
             "supports_advanced": False,
             "default_params": {"themes": []},
+        },
+        "OperProgress": {
+            "enabled": True,
+            "title": "干员培养",
+            "supports_advanced": False,
+            "default_params": {"plans": []},
         },
         "Roguelike": {
             "enabled": True,

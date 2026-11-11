@@ -58,6 +58,8 @@ class FakeAsst:
         self.start_calls += 1
         if self.callback is not None:
             self.callback(10001, b'{"what":"started"}', None)
+            self.callback(10002, b'{"taskid":123}', None)
+            self.callback(3, b'{"finished_tasks":[123]}', None)
         return True
 
     def running(self):
@@ -391,7 +393,7 @@ class OfficialMaaAdapterTest(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0)
 
         recent = events.recent()
-        callback_event = [event for event in recent if event.type == "maa.callback"][-1]
+        callback_event = [event for event in recent if event.type == "maa.callback" and event.detail["message"] == 10001][-1]
         self.assertEqual(callback_event.detail["message"], 10001)
         self.assertEqual(callback_event.detail["details"], {"what": "started"})
 

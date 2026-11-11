@@ -1,4 +1,26 @@
 function onSettingsClick(event) {
+  if (event.target.closest("[data-settings-action='saveInference']")) {
+    saveInferenceConfig();
+    return;
+  }
+  if (event.target.closest("[data-settings-action='saveRemote']")) {
+    saveRemoteConfig();
+    return;
+  }
+  if (event.target.closest("[data-notification-add]")) {
+    if (isSettingsEditingLocked()) return;
+    SETTINGS_STATE.notification ||= defaultNotificationState();
+    SETTINGS_STATE.notification.channels.push({type:"telegram",enabled:false,options:{}});
+    renderSettingsView();
+    return;
+  }
+  const removeChannel = event.target.closest("[data-notification-remove]");
+  if (removeChannel) {
+    if (isSettingsEditingLocked()) return;
+    SETTINGS_STATE.notification.channels.splice(Number(removeChannel.dataset.notificationRemove),1);
+    renderSettingsView();
+    return;
+  }
   const nav = event.target.closest("[data-settings-nav]");
   if (nav) {
     runSettingsAction("selectSection", { index: Number(nav.dataset.settingsNav) });
@@ -66,6 +88,10 @@ function onSettingsClick(event) {
 }
 
 function onSettingsChange(event) {
+  if (event.target.id === "backgroundUpload") {
+    uploadBackground(event.target.files?.[0]).catch(showError);
+    return;
+  }
   if (isSettingsEditingLocked() && isSettingsWriteTarget(event.target)) {
     syncSettingsEditingLock();
     return;
@@ -153,6 +179,7 @@ const SETTINGS_NUMBER_RANGES = {
   taskTimeoutMinutes: [0, 999],
   emulatorLaunchWait: [0, 300],
   ldExtrasIndex: [0, 99]
+  ,backgroundOpacity:[0,100],backgroundBlur:[0,40]
 };
 
 function settingsFieldValue(field, target) {
@@ -170,7 +197,19 @@ function updateSettingsField(target, { commit = true } = {}) {
   if (field.startsWith("notification.")) {
     return updateNotificationField(field, target);
   }
+  if (field.startsWith("remote.") || field.startsWith("inference.")) {
+    const [group,key] = field.split(".");
+    SETTINGS_STATE[group] ||= {};
+    SETTINGS_STATE[group][key] = target.type === "checkbox" ? target.checked : target.type === "number" ? Number(target.value) : target.value;
+    return true;
+  }
   SETTINGS_STATE[field] = settingsFieldValue(field, target);
+  if (typeof APPEARANCE_FIELDS !== "undefined" && APPEARANCE_FIELDS.has(field)) {
+    persistSettingsState();
+    applyAppearance();
+    if (field === "dateFormat") renderLogs();
+    return true;
+  }
   if (field === "forceGithubGlobalSource") SETTINGS_STATE.forceGithub = SETTINGS_STATE.forceGithubGlobalSource;
   persistSettingsState();
   if (!commit) return true;
@@ -216,11 +255,16 @@ function updateNotificationField(field, target) {
   const leaf = path[path.length - 1];
   if (leaf === "headers") {
     node.headers = parseHeadersFromInput(target.value);
+  } else if (leaf === "blacklist") {
+    node.blacklist = target.value.split(/[;\n]/).map((word)=>word.trim()).filter(Boolean);
+  } else if (["log_count", "history_lines", "port", "topic_id"].includes(leaf)) {
+    node[leaf] = target.value === "" ? "" : Number(target.value);
   } else if (target.type === "checkbox") {
     node[leaf] = target.checked;
   } else {
     node[leaf] = target.value;
   }
   persistSettingsState();
+  if (leaf === "type" && path[0] === "channels") renderSettingsView();
   return true;
 }

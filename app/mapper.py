@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Any
 
 from .models import AppendCall, Profile, TaskDefinition
-from .options import EXCLUDED_DROP_IDS
+from .options import CLIENT_TIMEZONE_OFFSETS, EXCLUDED_DROP_IDS
 from .resource_paths import resolve_maa_root
+from .inventory import CORE_UNLIMITED_TIMES
 
 
 SUPPORTED_TASK_TYPES = {
@@ -26,6 +27,8 @@ SUPPORTED_TASK_TYPES = {
     "CloseDown",
     "Depot",
     "OperBox",
+    "OperProgress",
+    "DepotMaintain",
     "Reclamation",
     "Custom",
     "UserDataUpdate",
@@ -115,6 +118,8 @@ INFRAST_FACILITY_VALUES = {
     "宿舍": "Dorm",
     "加工站": "Processing",
     "训练室": "Training",
+    "回收站": "Recycle",
+    "更换助理": "AssistantChange",
 }
 
 INFRAST_DRONE_VALUES = {
@@ -135,6 +140,7 @@ ROGUELIKE_THEME_VALUES = {
     "萨米": "Sami",
     "萨卡兹": "Sarkaz",
     "界园": "JieGarden",
+    "黑流树海": "BlackFlow",
 }
 # MaaCore RoguelikeMode (Task/Roguelike/RoguelikeConfig.h)：2 已移除、3(Ending) 未开放，
 # is_valid_mode 只接受 0/1/4/6/7 以及主题专属的 5(萨米) / 10001(萨卡兹) / 20001(界园)。
@@ -146,6 +152,7 @@ ROGUELIKE_STRATEGY_MODE_VALUES = {
     "刷月度小队": 6,
     "刷深入调查": 7,
     "刷常乐节点": 20001,
+    "黑流树海刷开局": 30003,
 }
 ROGUELIKE_COLLECTIBLE_MODE = 4
 ROGUELIKE_CLP_PDS_MODE = 5
@@ -156,6 +163,13 @@ ROGUELIKE_THEME_ONLY_MODES = {
     ROGUELIKE_CLP_PDS_MODE: "Sami",
     ROGUELIKE_FAST_PASS_MODE: "Sarkaz",
     ROGUELIKE_FIND_PLAYTIME_MODE: "JieGarden",
+    30001: "BlackFlow",
+    30003: "BlackFlow",
+}
+BLACKFLOW_ANIMALS = {"swaddled_cat", "swaddled_dog", "swaddled_cerberus", "swaddled_feathered_serpent"}
+BLACKFLOW_REWARDS = {
+    "unnumbered_item", "survey_advance", "space_lease", "regression_compensation",
+    "forest_ride", "nest_parasitism", "pegasus", "hippogriff", "dragon", "hydra", "bai_ze", "golden_crow",
 }
 # MaaCore RoguelikeCustomStartTaskPlugin::load_params 只认这些固定英文键。
 ROGUELIKE_COLLECTIBLE_AWARD_KEYS = {
@@ -185,6 +199,7 @@ RECLAMATION_THEME_VALUES = {
     "沙洲遗闻": "Tales",
     "沙中之火": "Fire",
     "沙中之火（活动未开放）": "Fire",
+    "重启锚点": "RelaunchAnchor",
 }
 RECLAMATION_STRATEGY_MODE_VALUES = {
     "无存档": 0,
@@ -261,6 +276,37 @@ def _single_append_call(task: TaskDefinition) -> AppendCall | None:
             "themes": [name for theme in themes if (name := theme.strip())],
             "enable": params.get("enable", True),
         }
+    elif task.type == "OperProgress":
+        _map_oper_progress(params)
+    elif task.type == "DepotMaintain":
+        rows = params.get("targets", [])
+        if not isinstance(rows, list) or not rows or len(rows) > 100:
+            raise TaskMappingError("库存保持需要 1–100 项材料目标。")
+        targets = []
+        for row in rows:
+            if not isinstance(row, dict):
+                raise TaskMappingError("库存目标必须包含材料 ID、目标数量、关卡。")
+            item_id = str(row.get("item_id", "")).strip()
+            stage = _normalize_stage_str(str(row.get("stage", "")).strip())
+            target = row.get("quantity")
+            if not item_id or not stage or type(target) is not int or not 1 <= target <= 999999:
+                raise TaskMappingError("库存保持的材料/关卡不能为空，目标数量须为 1–999999 的整数。")
+            if not item_id.isdigit() or item_id in EXCLUDED_DROP_IDS:
+                raise TaskMappingError("该材料不能作为库存保持的作战掉落目标。")
+            target_row = {"item_id": item_id, "stage": stage, "quantity": target}
+            for key in ("medicine", "stone"):
+                amount = row.get(key, 0)
+                if type(amount) is not int or not 0 <= amount <= 999:
+                    raise TaskMappingError("药剂/源石数量须为 0–999。")
+                target_row[key] = amount
+                target_row[f"use_{key}"] = row.get(f"use_{key}") is True
+            targets.append(target_row)
+        max_times = params.get("max_times", CORE_UNLIMITED_TIMES)
+        if type(max_times) is not int or not 1 <= max_times <= CORE_UNLIMITED_TIMES:
+            raise TaskMappingError("库存保持场次上限必须为正整数。")
+        # 库存保持由 runner 执行；绝不直接传入 MaaCore。
+        flags = {key: params.get(key) is True for key in ("sort_by_progress", "only_first", "count_dual_chips", "use_auto_series", "use_medicine", "use_stone", "use_expiring_medicine", "skip_during_activity", "skip_during_resource_collection")}
+        params = {"targets": targets, "max_times": max_times, "update_depot": params.get("update_depot", True) is True, **flags}
     elif task.type == "Roguelike":
         _map_roguelike(params)
     elif task.type == "Reclamation":
@@ -282,8 +328,24 @@ def profile_to_append_calls(
     state = _load_interval_state(state_path) if state_path else {}
     calls: list[AppendCall] = []
     today = datetime.now().date()
+    weekday = (datetime.now(timezone.utc) + timedelta(hours=CLIENT_TIMEZONE_OFFSETS.get(profile.adb.client_type, 8) - 4)).weekday()
     state_changed = False
     for task in profile.tasks:
+        if task.enabled and task.type == "Reclamation" and task.params.get("theme") in {"重启锚点", "RelaunchAnchor"} and profile.adb.client_type == "txwy":
+            raise TaskMappingError("重启锚点尚未适配繁中服。")
+        if task.enabled and task.type == "Roguelike" and task.params.get("theme") in {"黑流树海", "BlackFlow"} and profile.adb.client_type not in {"Official", "Bilibili"}:
+            raise TaskMappingError("黑流树海目前仅适配官服和 B 服。")
+        if task.enabled and task.type == "Fight":
+            task = task.model_copy(deep=True)
+            task.params["__server_weekday"] = weekday
+        if task.enabled and task.type == "Fight" and task.params.get("weekly_schedule"):
+            plan = task.params.get("weekly_plan", {})
+            stages = plan.get(str(weekday), []) if isinstance(plan, dict) else []
+            if not isinstance(stages, list) or any(not isinstance(stage, str) for stage in stages):
+                raise TaskMappingError("周计划须为每日关卡列表。")
+            if not stages:
+                continue
+            task.params.update(stage_plan=stages, stage=stages[0])
         if task.enabled and task.type == "UserDataUpdate":
             interval = _userdata_interval(task.params)
             if state_path is not None and _interval_already_satisfied(state.get(task.id), interval, today):
@@ -428,12 +490,12 @@ def _map_recruit(params: dict[str, Any]) -> None:
         # 原版只把 4/5 星加进 SelectList（RecruitSettingsUserControlModel.cs:298-308），
         # 3 星只确认不主动点选。
         select = [level for level in confirm if level in RECRUIT_SELECTABLE_LEVELS]
-    if skip_robot:
-        # 原版 NotChooseLevel1 = skip_robot=true + ConfirmList.Add(1)
-        select = [level for level in select if level != 1]
-        if 1 not in confirm:
-            confirm = [*confirm, 1]
-    params["skip_robot"] = skip_robot
+    preserve = params.get("preserve_tags", ["支援机械"] if skip_robot else [])
+    params["preserve_tags"] = _normalize_string_list(preserve)
+    params.pop("skip_robot", None)
+    params["level3_recruitment_permit_reserve"] = _require_int(
+        params.get("level3_recruitment_permit_reserve", 0), 0, 99999, "三星招聘许可保留数量"
+    )
     params["select"] = select
     params["confirm"] = confirm
     params["first_tags"] = _split_tags(params.get("extra_tags", params.get("first_tags", [])))
@@ -502,6 +564,40 @@ def _map_award(params: dict[str, Any]) -> None:
     params["orundum"] = bool(params.get("orundum", False))
     params["mining"] = bool(params.get("mining", params.get("limited_orundum", False)))
     params["specialaccess"] = bool(params.get("specialaccess", params.get("monthly_card", False)))
+    params["signinevent"] = bool(params.get("signinevent", False))
+
+
+def _require_int(value: Any, minimum: int, maximum: int, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+        raise TaskMappingError(f"{label} 必须是 {minimum}–{maximum} 的整数。")
+    return value
+
+
+def _map_oper_progress(params: dict[str, Any]) -> None:
+    plans = params.get("plans", [])
+    if not isinstance(plans, list):
+        raise TaskMappingError("干员培养 plans 必须是列表。")
+    normalized = []
+    for index, plan in enumerate(plans, 1):
+        if not isinstance(plan, dict) or not isinstance(plan.get("name"), str) or not plan["name"].strip():
+            raise TaskMappingError(f"培养计划第 {index} 行缺少干员名。")
+        item: dict[str, Any] = {"name": plan["name"].strip()}
+        if plan.get("role"):
+            if plan["role"] not in {"Caster", "Medic", "Pioneer", "Sniper", "Special", "Support", "Tank", "Warrior"}:
+                raise TaskMappingError(f"培养计划第 {index} 行职业无效。")
+            item["role"] = plan["role"]
+        for key, low, high in (("elite", 1, 2), ("skill_level", 2, 7)):
+            if key in plan:
+                item[key] = _require_int(plan[key], low, high, key)
+        if "skill_mastery" in plan:
+            values = plan["skill_mastery"]
+            if not isinstance(values, list) or len(values) != 3:
+                raise TaskMappingError("技能专精目标必须包含三个技能的等级。")
+            item["skill_mastery"] = [_require_int(value, 0, 3, "技能专精") for value in values]
+        normalized.append(item)
+    enabled = params.get("enable", True)
+    params.clear()
+    params.update(plans=normalized, enable=enabled)
 
 
 def _map_roguelike(params: dict[str, Any]) -> None:
@@ -509,7 +605,8 @@ def _map_roguelike(params: dict[str, Any]) -> None:
         theme = str(params.get("theme", ""))
         params["theme"] = ROGUELIKE_THEME_VALUES.get(theme, theme)
     if "difficulty" in params:
-        params["difficulty"] = _normalize_int_choice(params.get("difficulty"))
+        difficulty = params.get("difficulty")
+        params["difficulty"] = 2147483647 if str(difficulty).startswith("MAX") else _normalize_int_choice(difficulty)
     if "mode" in params:
         params["mode"] = _normalize_int_choice(params.get("mode"))
     elif "strategy" in params:
@@ -517,6 +614,8 @@ def _map_roguelike(params: dict[str, Any]) -> None:
         if mode is not None:
             params["mode"] = mode
     _validate_roguelike_mode(params)
+    if params.get("theme") == "BlackFlow":
+        _map_blackflow(params)
 
     # Squad and roles
     if "squad" in params:
@@ -525,6 +624,33 @@ def _map_roguelike(params: dict[str, Any]) -> None:
         params["roles"] = _normalize_roguelike_roles(params.get("roles"))
     if "core_char" in params or "operator" in params:
         params["core_char"] = str(params.get("core_char", params.get("operator", "")))
+    for key in ("core_char_list", "collectible_mode_core_char_list"):
+        if key in params:
+            value = params[key]
+            if value is None and key == "collectible_mode_core_char_list":
+                params.pop(key)
+                continue
+            if not isinstance(value, list) or len(value) > 3:
+                raise TaskMappingError("开局干员最多三位，必须是列表。")
+            if any(not isinstance(item, dict) or not isinstance(item.get("name"), str) for item in value):
+                raise TaskMappingError("开局干员需要中文姓名。")
+            params[key] = [{"name": item["name"].strip(), "use_support": bool(item.get("use_support", False))}
+                           for item in value if item["name"].strip()]
+            names = [item["name"] for item in params[key]]
+            if len(names) != len(set(names)):
+                raise TaskMappingError("开局干员不能重复。")
+            path = resolve_maa_root() / "resource" / "battle_data.json"
+            if path.is_file():
+                try:
+                    battle_data = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError) as exc:
+                    raise TaskMappingError("无法读取干员职业数据。") from exc
+                roles = {oper.get("name"): oper.get("profession") for oper in battle_data.get("chars", {}).values() if isinstance(oper, dict)}
+                selected_roles = [roles[name] for name in names if roles.get(name)]
+                if len(selected_roles) != len(set(selected_roles)):
+                    raise TaskMappingError("开局干员职业不能重复。")
+    if not params.get("collectible_mode_roles"):
+        params.pop("collectible_mode_roles", None)
 
     # Run count
     if "starts_count" in params:
@@ -585,10 +711,14 @@ def _map_roguelike(params: dict[str, Any]) -> None:
 
     # Collectible mode
     _map_roguelike_elite_two(params)
+    if params.get("start_with_elite_two") and params.get("core_char_list") and params["core_char_list"][0].get("use_support"):
+        raise TaskMappingError("第一顺位借助战不能与凹精二直升同时启用。")
     if "collectible_mode_shopping" in params:
         params["collectible_mode_shopping"] = bool(params.get("collectible_mode_shopping", False))
     if "collectible_mode_squad" in params:
         params["collectible_mode_squad"] = str(params.get("collectible_mode_squad", ""))
+        if not params["collectible_mode_squad"].strip():
+            params.pop("collectible_mode_squad")
     if "collectible_mode_start_list" in params:
         params["collectible_mode_start_list"] = _normalize_collectible_awards(
             params.get("collectible_mode_start_list")
@@ -630,6 +760,8 @@ def _validate_roguelike_mode(params: dict[str, Any]) -> None:
     if not isinstance(mode, int):
         return
     theme = str(params.get("theme", "Sami"))
+    if theme == "BlackFlow" and mode not in {0, 1, 30001, 30003}:
+        raise TaskMappingError("黑流树海仅支持刷等级、刷源石锭或黑流树海刷开局。")
     if mode in ROGUELIKE_COMMON_MODES:
         return
     required_theme = ROGUELIKE_THEME_ONLY_MODES.get(mode)
@@ -639,6 +771,42 @@ def _validate_roguelike_mode(params: dict[str, Any]) -> None:
         raise TaskMappingError(
             f"自动肉鸽策略 mode={mode} 仅支持 {required_theme} 主题，当前主题为 {theme or '未设置'}。"
         )
+
+
+def _map_blackflow(params: dict[str, Any]) -> None:
+    mode = params.get("mode", 0)
+    if mode == 30001:
+        params.setdefault("blackflow_strategy", "baby_animal")
+    elif mode == 0:
+        params.setdefault("blackflow_strategy", "ending1")
+    elif mode == 1:
+        params["blackflow_strategy"] = "investment"
+    if params.get("blackflow_fast_pass") and mode in {0, 30003}:
+        prefix = "collectible_mode_" if mode == 30003 else ""
+        params[f"{prefix}squad"] = "特勤分队"
+        params[f"{prefix}roles"] = "稳扎稳打"
+        params[f"{prefix}core_char_list"] = [{"name": "机械师", "use_support": False}]
+        params.pop("blackflow_strategy", None)
+    elif mode == 0 and params.get("blackflow_strategy") not in {"ending1", "ending2", "ending3", "burn", "burn_with_investment"}:
+        raise TaskMappingError("黑流树海刷等级策略无效。")
+    if mode == 30003:
+        animals = params.get("blackflow_start_animals", [])
+        if not isinstance(animals, list) or len(animals) > 2:
+            raise TaskMappingError("开局最多携带两只动物。")
+        if any(not isinstance(value, str) or value not in BLACKFLOW_ANIMALS for value in animals):
+            raise TaskMappingError("开局动物必须是猫、犬、三头犬或羽蛇。")
+        if animals.count("swaddled_feathered_serpent") > 1:
+            raise TaskMappingError("开局最多携带一只羽蛇。")
+        params["blackflow_start_animals"] = animals
+        params["blackflow_start_rewards"] = _require_int(params.get("blackflow_start_rewards", 0), 0, 4095, "开局奖励")
+        if params.get("blackflow_start_utopia"):
+            if params.get("difficulty", -1) < 6:
+                raise TaskMappingError("凹实托邦的目标难度必须至少为 6。")
+            rewards = params.get("blackflow_start_reward_priority", [])
+            if (not isinstance(rewards, list) or not rewards
+                    or any(not isinstance(value, str) or value not in BLACKFLOW_REWARDS for value in rewards)
+                    or len(set(rewards)) != len(rewards)):
+                raise TaskMappingError("凹实托邦需要非空的奖励优先级。")
 
 
 def _normalize_roguelike_roles(value: Any) -> str:
@@ -719,6 +887,16 @@ def _map_reclamation(params: dict[str, Any]) -> None:
     if "theme" in params:
         theme = str(params.get("theme", ""))
         params["theme"] = RECLAMATION_THEME_VALUES.get(theme, theme)
+    if params.get("theme") == "Fire":
+        raise TaskMappingError("沙中之火已关闭，请改用沙洲遗闻或重启锚点。")
+    if params.get("theme") == "RelaunchAnchor":
+        mode = _normalize_int_choice(params.get("mode", 16))
+        if mode not in {16, 32, 48}:
+            raise TaskMappingError("重启锚点仅支持 RA-1、RA-15、RA-4。")
+        params["mode"] = mode
+        for key in ("tools_to_craft", "tool_to_craft", "increment_mode", "num_craft_batches", "max_craft_count", "clear_store", "strategy"):
+            params.pop(key, None)
+        return
     if "mode" in params:
         params["mode"] = _normalize_int_choice(params.get("mode"))
     elif "strategy" in params:
@@ -737,6 +915,10 @@ def _map_reclamation(params: dict[str, Any]) -> None:
         params["increment_mode"] = _normalize_increment_mode(params.get("increment_mode"))
     if "clear_store" in params:
         params["clear_store"] = bool(params.get("clear_store", True))
+    if params.get("mode") == 1:
+        params.setdefault("tools_to_craft", [])
+        params.setdefault("increment_mode", 0)
+        params.setdefault("num_craft_batches", 16)
 
 
 def _map_closedown(params: dict[str, Any]) -> None:
@@ -761,12 +943,13 @@ def _map_custom(params: dict[str, Any]) -> None:
 
 
 def _normalize_stage_plan(params: dict[str, Any]) -> None:
+    weekday = params.pop("__server_weekday", None)
     stage_plan = params.get("stage_plan")
     if not isinstance(stage_plan, list):
         return
     normalized = [_normalize_stage_str(str(stage)) for stage in stage_plan if stage is not None]
     params["stage_plan"] = normalized
-    stage = _select_stage_from_plan(normalized)
+    stage = _select_stage_from_plan(normalized, weekday)
     if stage or normalized[:1] == [""]:
         params["stage"] = stage
 

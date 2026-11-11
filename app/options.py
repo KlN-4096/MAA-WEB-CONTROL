@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,7 @@ ROGUELIKE_THEME_DIRS = {
     "萨米": "Sami",
     "萨卡兹": "Sarkaz",
     "界园": "JieGarden",
+    "黑流树海": "BlackFlow",
 }
 
 YJ_DAY_START_HOUR = 4
@@ -91,6 +93,14 @@ def build_ui_options(
         client["value"]: _build_client_options(source, client["value"], now_utc=now_utc)
         for client in CLIENT_OPTIONS
     }
+    if adapter is not None:
+        from .maa_versions import read_core_version
+        core_version = read_core_version(adapter)
+        for options in by_client.values():
+            for game in options.get("tools", {}).get("mini_games", []):
+                minimum = game.get("minimum_required", "")
+                if minimum and _version_tuple(core_version) < _version_tuple(minimum):
+                    game.update(enabled=False, tip=f"需要 MaaCore {minimum} 或以上。")
     fallback = by_client[DEFAULT_CLIENT_TYPE]
     return {
         **fallback,
@@ -112,7 +122,78 @@ def _build_client_options(source: Path, client_type: str, *, now_utc: datetime |
         "copilot": {"files": _load_copilot_files(source)},
         "roguelike": {"operators": _load_roguelike_operators(source)},
         "infrast": {"custom_files": _load_custom_infrast_files(source)},
+        "operators": _load_operator_options(source, resource_client),
+        "recruit": {"tags": _load_recruit_tags(source, resource_client)},
+        "fight": {"series_max": _load_series_max(source, resource_client)},
+        "tools": {"mini_games": _load_mini_games(source, resource_client, now_utc)},
     }
+
+
+def _load_operator_options(source: Path, client_type: str) -> list[dict[str, Any]]:
+    data = _read_json(source / "resource" / "battle_data.json") or {}
+    suffix = {"YoStarEN": "en", "YoStarJP": "jp", "YoStarKR": "kr", "txwy": "tw"}.get(client_type)
+    roles = {"CASTER": "Caster", "MEDIC": "Medic", "PIONEER": "Pioneer", "SNIPER": "Sniper",
+             "SPECIAL": "Special", "SUPPORT": "Support", "TANK": "Tank", "WARRIOR": "Warrior"}
+    result = []
+    for item in data.get("chars", {}).values():
+        if not isinstance(item, dict) or not item.get("name") or (suffix and item.get(f"name_{suffix}_unavailable")):
+            continue
+        role = roles.get(item.get("profession"))
+        if role:
+            result.append({"name": item["name"], "role": role, "names": {code: item.get(f"name_{code}", item["name"]) for code in ("en","jp","kr","tw")}})
+    return sorted(result, key=lambda item: (item["name"], item["role"]))
+
+
+def _load_recruit_tags(source: Path, client_type: str) -> list[dict[str, str]]:
+    data = _read_json(_client_resource_dir(source, client_type) / "recruitment.json") or {}
+    return [{"label": str(label), "value": str(key)} for key, label in data.get("tags", {}).items()]
+
+
+def _version_tuple(value: str) -> tuple[int, ...]:
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", value)
+    return tuple(map(int, match.groups())) if match else (0, 0, 0)
+
+
+def _load_mini_games(source: Path, client: str, now: datetime | None) -> list[dict[str, Any]]:
+    data = _read_stage_activity_data(source) or {}
+    entries = data.get(normalize_client_type(client), {}).get("miniGame", [])
+    if not isinstance(entries, list):
+        entries = [entries]
+    current = _aware_utc(now)
+    result = []
+    for entry in entries:
+        if isinstance(entry, str):
+            entry = {"Value": entry}
+        if not isinstance(entry, dict):
+            continue
+        start = _parse_activity_time(entry, "UtcStartTime")
+        end = _parse_activity_time(entry, "UtcExpireTime")
+        if (start and current < start) or (end and current >= end):
+            continue
+        value = str(entry.get("Value") or entry.get("value") or "")
+        if value:
+            result.append({"value": value, "label": str(entry.get("Display") or value),
+                           "tip": str(entry.get("Tip") or ""), "enabled": True,
+                           "minimum_required": str(entry.get("MinimumRequired") or "")})
+    return result
+
+
+def _load_series_max(source: Path, client_type: str) -> int:
+    roots = [source / "resource"]
+    if client_type != "Official":
+        roots.append(_client_resource_dir(source, client_type))
+    roots.append(source / "cache" / "resource")
+    if client_type != "Official":
+        roots.append(source / "cache" / "resource" / "global" / client_type / "resource")
+    loaded = False
+    old_method = False
+    for root in roots:
+        for path in (root / "tasks.json", root / "tasks" / "tasks.json"):
+            data = _read_json(path)
+            if isinstance(data, dict):
+                loaded = True
+                old_method = old_method or "FightSeries-OldMethodFlag" in data
+    return 6 if not loaded or old_method else 10
 
 
 def _load_drop_options(source: Path, client_type: str) -> list[dict[str, str]]:

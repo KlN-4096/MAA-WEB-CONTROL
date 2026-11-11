@@ -82,7 +82,8 @@ class NotificationServiceTest(unittest.TestCase):
                 )
                 with patch.object(service, "_post_sync") as post:
                     result = await service.dispatch_test(override)
-                    return {"ok": result["ok"], "calls": post.call_count, "url": result["endpoint"]}
+                    self.assertNotIn("endpoint", result)
+                    return {"ok": result["ok"], "calls": post.call_count, "url": post.call_args.args[0]}
 
         outcome = asyncio.run(run())
         self.assertTrue(outcome["ok"])

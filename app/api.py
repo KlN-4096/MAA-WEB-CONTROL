@@ -8,16 +8,25 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisconnect
+from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
 
 from .capabilities import build_capabilities
 from .copilot_resolver import CopilotResolveError, resolve as resolve_copilot
 from .default_profiles import complete_profile_tasks
+from .diagnostics import build_log_archive
 from .events import EventBus
 from .image_codec import encode_peep_frame
 from .logs import MaaLogService
+from .inference import inference_config_error, read_inference_config, save_inference_config
+from .image_tools import pixel_paint, background_image
+from .tool_tasks import tool_append_call
 from .models import (
     AdbStatus,
     AdapterConfig,
+    InferenceConfig,
+    ImageToolRequest,
+    RemoteControlConfig,
     AppendCall,
     CopilotJob,
     CopilotResolveRequest,
@@ -39,10 +48,28 @@ from .models import (
 from .notifications import NotificationService
 from .options import build_ui_options
 from .runner import MaaRunnerService
+from .remote_control import RemoteControlService
 from .scheduler import SchedulerService
-from .storage import ProfileStore
+from .storage import ProfileStore, _replace_with_retry
 from .update_service import UpdateService
 from .maa_versions import get_maa_version_info
+
+
+class PrivateValidationRoute(APIRoute):
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def safe_handler(request):
+            try:
+                return await handler(request)
+            except RequestValidationError as exc:
+                if self.path not in {"/api/notifications", "/api/notifications/test", "/api/remote"}:
+                    raise
+                raise HTTPException(status_code=422, detail=[
+                    {"loc": error["loc"], "type": error["type"], "msg": "配置字段无效"}
+                    for error in exc.errors()
+                ]) from exc
+        return safe_handler
 
 
 def create_api_router(
@@ -54,8 +81,9 @@ def create_api_router(
     project_root: Path | None = None,
     notifications: NotificationService | None = None,
     update_service: UpdateService | None = None,
+    remote: RemoteControlService | None = None,
 ) -> APIRouter:
-    router = APIRouter(prefix="/api")
+    router = APIRouter(prefix="/api", route_class=PrivateValidationRoute)
     logs = log_service or runner.log_service
     if scheduler is not None:
         runner.set_post_action(scheduler.config.post_action)
@@ -69,6 +97,68 @@ def create_api_router(
     @router.get("/profiles")
     async def list_profiles():
         return {"profiles": store.list_names()}
+
+    @router.get("/inference")
+    async def get_inference():
+        if project_root is None:
+            raise HTTPException(status_code=501, detail="Project root not configured")
+        config = read_inference_config(project_root)
+        configured = getattr(runner.adapter, "inference_config", InferenceConfig())
+        prepared = getattr(runner.adapter, "_inference_prepared", False)
+        return {"config": config, "active": configured if prepared else None,
+                "static_options_accepted": prepared and configured.backend != "default",
+                "resources_loaded": getattr(runner.adapter, "resources_loaded", False),
+                "actual_backend": "unknown", "restart_required": config != configured,
+                "error": inference_config_error(project_root)}
+
+    @router.put("/inference")
+    async def put_inference(config: InferenceConfig):
+        if project_root is None:
+            raise HTTPException(status_code=501, detail="Project root not configured")
+        try:
+            save_inference_config(project_root, config)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "config": config, "restart_required": True}
+
+    @router.get("/remote")
+    async def get_remote():
+        if remote is None:
+            raise HTTPException(status_code=501, detail="远控服务未启用")
+        return {"config": remote.public_config(), "state": remote.state}
+
+    @router.put("/remote")
+    async def put_remote(config: RemoteControlConfig):
+        if remote is None:
+            raise HTTPException(status_code=501, detail="远控服务未启用")
+        try:
+            remote.update_config(config)
+            return {"config": remote.public_config(), "state": remote.state}
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.get("/execution/state")
+    async def get_execution_state(profile_name: str):
+        if runner.ledger is None:
+            raise HTTPException(status_code=501, detail="执行记录未启用")
+        try:
+            return runner.ledger.snapshot(store.load(profile_name))
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get("/logs/archive")
+    async def get_log_archive():
+        core_dir = getattr(runner.adapter, "_user_dir", None) or getattr(runner.adapter, "_core_dir", None)
+        payload = await asyncio.to_thread(
+            build_log_archive, logs.cards(),
+            [event.model_dump(mode="json") for event in events.recent(300)],
+            Path(core_dir) if core_dir else None,
+        )
+        return Response(payload, media_type="application/zip", headers={"Content-Disposition": 'attachment; filename="maa-logs.zip"'})
 
     @router.get("/options")
     async def get_options():
@@ -177,7 +267,15 @@ def create_api_router(
     async def run_request(request: RunRequest):
         try:
             profile = _resolve_run_profile(request, store)
-            return await runner.run(profile)
+            context = profile
+            if not any(task.type == "StartUp" for task in profile.tasks):
+                try:
+                    saved = store.load(profile.name)
+                    if saved.adb == profile.adb:
+                        context = saved
+                except FileNotFoundError:
+                    pass
+            return await runner.run(profile, context_profile=context)
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except RuntimeError as exc:
@@ -276,44 +374,50 @@ def create_api_router(
 
     # ── Tools ──────────────────────────────────────────────────────
 
+    @router.post("/tools/pixel/preview")
+    async def pixel_preview(request: ImageToolRequest):
+        try:
+            return await asyncio.to_thread(pixel_paint, request.image_base64, **request.model_dump(exclude={"image_base64"}))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.put("/ui/background")
+    async def put_background(request: ImageToolRequest):
+        if project_root is None:
+            raise HTTPException(status_code=501, detail="Project root not configured")
+        try:
+            content = await asyncio.to_thread(background_image, request.image_base64)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        path = project_root / "data" / "ui" / "background.jpg"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_bytes(content)
+        _replace_with_retry(tmp, path)
+        return {"ok": True}
+
+    @router.get("/ui/background")
+    async def get_background():
+        path = project_root / "data" / "ui" / "background.jpg" if project_root else None
+        if path is None or not path.is_file():
+            raise HTTPException(status_code=404, detail="未设置背景")
+        return Response(path.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
+
     @router.post("/tools/run")
     async def run_tool(request: ToolRequest):
-        adapter = runner.adapter
         tool = request.tool
-        params = request.params
-
-        # MaaCore Assistant::append_task 里没有 RecruitCalc；原版 WPF 下发的是
-        # Recruit + confirm=[-1]（AutoRecruitTask::is_calc_only_task 靠它判断仅识别）。
-        TOOL_TASK_MAP = {
-            "recruit_calc": ("Recruit", {"times": 0, "confirm": [-1]}),
-            "depot": ("Depot", {}),
-            "operbox": ("OperBox", {}),
-            "gacha_once": ("Custom", {"task_names": ["GachaOnce"]}),
-            "gacha_ten": ("Custom", {"task_names": ["GachaTenTimes"]}),
-            "custom": ("Custom", {}),
-        }
-
-        if tool not in TOOL_TASK_MAP:
-            raise HTTPException(status_code=400, detail=f"Unknown tool: {tool}")
-
-        task_type, default_params = TOOL_TASK_MAP[tool]
-        merged = {**default_params, **params}
-
         try:
-            await ensure_adapter_connected(runner, _resolve_tool_profile(store, runner, request.profile_name))
-            task_id = await adapter.append_task(AppendCall(
-                task_id=f"tool-{tool}",
-                type=task_type,
-                params=merged,
-            ))
-            started = await adapter.start(wait=False)
-            return {"ok": started, "task_id": task_id, "tool": tool}
+            call = tool_append_call(request)
+            result = await runner.run_external(_resolve_tool_profile(store, runner, request.profile_name), call)
+            return {**result, "tool": tool}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
             return {"ok": False, "message": str(exc), "tool": tool}
 
     @router.post("/tools/stop")
     async def stop_tool():
-        await adapter_stop_safe(runner)
+        await runner.stop()
         return {"ok": True}
 
     @router.get("/tools/state")
@@ -357,7 +461,9 @@ def create_api_router(
 
     @router.post("/copilot/stop")
     async def stop_copilot():
-        await adapter_stop_safe(runner)
+        if runner.status().current_task and not runner.status().current_task.startswith("copilot"):
+            raise HTTPException(status_code=409, detail="当前不是自动战斗任务，请从当前任务入口停止。")
+        await runner.stop()
         return {"ok": True}
 
     @router.post("/copilot/resolve")
@@ -447,20 +553,27 @@ def create_api_router(
     async def get_notifications():
         if notifications is None:
             return NotificationConfig()
-        return notifications.config
+        return notifications.public_config()
 
     @router.put("/notifications")
     async def put_notifications(config: NotificationConfig):
         if notifications is None:
             raise HTTPException(status_code=501, detail="Notifications not initialized")
-        return notifications.update_config(config)
+        try:
+            notifications.update_config(config)
+            return notifications.public_config()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.post("/notifications/test")
     async def post_notifications_test(request: NotificationTestRequest | None = None):
         if notifications is None:
             raise HTTPException(status_code=501, detail="Notifications not initialized")
         override = request.config if request is not None else None
-        return await notifications.dispatch_test(override)
+        try:
+            return await notifications.dispatch_test(override)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # ── Post Action ────────────────────────────────────────────────
 
@@ -504,14 +617,11 @@ async def _start_copilot(
 ) -> dict[str, Any]:
     try:
         call = _copilot_append_call(request)
-        await ensure_adapter_connected(runner, profile)
-        task_id = await runner.adapter.append_task(call)
-        started = await runner.adapter.start(wait=False)
+        result = await runner.run_external(profile, call)
         return {
-            "ok": started,
+            **result,
             "name": request.name,
             "task_type": call.type,
-            "task_id": task_id,
         }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

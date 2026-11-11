@@ -4,7 +4,7 @@ const SETTING_MODE_KEY = "maa-web.settingMode";
 const DEFAULT_VIEW = "basement";
 const FALLBACK_PROFILE_KEY = "__default__";
 const PROFILE_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
-const ADD_TASK_TYPES = ["StartUp", "Fight", "Infrast", "Recruit", "Mall", "Award", "Custom", "Roguelike", "Reclamation", "SwitchTheme", "CloseDown", "UserDataUpdate"];
+const ADD_TASK_TYPES = ["StartUp", "Fight", "Infrast", "Recruit", "Mall", "Award", "Custom", "Roguelike", "Reclamation", "OperProgress", "DepotMaintain", "SwitchTheme", "CloseDown", "UserDataUpdate"];
 const BUILTIN_PROFILE_TASKS = [
   ["startup", "StartUp", "开始唤醒"],
   ["recruit", "Recruit", "自动公招"],

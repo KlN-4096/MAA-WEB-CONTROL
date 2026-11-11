@@ -107,9 +107,9 @@ class RunnerStateTest(unittest.IsolatedAsyncioTestCase):
         await runner.run(profile_with_task())
         await runner._task
 
-        self.assertEqual(captured, [("complete", captured[0][1])])
-        self.assertEqual(captured[0][1]["profile"], "daily")
-        self.assertEqual(captured[0][1]["state"], "Completed")
+        self.assertEqual([event for event, _ in captured], ["start", "complete"])
+        self.assertEqual(captured[-1][1]["profile"], "daily")
+        self.assertEqual(captured[-1][1]["state"], "Completed")
 
     async def test_run_event_callback_fires_on_timeout(self):
         events = EventBus()
@@ -132,7 +132,7 @@ class RunnerStateTest(unittest.IsolatedAsyncioTestCase):
         await runner.run(profile_with_task())
         await runner._task
 
-        self.assertEqual([event for event, _ in captured], ["timeout"])
+        self.assertEqual([event for event, _ in captured], ["start", "timeout"])
         self.assertEqual(runner.status().state, "Failed")
 
     async def test_post_action_run_command_executes_shell(self):
@@ -189,8 +189,8 @@ class RunnerStateTest(unittest.IsolatedAsyncioTestCase):
         await runner.run(profile_with_task())
         await runner._task
 
-        self.assertEqual([event for event, _ in captured], ["error"])
-        self.assertEqual(captured[0][1]["state"], "Failed")
+        self.assertEqual([event for event, _ in captured], ["start", "error"])
+        self.assertEqual(captured[-1][1]["state"], "Failed")
 
     async def test_error_callback_status_finishes_failed(self):
         events = EventBus()

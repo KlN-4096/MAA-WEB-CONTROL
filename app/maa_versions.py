@@ -101,7 +101,11 @@ def _load_core(adapter: Any, asst_cls: type[Any]) -> None:
     if not callable(load) or core_dir is None:
         return
     try:
-        load(Path(core_dir), user_dir=getattr(adapter, "_user_dir", None))
+        prepare = getattr(adapter, "prepare_inference", None)
+        if callable(prepare):
+            prepare()
+        if load(Path(core_dir), user_dir=getattr(adapter, "_user_dir", None)):
+            adapter.resources_loaded = True
     except Exception:
         return
 

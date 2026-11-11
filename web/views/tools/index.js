@@ -1,4 +1,4 @@
-const TOOL_TABS = ["公招识别", "干员识别", "仓库识别", "牛牛抽卡", "牛牛监控", "小游戏"];
+const TOOL_TABS = ["公招识别", "干员识别", "仓库识别", "牛牛抽卡", "牛牛监控", "小游戏", "作战日报与培养", "合成与升潜", "像素画"];
 
 const TOOL_TEXT = {
   recruitTip: "小提示: 和主界面的自动公招是两个独立的功能，请手动打开游戏公招 Tags 界面后使用~",
@@ -169,6 +169,9 @@ function toolTabButton(label, index) {
 }
 
 function renderToolTab() {
+  if (TOOLS_STATE.tab === 6) return renderExecutionRecords();
+  if (TOOLS_STATE.tab === 7) return renderModernTools();
+  if (TOOLS_STATE.tab === 8) return renderPixelPaint();
   if (TOOLS_STATE.tab === 0) return renderRecruitTool();
   if (TOOLS_STATE.tab === 1) return renderOperBoxTool();
   if (TOOLS_STATE.tab === 2) return renderDepotTool();
@@ -215,7 +218,7 @@ function renderRecruitCombinations() {
   return `<div class="recruitCombos">${combos.slice(0, 8).map((combo) => {
     const opers = Array.isArray(combo.opers) ? combo.opers : [];
     const shown = TOOLS_STATE.showPotential ? opers : opers.filter((oper) => (oper.level || 0) >= 4);
-    const operText = shown.slice(0, 12).map((oper) => `<span class="comboOper lv${oper.level || 0}">${escapeHtml(oper.name || "")}</span>`).join("");
+    const operText = shown.slice(0, 12).map((oper) => `<span class="comboOper lv${oper.level || 0}">${escapeHtml(typeof operatorDisplayName === "function" ? operatorDisplayName(oper.name || "") : oper.name || "")}</span>`).join("");
     return `<div class="recruitCombo">
       <div class="comboHead"><strong class="comboLevel lv${combo.level || 0}">${combo.level || 0}★</strong>${(combo.tags || []).map((tag) => `<span class="recruitTag">${escapeHtml(tag)}</span>`).join("")}</div>
       <div class="comboOpers">${operText || '<span class="comboEmpty">无</span>'}</div>
@@ -270,7 +273,7 @@ function renderOperTabs() {
     const star = "★".repeat(Math.max(0, Math.min(6, Number(op.rarity) || 0)));
     const elite = op.elite != null ? `精${op.elite}` : "";
     const lv = op.level != null ? `Lv${op.level}` : "";
-    return `<div class="operRow"><span class="operName">${escapeHtml(op.name || "")}</span><span class="operMeta">${escapeHtml([star, elite, lv].filter(Boolean).join(" "))}</span></div>`;
+    return `<div class="operRow"><span class="operName">${escapeHtml(typeof operatorDisplayName === "function" ? operatorDisplayName(op.name || "") : op.name || "")}</span><span class="operMeta">${escapeHtml([star, elite, lv].filter(Boolean).join(" "))}</span></div>`;
   }).join("");
   const overflow = list.length > 200 ? `<p class="overflowNote">...仅显示前 200 项，共 ${list.length} 项</p>` : "";
   return `
@@ -342,7 +345,7 @@ function renderPeepTool() {
 }
 
 function renderMiniGameTool() {
-  const selected = MINI_GAMES.find((item) => item.value === TOOLS_STATE.miniGame);
+  const selected = availableMiniGames().find((item) => item.value === TOOLS_STATE.miniGame);
   return `
     <div class="miniGameTool">
       <div class="miniCombo">
@@ -353,15 +356,16 @@ function renderMiniGameTool() {
         ${TOOLS_STATE.miniDropdownOpen ? renderMiniDropdown() : ""}
       </div>
       ${TOOLS_STATE.miniGame === "MiniGame@SecretFront" ? renderSecretFrontOptions() : ""}
+      ${TOOLS_STATE.miniGame === "SS@Store@Begin" ? `<label>活动商店黑名单（分号分隔）<input data-tools-field="eventShopBlacklist" value="${escapeHtml(TOOLS_STATE.eventShopBlacklist || "")}"/></label>` : ""}
       <p class="miniTip">${escapeHtml(selected?.tip || TOOL_TEXT.miniEmptyTip)}</p>
-      <button class="miniStart" type="button" data-tools-action="startMini"${unavailableAttr("tools")}>${TOOLS_STATE.miniRunning ? "Stop!" : "Link Start!"}</button>
+      <button class="miniStart" type="button" data-tools-action="startMini"${!TOOLS_STATE.miniRunning && (!selected || selected.enabled === false) ? " disabled" : unavailableAttr("tools")}>${TOOLS_STATE.miniRunning ? "Stop!" : "Link Start!"}</button>
     </div>
   `;
 }
 
 function renderMiniDropdown() {
-  return `<div class="miniComboMenu">${MINI_GAMES.map((item) => `
-    <button class="miniComboOption${item.value === TOOLS_STATE.miniGame ? " selected" : ""}" type="button" data-mini-value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</button>
+  return `<div class="miniComboMenu">${availableMiniGames().map((item) => `
+    <button class="miniComboOption${item.value === TOOLS_STATE.miniGame ? " selected" : ""}" type="button" data-mini-value="${escapeHtml(item.value)}" ${item.enabled === false ? "disabled" : ""}>${escapeHtml(item.label)}</button>
   `).join("")}</div>`;
 }
 
@@ -376,6 +380,19 @@ function renderSecretFrontOptions() {
 }
 
 function onToolsClick(event) {
+  const modern = event.target.closest("[data-modern-tool]");
+  if (modern) {
+    runModernTool(modern.dataset.modernTool).catch(showError);
+    return;
+  }
+  if (event.target.closest("[data-pixel-convert]")) {
+    convertPixelPaint().catch(showError);
+    return;
+  }
+  if (event.target.closest("[data-record-refresh]")) {
+    loadExecutionRecords().catch(showError);
+    return;
+  }
   const tab = event.target.closest("[data-tools-tab]");
   if (tab) {
     setToolsTab(Number(tab.dataset.toolsTab));
@@ -400,6 +417,21 @@ function onToolsClick(event) {
 }
 
 function onToolsChange(event) {
+  if (event.target.id === "pixelSource") {
+    loadPixelSource(event.target.files?.[0]).catch(showError);
+    return;
+  }
+  if (event.target.dataset.pixelField) {
+    const key = event.target.dataset.pixelField;
+    PIXEL_STATE[key] = event.target.type === "checkbox" ? event.target.checked : event.target.type === "number" ? Number(event.target.value) : event.target.value;
+    if (!["swipe","grid_delay"].includes(key)) {
+      PIXEL_STATE.generation++;
+      PIXEL_STATE.groups = null;
+      PIXEL_STATE.preview = "";
+      renderToolsView();
+    }
+    return;
+  }
   if (event.target.id === "paramInfrastFileSelect") return;
   const field = event.target.dataset.toolsField;
   if (!field) return;
@@ -421,6 +453,7 @@ function onToolsInput(event) {
 }
 
 function updateToolsField(field, target) {
+  if (field === "eventShopBlacklist") TOOLS_STATE.eventShopBlacklist = target.value;
   if (field === "autoTime") TOOLS_STATE.autoTime = target.checked;
   if (field === "showPotential") TOOLS_STATE.showPotential = target.checked;
   if (field.startsWith("level")) TOOLS_STATE.levels[field.replace("level", "")] = target.checked;
@@ -436,6 +469,7 @@ function setToolsTab(tab) {
   TOOLS_STATE.miniDropdownOpen = false;
   persistToolsState();
   renderToolsView();
+  if (tab === 6) loadExecutionRecords().catch(showError);
 }
 
 function runToolsAction(action, payload = {}) {
@@ -606,7 +640,7 @@ function fireToolBackend(action) {
   const params = action === "startRecruit" ? buildRecruitCalcParams() : {};
   api("/api/tools/run", {
     method: "POST",
-    body: JSON.stringify({ tool: toolName, params })
+    body: JSON.stringify({ tool: toolName, params, profile_name: state.profile?.name || "" })
   }).then((result) => {
     if (result.ok) {
       if (action === "startRecruit") TOOLS_STATE.recruitInfo = "识别请求已发送，等待结果……";
@@ -861,13 +895,15 @@ function updatePeepFrame(base64Data, mediaType) {
 function manageMiniGameTask() {
   if (typeof api !== "function") return;
   if (!TOOLS_STATE.miniRunning) {
-    // 不能用 /api/stop：那是 profile 运行器的停止，会把主页面状态钉死。
     api("/api/tools/stop", { method: "POST" }).catch(showError);
     return;
   }
   api("/api/tools/run", {
     method: "POST",
-    body: JSON.stringify({ tool: "custom", params: { task_names: [miniGameTaskName()] } })
+    body: JSON.stringify({ tool: "custom", profile_name: state.profile?.name || "", params: {
+      task_names: [miniGameTaskName()],
+      ...(TOOLS_STATE.miniGame === "SS@Store@Begin" ? {params:{event_shop:{blacklist:(TOOLS_STATE.eventShopBlacklist || "").split(/[;\n]/).map((s)=>s.trim()).filter(Boolean)}}} : {})
+    } })
   }).then((result) => {
     if (result && result.ok) {
       showNotice("小游戏任务已发送", "success");

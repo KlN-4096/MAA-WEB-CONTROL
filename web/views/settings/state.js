@@ -63,8 +63,8 @@ const SETTINGS_PERSISTED_FIELDS = [
   "emulatorLaunchEnabled",
   "emulatorLaunchCommand",
   "emulatorLaunchWait",
-  "notification",
   "taskTimeoutMinutes"
+  ,"uiTheme","dateFormat","operatorLanguage","backgroundEnabled","backgroundOpacity","backgroundBlur","backgroundFit","backgroundVersion"
 ];
 const SETTINGS_AUTO_SCROLL_SUPPRESS_MS = 120;
 const SETTINGS_SMOOTH_SCROLL_SUPPRESS_MS = 1200;
@@ -166,6 +166,8 @@ const SETTINGS_STATE = {
   notificationStatus: "",
   taskTimeoutMinutes: 0,
   taskTimeoutStatus: ""
+  ,uiTheme:"dark",dateFormat:"HH:mm:ss",operatorLanguage:"zh",
+  backgroundEnabled:false,backgroundOpacity:50,backgroundBlur:12,backgroundFit:"cover",backgroundVersion:0
 };
 
 Object.assign(SETTINGS_STATE, restoreSettingsState());
@@ -227,23 +229,32 @@ function restoreSettingsState() {
   if (Number.isFinite(parsed.emulatorLaunchWait)) {
     restored.emulatorLaunchWait = Math.max(0, Math.min(300, Math.round(parsed.emulatorLaunchWait)));
   }
-  if (parsed.notification && typeof parsed.notification === "object" && !Array.isArray(parsed.notification)) {
-    restored.notification = mergeNotificationState(parsed.notification);
-  }
   if (Number.isFinite(Number(parsed.taskTimeoutMinutes))) {
     restored.taskTimeoutMinutes = Math.max(0, Math.min(999, Math.round(Number(parsed.taskTimeoutMinutes))));
   }
+  if (["dark","light","system"].includes(parsed.uiTheme)) restored.uiTheme = parsed.uiTheme;
+  if (["HH:mm:ss","HH:mm","yyyy-MM-dd HH:mm:ss"].includes(parsed.dateFormat)) restored.dateFormat = parsed.dateFormat;
+  if (["zh","en","jp","kr","tw"].includes(parsed.operatorLanguage)) restored.operatorLanguage = parsed.operatorLanguage;
+  if (["cover","contain","stretch","tile"].includes(parsed.backgroundFit)) restored.backgroundFit = parsed.backgroundFit;
+  MaaStorage.copyBoolean(parsed,restored,"backgroundEnabled");
+  restored.backgroundOpacity = clampNumber(parsed.backgroundOpacity,0,100,50);
+  restored.backgroundBlur = clampNumber(parsed.backgroundBlur,0,40,12);
+  restored.backgroundVersion = Number(parsed.backgroundVersion || 0);
   return restored;
 }
 
 function readSettingsStorage() {
-  return MaaStorage.readObject(SETTINGS_STORAGE_KEY, null);
+  const parsed = MaaStorage.readObject(SETTINGS_STORAGE_KEY, null);
+  if (parsed && "notification" in parsed) {
+    delete parsed.notification;
+    MaaStorage.writeObject(SETTINGS_STORAGE_KEY, parsed);
+  }
+  return parsed;
 }
 
 function persistSettingsState() {
   // 凭据（Mirror酱 CDK、Webhook 请求头）只保存在服务端，不写浏览器本地存储。
   const payload = MaaStorage.pick(SETTINGS_STATE, SETTINGS_PERSISTED_FIELDS);
-  if (payload.notification?.webhook) payload.notification = { ...payload.notification, webhook: { ...payload.notification.webhook, headers: {} } };
   MaaStorage.writeObject(SETTINGS_STORAGE_KEY, payload);
 }
 

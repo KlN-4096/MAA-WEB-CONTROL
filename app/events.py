@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from typing import Callable
 
 from .models import EventRecord
 
@@ -10,11 +11,17 @@ class EventBus:
     def __init__(self, max_events: int = 300) -> None:
         self._events: deque[EventRecord] = deque(maxlen=max_events)
         self._subscribers: set[asyncio.Queue[EventRecord]] = set()
+        self._listeners: list[Callable[[EventRecord], None]] = []
 
     def publish(self, event: EventRecord) -> None:
         self._events.append(event)
         for queue in list(self._subscribers):
             queue.put_nowait(event)
+        for listener in self._listeners:
+            listener(event)
+
+    def add_listener(self, listener: Callable[[EventRecord], None]) -> None:
+        self._listeners.append(listener)
 
     def recent(self, limit: int = 100) -> list[EventRecord]:
         if limit <= 0:

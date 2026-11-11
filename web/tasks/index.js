@@ -1,6 +1,6 @@
 const TASK_TYPES = [
   "StartUp", "Recruit", "Infrast", "Fight", "Custom", "Mall",
-  "Award", "Roguelike", "Reclamation", "SwitchTheme", "CloseDown", "UserDataUpdate"
+  "Award", "Roguelike", "Reclamation", "OperProgress", "DepotMaintain", "SwitchTheme", "CloseDown", "UserDataUpdate"
 ];
 
 const TASK_NAMES = {
@@ -13,12 +13,14 @@ const TASK_NAMES = {
   Award: "领取奖励",
   Roguelike: "自动肉鸽",
   Reclamation: "生息演算",
+  OperProgress: "干员培养",
+  DepotMaintain: "库存保持",
   SwitchTheme: "更换主题",
   CloseDown: "关闭游戏",
   UserDataUpdate: "更新数据"
 };
 
-const NO_ADVANCED_TASKS = new Set(["Award", "SwitchTheme", "CloseDown", "UserDataUpdate"]);
+const NO_ADVANCED_TASKS = new Set(["Award", "OperProgress", "DepotMaintain", "SwitchTheme", "CloseDown", "UserDataUpdate"]);
 const REPLACE_COLLECTED_PARAM_TASKS = new Set(["CloseDown"]);
 const STARTUP_CLIENT_TYPES = [
   { label: "官服", value: "Official" },
@@ -58,7 +60,7 @@ const STAGE_OPTIONS = [
 const DROP_OPTIONS = [{ label: "不选择", value: "" }];
 const SERIES_OPTIONS = [{ label: "AUTO", value: 0 }, { label: "6", value: 6 }, { label: "5", value: 5 }, { label: "4", value: 4 }, { label: "3", value: 3 }, { label: "2", value: 2 }, { label: "1", value: 1 }, { label: "不切换", value: -1 }];
 const MEDICINE_EXPIRE_OPTIONS = ["24h", "48h", "72h", "96h", "120h", "144h", "168h"];
-const ROGUELIKE_THEMES = ["傀影", "水月", "萨米", "萨卡兹", "界园"];
+const ROGUELIKE_THEMES = ["傀影", "水月", "萨米", "萨卡兹", "界园", "黑流树海"];
 const ROGUELIKE_STRATEGIES = ["刷等级，尽可能稳定地打更多层数", "刷源石锭，投资完成后自动退出", "刷开局，刷取热水壶或精二干员开局", "刷月度小队，尽可能稳定地打更多层数", "刷深入调查，尽可能稳定地打更多层数"];
 const ROGUELIKE_THEME_STRATEGIES = {
   "萨米": ["刷坍缩范式，遇到非稀有坍缩范式后直接重开"],
@@ -66,6 +68,7 @@ const ROGUELIKE_THEME_STRATEGIES = {
 };
 const ROGUELIKE_COMMON_SQUADS = ["指挥分队", "后勤分队", "突击战术分队", "堡垒战术分队", "远程战术分队", "破坏战术分队", "高规格分队"];
 const ROGUELIKE_THEME_SQUADS = {
+  "黑流树海": ["特勤分队", "矛头分队", "高台突破分队", "地面突破分队", "本源研修分队", "文明开化分队", "开拓者分队", "多边贸易分队", "地质调查分队", "团结阵线分队", "踏足遍历分队"],
   "傀影": ["集群分队", "矛头分队", "研究分队"],
   "水月": ["集群分队", "矛头分队", "心胜于物分队", "物尽其用分队", "以人为本分队", "研究分队"],
   "萨米": ["集群分队", "矛头分队", "永恒狩猎分队", "生活至上分队", "科学主义分队", "特训分队"],
@@ -82,7 +85,7 @@ const ROGUELIKE_OPERATOR_OPTIONS = {
   "萨卡兹": ["", "维什戴尔", "焰影苇草", "凯尔希", "银灰", "锏", "假日威龙陈", "圣约送葬人", "怒潮凛冬", "百炼嘉维尔", "佩佩", "乌尔比安", "海沫", "丰川祥子", "山", "羽毛笔", "休谟斯", "仇白", "煌", "艾丽妮", "帕拉斯", "医生", "风丸", "号角", "古米", "石棉", "斑点", "新约能天使", "梅", "流星", "克洛丝", "令", "稀音", "苏苏洛", "嘉维尔", "安赛尔", "讯使", "芬", "圣聆初雪", "林", "蕾缪安", "提丰", "铅踝", "白雪", "锡人", "跃跃", "芳汀", "松果"],
   "界园": ["", "维什戴尔", "新约能天使", "电弧", "凯尔希", "银灰", "假日威龙陈", "圣约送葬人", "怒潮凛冬", "百炼嘉维尔", "锏", "佩佩", "乌尔比安", "海沫", "丰川祥子", "山", "羽毛笔", "休谟斯", "仇白", "煌", "艾丽妮", "帕拉斯", "风丸", "斩业星熊", "号角", "古米", "石棉", "斑点", "梅", "流星", "克洛丝", "令", "稀音", "苏苏洛", "嘉维尔", "清流", "安赛尔", "讯使", "芬", "圣聆初雪", "林", "蕾缪安", "提丰", "铅踝", "白雪", "罗小黑", "跃跃", "伊桑", "芳汀", "松果"]
 };
-const RECLAMATION_THEMES = [{ label: "沙洲遗闻", value: "沙洲遗闻" }, { label: "沙中之火（活动已下线）", value: "沙中之火" }];
+const RECLAMATION_THEMES = [{ label: "沙洲遗闻", value: "沙洲遗闻" }, { label: "重启锚点（繁中服未适配）", value: "重启锚点" }];
 const RECLAMATION_STRATEGIES = ["无存档，通过进出关卡刷生息点数", "有存档，通过组装支援道具刷生息点数"];
 const RECLAMATION_INCREMENT_MODES = ["连点", "长按"];
 const FIGHT_TOOLTIPS = {
@@ -202,7 +205,7 @@ function cloneObject(value) {
 
 function defaultTask(type = firstTaskType()) {
   const id = `${type.toLowerCase()}-${Date.now().toString().slice(-5)}`;
-  return { id, type, enabled: true, name: taskDefinition(type).title, params: defaultParams(type), strategy: {} };
+  return { id, type, enabled: !["OperProgress", "DepotMaintain"].includes(type), name: taskDefinition(type).title, params: defaultParams(type), strategy: {} };
 }
 
 function defaultParams(type) {
@@ -231,6 +234,8 @@ function builtinDefaultParams(type) {
   if (type === "Roguelike") return { theme: "萨卡兹", difficulty: "MAX (18)", strategy: ROGUELIKE_STRATEGIES[0], squad: "指挥分队", roles: "稳扎稳打（重装、术师、狙击）", starts_count: 99999, investment_enabled: true };
   if (type === "Reclamation") return { theme: "沙洲遗闻", strategy: RECLAMATION_STRATEGIES[1], tool_to_craft: "荧光棒", increment_mode: "连点", max_craft_count: 16 };
   if (type === "SwitchTheme") return { themes: [] };
+  if (type === "OperProgress") return { plans: [] };
+  if (type === "DepotMaintain") return { targets: [], update_depot: true };
   if (type === "CloseDown") return { client_type: "Official" };
   if (type === "UserDataUpdate") return { update_oper_box: true, update_depot: true };
   return {};
@@ -269,6 +274,8 @@ function renderGeneral(task, escapeHtmlFn) {
   if (task.type === "Roguelike") return renderRoguelikeGeneral(p, escapeHtmlFn);
   if (task.type === "Reclamation") return renderReclamationGeneral(p, escapeHtmlFn);
   if (task.type === "SwitchTheme") return renderSwitchThemeGeneral(p, escapeHtmlFn);
+  if (task.type === "OperProgress") return renderOperProgressGeneral(p, escapeHtmlFn);
+  if (task.type === "DepotMaintain") return renderDepotMaintainGeneral(p, escapeHtmlFn);
   if (task.type === "CloseDown") return renderCloseDownGeneral(p, escapeHtmlFn);
   if (task.type === "UserDataUpdate") return renderUserDataUpdateGeneral(p);
   return renderJsonParams(p, escapeHtmlFn);
@@ -342,6 +349,8 @@ function collectParams(type) {
   if (type === "Roguelike") return collectRoguelikeParams();
   if (type === "Reclamation") return collectReclamationParams();
   if (type === "SwitchTheme") return { themes: valueOf("paramSwitchThemeNames", "").split(/\r?\n/).map((name) => name.trim()).filter(Boolean) };
+  if (type === "OperProgress") return collectOperProgressParams();
+  if (type === "DepotMaintain") return collectDepotMaintainParams();
   if (type === "CloseDown") return collectCloseDownParams();
   if (type === "UserDataUpdate") return collectUserDataUpdateParams();
   return $("taskParamsInput") ? parseJsonField("taskParamsInput") : {};
@@ -398,7 +407,7 @@ function stageOptions(current, escapeHtmlFn) {
 
 function selectOptions(options, current, escapeHtmlFn) {
   const normalized = options.map(normalizeOption);
-  const selectedValue = current ?? normalized[0]?.value ?? "";
+  const selectedValue = String(current ?? normalized[0]?.value ?? "");
   const merged = normalized.some((option) => option.value === selectedValue)
     ? normalized
     : [normalizeOption(selectedValue), ...normalized];
@@ -505,14 +514,16 @@ function taskTypeOptions(current) {
 }
 
 function seriesOptions(current, escapeHtmlFn) {
-  return SERIES_OPTIONS.map((option) => {
+  const max = activeClientOptions()?.fight?.series_max || 6;
+  const options = [{ label: "AUTO", value: 0 }, ...Array.from({ length: max }, (_, i) => ({ label: String(max - i), value: max - i })), { label: "不切换", value: -1 }];
+  return options.map((option) => {
     const selected = Number(current ?? 0) === option.value ? " selected" : "";
     return `<option value="${option.value}"${selected}>${escapeHtmlFn(option.label)}</option>`;
   }).join("");
 }
 
 function allFacilities() {
-  return ["制造站", "贸易站", "控制中枢", "发电站", "会客室", "办公室", "宿舍", "加工站", "训练室"];
+  return ["制造站", "贸易站", "控制中枢", "发电站", "会客室", "办公室", "回收站", "宿舍", "加工站", "训练室", "更换助理"];
 }
 
 function checked(value) {

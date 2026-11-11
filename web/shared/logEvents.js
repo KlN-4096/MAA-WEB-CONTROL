@@ -130,6 +130,7 @@ function normalizeLogItem(item = {}) {
 }
 
 function formatLogTime(value) {
+  if (typeof formatUiDate === "function") return formatUiDate(value);
   const time = new Date(value);
   if (Number.isNaN(time.getTime())) return "--:--:--";
   return time.toLocaleTimeString("zh-CN", { hour12: false });

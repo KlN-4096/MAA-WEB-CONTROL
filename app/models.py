@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -221,9 +222,33 @@ class ToolRequest(BaseModel):
     profile_name: str = ""
 
 
+class ImageToolRequest(BaseModel):
+    image_base64: str = Field(max_length=12_000_000)
+    fit: Literal["cover", "contain", "stretch"] = "cover"
+    dither: bool = False
+    brightness: float = Field(default=1, ge=0, le=3)
+    contrast: float = Field(default=1, ge=0, le=3)
+    saturation: float = Field(default=1, ge=0, le=3)
+
+
 class AdapterConfig(BaseModel):
     adapter: str = ""
     core_dir: str = ""
+
+
+class InferenceConfig(BaseModel):
+    backend: Literal["default", "cpu", "auto", "webgpu", "directml"] = "default"
+    device: int = Field(default=0, ge=0, le=128)
+
+
+class RemoteControlConfig(BaseModel):
+    enabled: bool = False
+    poll_url: str = ""
+    report_url: str = ""
+    interval_ms: int = Field(default=1000, ge=1000, le=60000)
+    user: str = Field(default="", max_length=256)
+    device: str = Field(default="", max_length=256)
+    profile_name: str = ""
 
 
 class UpdateConfig(BaseModel):
@@ -254,6 +279,14 @@ class WebhookNotificationConfig(BaseModel):
     url: str = ""
     method: Literal["POST", "PUT"] = "POST"
     headers: dict[str, str] = Field(default_factory=dict)
+    body_template: str = ""
+
+
+class NotificationChannel(BaseModel):
+    id: str = Field(default_factory=lambda: uuid4().hex, max_length=64)
+    type: Literal["smtp", "telegram", "bark", "gotify", "qmsg", "serverchan", "discord", "dingtalk"]
+    enabled: bool = False
+    options: dict[str, Any] = Field(default_factory=dict)
 
 
 class NotificationConfig(BaseModel):
@@ -263,7 +296,23 @@ class NotificationConfig(BaseModel):
     send_on_stopped: bool = False
     send_on_timeout: bool = True
     include_details: bool = True
+    send_on_start: bool = False
+    log_count: int = Field(default=0, ge=0, le=10000)
+    log_pattern: str = Field(default="", max_length=200)
+    history_lines: int = Field(default=0, ge=0, le=100)
+    blacklist: list[str] = Field(default_factory=list)
+    channels: list[NotificationChannel] = Field(default_factory=list, max_length=16)
     webhook: WebhookNotificationConfig = Field(default_factory=WebhookNotificationConfig)
+
+    @field_validator("log_pattern")
+    @classmethod
+    def validate_log_pattern(cls, value: str) -> str:
+        import regex
+        try:
+            regex.compile(value)
+        except regex.error as exc:
+            raise ValueError("日志触发正则无效") from exc
+        return value
 
 
 class NotificationTestRequest(BaseModel):

@@ -7,7 +7,7 @@ function renderRoguelikeGeneral(p, escapeHtml) {
       <span>策略</span><select id="paramRoguelikeStrategy">${selectOptions(roguelikeStrategyOptions(normalized.theme), normalized.strategy, escapeHtml)}</select>
       <span>开局分队</span><select id="paramRoguelikeSquad">${selectOptions(roguelikeSquadOptions(normalized.theme, normalized.strategy), normalized.squad, escapeHtml)}</select>
       <span>开局职业组</span><select id="paramRoguelikeRoles">${selectOptions(roguelikeRoleOptions(normalized.theme), normalized.roles, escapeHtml)}</select>
-      <span>开局干员${hint("不填写则使用默认策略。", escapeHtml)}</span><select id="paramRoguelikeOperator">${selectOptions(roguelikeOperatorOptions(normalized.theme), normalized.operator, escapeHtml)}</select>
+      ${renderRoguelikeStartOperators(normalized)}
     </div>
   `;
 }
@@ -18,7 +18,7 @@ function renderRoguelikeAdvanced(p) {
   const isSami = theme === "萨米";
   const isSarkaz = theme === "萨卡兹";
   const isJieGarden = theme === "界园";
-  const seedValue = escapeHtmlFallback(p.seed || "");
+  const seedValue = escapeHtmlFallback(p.seed || (typeof p.start_with_seed === "string" ? p.start_with_seed : ""));
   const foldartalList = p.first_floor_foldartals ?? p.start_foldartal_list ?? "";
   const foldartalsValue = escapeHtmlFallback(Array.isArray(foldartalList) ? foldartalList.join(",") : foldartalList);
   const collapsal = escapeHtmlFallback(
@@ -35,7 +35,6 @@ function renderRoguelikeAdvanced(p) {
       <span>最大投资次数${hint("0 = 不限制", escapeHtmlFallback)}</span><input id="paramRoguelikeInvestCount" type="number" min="0" max="99999" value="${numberValue(p.investments_count, 0)}" />
       ${checkRow("stop_when_investment_full", "投资满后停止探索", p.stop_when_investment_full)}
       ${checkRow("investment_with_more_score", `投资后顺带购物${hint("仅刷源石锭策略有效", escapeHtmlFallback)}`, p.investment_with_more_score ?? p.invest_with_more_score)}
-      ${checkRow("use_support_unit", `「开局干员」使用助战${hint("需先填写「开局干员」", escapeHtmlFallback)}`, p.use_support_unit)}
       ${checkRow("use_nonfriend_support", "允许使用非好友助战", p.use_nonfriend_support)}
       ${checkRow("stop_at_final_boss", "在第五层 BOSS 前暂停", p.stop_at_final_boss)}
       ${checkRow("stop_at_max_level", "满级后自动停止", p.stop_at_max_level)}
@@ -46,11 +45,15 @@ function renderRoguelikeAdvanced(p) {
       ${checkRow("first_floor_foldartal", `萨米：凹第一层远见密文板${hint("仅「刷开局」策略生效，需填写下方密文板名。", escapeHtmlFallback)}`, Boolean(foldartalName) || p.first_floor_foldartal === true)}
       <span>└ 期望的密文板名</span><input id="paramRoguelikeFoldartalName" value="${foldartalName}" placeholder="如：生命" />
       <span>萨米：生活队开局密文板${hint("逗号分隔，如：风声,感知,知识", escapeHtmlFallback)}</span><input id="paramRoguelikeFoldartals" value="${foldartalsValue}" placeholder="留空则不指定" />` : ""}
-      ${isSarkaz ? `${checkRow("check_collapsal_paradigms", "萨卡兹：检测坍缩范式", p.check_collapsal_paradigms)}
-      ${checkRow("double_check_collapsal_paradigms", "萨卡兹：防漏检测（多检一次）", p.double_check_collapsal_paradigms)}
-      <span>萨卡兹：期望坍缩范式${hint("逗号分隔，留空则不筛选", escapeHtmlFallback)}</span><input id="paramRoguelikeCollapsal" value="${collapsal}" placeholder="如：深化坚守,领域" />` : ""}
-      ${isJieGarden ? checkRow("find_playTime_target", "界园：寻找常乐节点目标", p.find_playTime_target) : ""}
-      <strong class="sectionTitle">凹开局/烧水（仅 mode=4 生效）</strong>
+      ${isSami ? `${checkRow("check_collapsal_paradigms", "萨米：检测坍缩范式", p.check_collapsal_paradigms)}
+      ${checkRow("double_check_collapsal_paradigms", "萨米：防漏检测（多检一次）", p.double_check_collapsal_paradigms)}
+      <span>萨米：期望坍缩范式${hint("逗号分隔，留空则不筛选", escapeHtmlFallback)}</span><input id="paramRoguelikeCollapsal" value="${collapsal}" placeholder="如：深化坚守,领域" />` : ""}
+      ${isJieGarden ? `<label>常乐节点目标<select id="find_playTime_target">${selectOptions([{label:"令",value:1},{label:"黍",value:2},{label:"年",value:3}], Number(p.find_playTime_target) || 1, escapeHtmlFallback)}</select></label>` : ""}
+      ${theme === "黑流树海" ? renderBlackFlowFields(p) : ""}
+      ${checkRow("monthly_squad_auto_iterate", "月度小队自动切换", p.monthly_squad_auto_iterate ?? true)}
+      ${checkRow("monthly_squad_check_comms", "月度小队检查通信", p.monthly_squad_check_comms ?? true)}
+      ${checkRow("deep_exploration_auto_iterate", "深入调查自动切换", p.deep_exploration_auto_iterate ?? true)}
+      ${theme !== "黑流树海" ? `<strong class="sectionTitle">凹开局/烧水（仅 mode=4 生效）</strong>
       ${checkRow("start_with_elite_two", "凹精二直升开局", p.start_with_elite_two)}
       ${p.start_with_elite_two ? checkRow("only_start_with_elite_two", "仅凹精二直升（不满足则重开）", p.only_start_with_elite_two) : ""}
       ${checkRow("collectible_mode_shopping", "烧水启用购物（凹开局结算时进商店）", p.collectible_mode_shopping)}
@@ -60,7 +63,7 @@ function renderRoguelikeAdvanced(p) {
         `collectibleAward_${award.key}`,
         award.label,
         Boolean(collectibleAwardState(p)[award.key])
-      )).join("")}</div>
+      )).join("")}</div>` : ""}
       <strong class="sectionTitle">以下选项为多任务共用</strong>
       ${unsupportedRow("自动肉鸽在战斗结束前延迟「停止」动作", "原版是 GUI 层的停止延迟行为，MaaCore 没有该参数。")}
     </div>
@@ -95,7 +98,9 @@ function collectRoguelikeParams() {
   addBool(params, "check_collapsal_paradigms", "check_collapsal_paradigms");
   addBool(params, "double_check_collapsal_paradigms", "double_check_collapsal_paradigms");
   addList(params, "expected_collapsal_paradigms", "paramRoguelikeCollapsal");
-  addBool(params, "find_playTime_target", "find_playTime_target");
+  addNumber(params, "find_playTime_target", "find_playTime_target", 1);
+  for (const key of ["monthly_squad_auto_iterate", "monthly_squad_check_comms", "deep_exploration_auto_iterate"]) addBool(params, key, key);
+  collectRoguelikeModernParams(params);
   addBool(params, "start_with_elite_two", "start_with_elite_two");
   addBool(params, "only_start_with_elite_two", "only_start_with_elite_two");
   addBool(params, "collectible_mode_shopping", "collectible_mode_shopping");
@@ -107,7 +112,12 @@ function collectRoguelikeParams() {
     .filter((award) => $(`collectibleAward_${award.key}`))
     .map((award) => [award.key, boolOf(`collectibleAward_${award.key}`)]);
   if (awards.length) params.collectible_mode_start_list = Object.fromEntries(awards);
-  return hasGeneralFields ? normalizeRoguelikeParams(params) : params;
+  if (hasGeneralFields) {
+    const normalized = normalizeRoguelikeParams(params);
+    normalized.mode = roguelikeModeForStrategy(normalized.strategy);
+    return normalized;
+  }
+  return params;
 }
 
 // MaaCore RoguelikeCustomStartTaskPlugin 只认这些固定英文键，主题专属项按主题显示。
@@ -136,10 +146,12 @@ function collectibleAwardState(p) {
 }
 
 function normalizeRoguelikeParams(params) {
-  const theme = ROGUELIKE_THEMES.includes(params.theme) ? params.theme : "萨卡兹";
+  const aliases = {Phantom:"傀影", Mizuki:"水月", Sami:"萨米", Sarkaz:"萨卡兹", JieGarden:"界园", BlackFlow:"黑流树海"};
+  const rawTheme = aliases[params.theme] || params.theme;
+  const theme = ROGUELIKE_THEMES.includes(rawTheme) ? rawTheme : "萨卡兹";
   const difficulties = roguelikeDifficultyOptions(theme);
   const strategies = roguelikeStrategyOptions(theme);
-  const strategy = strategies.includes(params.strategy) ? params.strategy : strategies[0];
+  const strategy = strategies.includes(params.strategy) ? params.strategy : (strategies.find((value) => roguelikeModeForStrategy(value) === params.mode) || strategies[0]);
   const squads = roguelikeSquadOptions(theme, strategy);
   const roles = roguelikeRoleOptions(theme);
   const operators = roguelikeOperatorOptions(theme);
@@ -151,11 +163,17 @@ function normalizeRoguelikeParams(params) {
     strategy,
     squad: squads.includes(params.squad) ? params.squad : "指挥分队",
     roles: roles.includes(params.roles) ? params.roles : "稳扎稳打（重装、术师、狙击）",
-    operator: operators.includes(params.operator) ? params.operator : ""
+    operator: params.core_char_list?.[0]?.name || params.operator || params.core_char || ""
   };
 }
 
+function roguelikeModeForStrategy(strategy) {
+  const prefixes = {"刷等级":0,"刷源石锭":1,"刷开局":4,"刷月度小队":6,"刷深入调查":7,"刷坍缩范式":5,"刷常乐节点":20001,"黑流树海刷开局":30003};
+  return Object.entries(prefixes).find(([prefix]) => String(strategy).startsWith(prefix))?.[1] ?? 0;
+}
+
 function roguelikeStrategyOptions(theme) {
+  if (theme === "黑流树海") return [ROGUELIKE_STRATEGIES[0], ROGUELIKE_STRATEGIES[1], "黑流树海刷开局，准备奖励后停在目标局"];
   return [...ROGUELIKE_STRATEGIES, ...(ROGUELIKE_THEME_STRATEGIES[theme] || [])];
 }
 
@@ -163,11 +181,11 @@ function roguelikeSquadOptions(theme, strategy) {
   const themeSquads = theme === "萨卡兹" && strategy === ROGUELIKE_STRATEGIES[1]
     ? ROGUELIKE_SARKAZ_INVESTMENT_SQUADS
     : ROGUELIKE_THEME_SQUADS[theme] || ROGUELIKE_THEME_SQUADS["萨卡兹"];
-  return [...themeSquads, ...ROGUELIKE_COMMON_SQUADS];
+  return [...themeSquads, ...ROGUELIKE_COMMON_SQUADS.filter((squad) => theme !== "黑流树海" || squad !== "高规格分队")];
 }
 
 function roguelikeRoleOptions(theme) {
-  const themeRoles = theme === "界园" ? ROGUELIKE_JIEGARDEN_ROLES : [];
+  const themeRoles = ["界园", "黑流树海"].includes(theme) ? ROGUELIKE_JIEGARDEN_ROLES : [];
   return [...ROGUELIKE_BASE_ROLES, ...themeRoles, "随心所欲（三张随机）"];
 }
 
@@ -178,7 +196,7 @@ function roguelikeOperatorOptions(theme) {
 }
 
 function roguelikeDifficultyOptions(theme) {
-  const max = theme === "傀影" || theme === "萨米" ? 15 : 18;
+  const max = theme === "黑流树海" ? 16 : theme === "傀影" || theme === "萨米" ? 15 : 18;
   const values = ["不切换 (-1)", `MAX (${max})`, ...Array.from({ length: max }, (_, index) => String(max - index)), "MIN (0)"];
   return values;
 }

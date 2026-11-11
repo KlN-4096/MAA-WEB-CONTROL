@@ -11,6 +11,9 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Protocol
 
 from .events import EventBus
+from .execution_ledger import ExecutionLedger, profile_identity
+from .inventory import inventory_context, stock_with_dual_chips
+from .resource_paths import resolve_maa_root
 from .logs import MaaLogService
 from .mapper import TaskMappingError, profile_to_append_calls
 from .models import AppendCall, EventRecord, PostAction, Profile, RunnerStatus
@@ -97,6 +100,7 @@ class MaaRunnerService:
         task_timeout_minutes: int = 0,
         command_runner: CommandRunner | None = None,
         sleep: SleepRunner | None = None,
+        ledger: ExecutionLedger | None = None,
     ) -> None:
         self._adapter = adapter
         self._events = events
@@ -112,6 +116,10 @@ class MaaRunnerService:
         self._timed_out = False
         self._command_runner = command_runner
         self._sleep = sleep or asyncio.sleep
+        self.ledger = ledger if ledger is not None and ledger.available else None
+        self._verified_identity: str | None = None
+        self._external_reserved = False
+        self._external_task: asyncio.Task[None] | None = None
 
     def set_run_event_callback(self, callback: RunEventCallback | None) -> None:
         self._run_event_callback = callback
@@ -142,9 +150,10 @@ class MaaRunnerService:
         return self._events
 
     def set_adapter(self, adapter: MaaAdapter) -> None:
-        if self._task and not self._task.done():
+        if self.is_running():
             raise RuntimeError("Cannot change adapter while a run is in progress.")
         self._adapter = adapter
+        self._verified_identity = None
 
     @property
     def post_action(self) -> PostAction:
@@ -154,12 +163,12 @@ class MaaRunnerService:
         self._post_action = action.model_copy()
         return self.post_action
 
-    async def run(self, profile: Profile) -> RunnerStatus:
-        if self._task and not self._task.done():
+    async def run(self, profile: Profile, *, context_profile: Profile | None = None) -> RunnerStatus:
+        if self.is_running():
             raise RuntimeError("Runner is busy.")
         self._stop_requested = False
         self._timed_out = False
-        self._profile = profile.model_copy(deep=True)
+        self._profile = (context_profile or profile).model_copy(deep=True)
         self._status = RunnerStatus(state="Connecting", current_profile=profile.name)
         self._logs.clear()
         self._logs.append(_build_resource_log(), color_key="TraceLogBrush")
@@ -167,7 +176,99 @@ class MaaRunnerService:
         return self.status()
 
     def is_running(self) -> bool:
-        return self._task is not None and not self._task.done()
+        return self._external_reserved or (self._task is not None and not self._task.done())
+
+    async def wait_for_completion(self) -> RunnerStatus:
+        status = self._status
+        task = self._external_task if self._external_reserved else self._task
+        if task:
+            await asyncio.shield(task)
+        return status.model_copy()
+
+    async def capture_image(self, profile: Profile) -> bytes | None:
+        getter = getattr(self._adapter, "capture_image", None)
+        if getter is None:
+            raise RuntimeError("当前适配器不支持截图")
+        target = (profile.adb.adb_path, profile.adb.address, profile.adb.client_type)
+        matched = self._adapter.is_connected and getattr(self._adapter, "connection_target", None) == target
+        if self.is_running():
+            if not matched:
+                raise RuntimeError("当前运行连接与远控配置不同或尚未连接，无法截图")
+            return await getter()
+        self._external_reserved = True
+        try:
+            if not matched:
+                await self._connect(profile)
+            return await getter()
+        finally:
+            self._external_reserved = False
+
+    async def run_external(self, profile: Profile | None, call: AppendCall) -> dict[str, Any]:
+        # 在首次 await 之前占用，同样保护连接/追加期间，不能只检查 Core.running。
+        if self.is_running():
+            raise RuntimeError("已有任务正在运行，请先停止。")
+        if profile is None and not self._adapter.is_connected:
+            raise RuntimeError("没有可用的配置，无法连接模拟器。")
+        self._external_reserved = True
+        self._stop_requested = False
+        self._profile = profile.model_copy(deep=True) if profile else None
+        self._status = RunnerStatus(state="Connecting", current_profile=profile.name if profile else None, current_task=call.task_id, total_tasks=1)
+        started: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+        self._external_task = asyncio.create_task(self._run_external(profile, call, started))
+        try:
+            return await asyncio.shield(started)
+        except asyncio.CancelledError:
+            self._stop_requested = True
+            await asyncio.shield(self._external_task)
+            if started.done() and not started.cancelled():
+                started.exception()
+            raise
+
+    async def _run_external(self, profile: Profile | None, call: AppendCall, started: asyncio.Future[dict[str, Any]]) -> None:
+        ledger_active = self.ledger is not None and profile is not None
+        try:
+            if ledger_active:
+                self.ledger.begin(profile, account_verified=self._verified_identity == profile_identity(profile))
+            if profile is not None:
+                await self._connect(profile)
+            if self._stop_requested:
+                raise RunStopped("任务已停止。")
+            task_id = await self._append_call(call)
+            if self._stop_requested:
+                raise RunStopped("任务已停止。")
+            if not await self._adapter.start(wait=False):
+                raise RuntimeError("MaaCore start failed.")
+            if self._stop_requested:
+                raise RunStopped("任务已停止。")
+            self._status.state = "Running"
+            self._status.appended_tasks = 1
+            started.set_result({"ok": True, "task_id": task_id})
+            wait_idle = getattr(self._adapter, "wait_until_idle", None)
+            if wait_idle:
+                await wait_idle()
+            else:
+                await asyncio.sleep(0)
+            if ledger_active:
+                self.ledger.check()
+            status = "Stopped" if self._stop_requested else self._adapter.task_chain_status
+            if status is None:
+                raise RuntimeError("未收到核心任务结束状态。")
+            self._status.state = status
+            self._status.current_task = None
+            self._events.publish(EventRecord.now("tool.finished", status))
+        except (RuntimeError, ValueError, OSError) as exc:
+            try:
+                await self._adapter.stop()
+            except (RuntimeError, OSError) as stop_exc:
+                self._events.publish(EventRecord.now("runner.stop_failed", str(stop_exc), level="error"))
+            self._stop(str(exc)) if isinstance(exc, RunStopped) else self._fail(str(exc))
+            if not started.done():
+                started.set_exception(exc)
+        finally:
+            if ledger_active:
+                self._verified_identity = profile_identity(profile) if self.ledger.account_verified else None
+                self.ledger.end()
+            self._external_reserved = False
 
     async def stop(self) -> RunnerStatus:
         # 小工具 / 自动战斗直接驱动 adapter，没有 _run_profile 协程会把 Stopping 改回来；
@@ -182,6 +283,10 @@ class MaaRunnerService:
         return self.status()
 
     async def shutdown(self) -> None:
+        if self._external_reserved:
+            await self.stop()
+            if self._external_task:
+                await self._external_task
         task = self._task
         if task is None or task.done():
             return
@@ -192,7 +297,11 @@ class MaaRunnerService:
 
     async def _run_profile(self, profile: Profile) -> None:
         try:
-            calls = profile_to_append_calls(profile, state_path=self._userdata_state_path)
+            if self.ledger:
+                context = self._profile or profile
+                self.ledger.begin(context, account_verified=self._verified_identity == profile_identity(context))
+            calls = profile_to_append_calls(profile, state_path=None if self.ledger else self._userdata_state_path)
+            await self._fire_run_event("start", "任务即将开始。")
             await self._connect(profile)
             if self._task_timeout_minutes > 0:
                 try:
@@ -206,12 +315,23 @@ class MaaRunnerService:
             else:
                 await self._run_calls_and_finish(profile, calls)
         except RunStopped as exc:
+            try:
+                await self._adapter.stop()
+            except (RuntimeError, OSError) as stop_exc:
+                self._events.publish(EventRecord.now("runner.stop_failed", str(stop_exc), level="error"))
             self._stop(str(exc))
             await self._fire_run_event("stopped", str(exc))
-        except (RuntimeError, TaskMappingError) as exc:
+        except (RuntimeError, ValueError, OSError) as exc:
+            try:
+                await self._adapter.stop()
+            except (RuntimeError, OSError) as stop_exc:
+                self._events.publish(EventRecord.now("runner.stop_failed", str(stop_exc), level="error"))
             self._fail(str(exc))
             await self._fire_run_event("error", str(exc))
         finally:
+            if self.ledger:
+                self._verified_identity = profile_identity(self._profile) if self.ledger.account_verified and self._profile else None
+                self.ledger.end()
             await self._execute_post_action()
 
     async def _run_calls_and_finish(self, profile: Profile, calls: list[AppendCall]) -> None:
@@ -222,11 +342,122 @@ class MaaRunnerService:
             await self._run_startup_with_retry(profile, startup, startup_retry)
             if remaining:
                 await self._connect(profile)
+            else:
+                await self._finish_from_status(self._adapter.task_chain_status or "Failed")
+                return
+        if self.ledger:
+            await self._run_tracked_calls(profile, remaining)
+            return
+        if any(call.type == "DepotMaintain" for call in remaining):
+            raise RuntimeError("库存保持需要启用执行记录服务。")
         await self._append_tasks(remaining)
         if not remaining:
             await self._finish_from_status(self._adapter.task_chain_status or "Completed")
             return
         await self._start_and_finish()
+
+    async def _run_tracked_calls(self, profile: Profile, calls: list[AppendCall]) -> None:
+        assert self.ledger is not None
+        userdata = {t.id: t for t in profile.tasks if t.enabled and t.type == "UserDataUpdate"}
+        batch: list[AppendCall] = []
+        userdata_sources: set[str] = set()
+        async def flush() -> None:
+            if not batch:
+                return
+            status = await self._run_batch(batch)
+            batch.clear()
+            for source in userdata_sources:
+                expected = [call.task_id for call in calls if call.task_id in {f"{source}:depot", f"{source}:operbox"}]
+                if expected and all(self.ledger.task_succeeded(task_id) for task_id in expected):
+                    self.ledger.mark_userdata(source)
+            userdata_sources.clear()
+            if status != "Completed":
+                raise RuntimeError("任务队列执行失败，未启动后续动态任务。")
+
+        for call in calls:
+            if self._stop_requested:
+                raise RunStopped("Run stopped.")
+            source = next((key for key in userdata if call.task_id in {f"{key}:depot", f"{key}:operbox"}), None)
+            if source:
+                interval = str(userdata[source].params.get("trigger_interval", "EveryTime"))
+                if not self.ledger.userdata_due(source, interval):
+                    continue
+            if call.type == "DepotMaintain":
+                await flush()
+                await self._maintain_inventory(call)
+                continue
+            if call.type == "Mall":
+                # 重复的每日任务需要先消费此前同类的成功回调，再应用每日限次。
+                if any(previous.type == "Mall" for previous in batch):
+                    await flush()
+            batch.append(self.ledger.prepare(call))
+            if source:
+                userdata_sources.add(source)
+        await flush()
+        await self._finish_from_status("Completed")
+
+    async def _run_segment(self, call: AppendCall) -> str:
+        return await self._run_batch([call])
+
+    async def _run_batch(self, calls: list[AppendCall]) -> str:
+        if self._stop_requested:
+            raise RunStopped("Run stopped.")
+        await self._append_tasks(calls)
+        self._status.state = "Running"
+        if not await self._adapter.start():
+            raise RuntimeError("MaaCore start failed.")
+        if self._stop_requested or self._adapter.task_chain_status == "Stopped":
+            raise RunStopped("Run stopped.")
+        if self.ledger:
+            self.ledger.check()
+        status = self._adapter.task_chain_status
+        if status is None:
+            raise RuntimeError("未收到核心任务结束状态。")
+        return status
+
+    async def _maintain_inventory(self, call: AppendCall) -> None:
+        assert self.ledger is not None
+        assert self._profile is not None
+        params = call.params
+        context = await asyncio.to_thread(inventory_context, resolve_maa_root(adapter=self._adapter), self._profile.adb.client_type)
+        if (params["skip_during_activity"] and context["activity_open"]) or (params["skip_during_resource_collection"] and context["resource_open"]):
+            self._logs.append("当前活动满足跳过条件，跳过库存保持。")
+            return
+        if params["update_depot"]:
+            status = await self._run_segment(AppendCall(task_id=f"{call.task_id}:depot", type="Depot", params={}))
+            if status != "Completed":
+                raise RuntimeError("仓库识别失败，未执行库存保持。")
+        def stock(item_id: str) -> int:
+            return stock_with_dual_chips(item_id, self.ledger.inventory(), context["items"], params["count_dual_chips"])
+        rows = list(enumerate(params["targets"]))
+        if params["sort_by_progress"]:
+            rows.sort(key=lambda item: stock(item[1]["item_id"]) / item[1]["quantity"])
+        for index, row in rows:
+            if row["stage"] in context["known_stages"] and row["stage"] not in context["open_stages"]:
+                self._logs.append(f"今日关卡未开放，跳过库存目标：{row['stage']}", color_key="WarningLogBrush")
+                continue
+            current = stock(row["item_id"])
+            deficit = row["quantity"] - current
+            if deficit <= 0:
+                self._logs.append(f"库存已达标：{row['item_id']} ({current}/{row['quantity']})")
+                continue
+            self._logs.append(f"库存保持：{row['item_id']} 还需 {deficit}，关卡 {row['stage']}")
+            status = await self._run_segment(AppendCall(
+                task_id=f"{call.task_id}:fight-{index}", type="Fight",
+                params={"stage": row["stage"], "drops": {row["item_id"]: deficit},
+                        "times": params["max_times"],
+                        "medicine": row["medicine"] if params["use_medicine"] and row["use_medicine"] else 0,
+                        "stone": row["stone"] if params["use_stone"] and row["use_stone"] else 0,
+                        "medicine_expire_days": 2 if params["use_expiring_medicine"] else 0,
+                        "series": 0 if params["use_auto_series"] else 1},
+            ))
+            if status != "Completed":
+                raise RuntimeError("库存保持作战失败，已停止后续目标。")
+            after = stock(row["item_id"])
+            if after < row["quantity"]:
+                self._logs.append(f"库存尚未达标：{row['item_id']} ({after}/{row['quantity']})；理智/场次不足或未识别掉落。", color_key="WarningLogBrush")
+            if params["only_first"]:
+                return
 
     async def _handle_timeout(self) -> None:
         message = f"任务执行超过 {self._task_timeout_minutes} 分钟，自动停止。"
@@ -248,7 +479,7 @@ class MaaRunnerService:
         if not calls:
             return
         self._status.state = "AppendingTasks"
-        self._status.total_tasks = len(calls)
+        self._status.total_tasks = self._status.appended_tasks + len(calls) if self.ledger else len(calls)
         self._events.publish(EventRecord.now("runner.appending", f"Appending {len(calls)} tasks."))
         for call in calls:
             if self._stop_requested:
@@ -264,7 +495,14 @@ class MaaRunnerService:
         if call.type == "StartUp":
             target = call.model_copy(deep=True)
             target.params = _strip_startup_retry_params(target.params)
-        return await self._adapter.append_task(target)
+        core_id = await self._adapter.append_task(target)
+        if self._stop_requested:
+            raise RunStopped("任务已停止，未启动刚追加的任务。")
+        if core_id <= 0:
+            raise RuntimeError(f"MaaCore append failed: {target.type}")
+        if self.ledger and self._profile is not None:
+            self.ledger.bind(core_id, target)
+        return core_id
 
     async def _start_and_finish(self) -> None:
         self._status.state = "Running"
