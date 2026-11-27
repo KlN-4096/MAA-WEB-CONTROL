@@ -1,5 +1,6 @@
 :root[data-theme="light"] {
   color-scheme: light;
+  --workspace-bg: #e7ebf1;
   --bg: #f5f6f8; --bar: #e9ecf0; --panel: #fff; --panel-2: #f3f4f7;
   --card-bg: #fff; --card-line: #d5dae2; --control-bg: #fff;
   --hover-bg: #e5edf7; --active-bg: #dce8f5;

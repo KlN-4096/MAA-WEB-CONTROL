@@ -2,10 +2,15 @@
 .windowShell {
   display: grid;
   grid-template-rows: 32px 25px minmax(0, 1fr);
-  height: 100vh;
-  min-height: 100vh;
-  border: 1px solid #33363a;
+  width: min(100%, 1120px);
+  height: min(100vh, 800px);
+  height: min(100dvh, 800px);
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
   background: var(--bg);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.16);
 }
 
 .titlebar {

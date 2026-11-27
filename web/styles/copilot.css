@@ -1,13 +1,14 @@
 .copilotLayout {
   display: grid;
-  grid-template-columns: 552px 360px;
-  gap: 8px;
+  grid-template-columns: minmax(0, 552px) minmax(0, 360px);
+  justify-content: center;
+  gap: 16px;
   min-height: 100%;
-  padding: 31px 34px 34px 40px;
+  padding: 20px;
 }
 
 .copilotLayout.withList {
-  grid-template-columns: 760px 360px;
+  grid-template-columns: minmax(0, 1fr) minmax(290px, 340px);
 }
 
 .copilotViewRoot {
@@ -66,6 +67,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) 34px 34px 34px;
   width: 552px;
+  max-width: 100%;
 }
 
 .copilotLayout.withList .copilotPathRow {
@@ -335,8 +337,26 @@
 
 .copilotLogColumn {
   min-height: 0;
-  border-left: 1px solid #202226;
-  padding: 4px 28px 0 8px;
+  border-left: 1px solid var(--line-soft);
+  padding-left: 12px;
+}
+
+@media (max-width: 900px) {
+  .copilotLayout,
+  .copilotLayout.withList {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .copilotLogColumn {
+    height: auto;
+    min-height: 180px;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .copilotLogColumn .logList {
+    max-height: 320px;
+  }
 }
 
 .copilotFooter {

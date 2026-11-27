@@ -2,6 +2,7 @@
   color-scheme: dark;
 
   /* ── 表面 ───────────────────────────────────────────── */
+  --workspace-bg: #101215;
   --bg: #171717;
   --bar: #1f1f1f;
   --panel: #1b1b1b;
@@ -71,9 +72,11 @@ html {
 body {
   margin: 0;
   height: 100%;
-  min-width: 720px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
   overflow: hidden;
-  background: #0f0f0f;
+  background: var(--workspace-bg);
   color: var(--text);
   font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
   font-size: var(--fs);
