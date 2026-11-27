@@ -4,6 +4,8 @@
   --card-bg: #fff; --card-line: #d5dae2; --control-bg: #fff;
   --hover-bg: #e5edf7; --active-bg: #dce8f5;
   --text: #172333; --muted: #586575; --line: #bbc5d1; --line-soft: #d8dfe7;
+  --hint-bg: #e2eaf5; --hint-text: #304763;
+  --tooltip-bg: #fff; --tooltip-line: var(--line);
   --blue-fg: #006bb0; --danger-fg: #a82028; --success-fg: #17613b; --warning-fg: #795000; --info-fg: #08659c;
 }
 [data-theme="light"] :is(button,input,select,textarea) { background: var(--control-bg); color: var(--text); }

@@ -16,6 +16,10 @@
   --text: #f0f0f0;
   --muted: #9a9a9a;
   --text-secondary: var(--muted);
+  --hint-bg: #292b30;
+  --hint-text: #e2e8f0;
+  --tooltip-bg: #24262b;
+  --tooltip-line: #4c5057;
 
   /* ── 描边 ───────────────────────────────────────────── */
   --line: #3b3d42;

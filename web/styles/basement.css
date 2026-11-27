@@ -552,8 +552,8 @@ input[type="checkbox"] {
   height: 14px;
   margin-left: 4px;
   border-radius: 50%;
-  background: #292b30;
-  color: #8f949b;
+  background: var(--hint-bg);
+  color: var(--hint-text);
   cursor: help;
   font-size: 11px;
   line-height: 14px;
@@ -566,11 +566,12 @@ input[type="checkbox"] {
   left: 50%;
   z-index: 50;
   width: max-content;
-  max-width: 340px;
+  max-width: min(340px, calc(100vw - 32px));
   padding: 7px 9px;
-  border: 1px solid #4c5057;
+  border: 1px solid var(--tooltip-line);
   border-radius: 4px;
-  background: #24262b;
+  background: var(--tooltip-bg);
+  overflow-wrap: anywhere;
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
   color: var(--text);
   content: attr(data-tip);

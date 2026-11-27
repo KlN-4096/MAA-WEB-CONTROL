@@ -362,8 +362,8 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #292b30;
-  color: #8f949b;
+  background: var(--hint-bg);
+  color: var(--hint-text);
   cursor: help;
   font-size: 11px;
   line-height: 14px;
@@ -376,7 +376,6 @@
   right: 1px;
   width: 14px;
   height: 14px;
-  opacity: 0.42;
   font-size: 10px;
 }
 
@@ -386,11 +385,12 @@
   left: 50%;
   z-index: 80;
   width: max-content;
-  max-width: 330px;
+  max-width: min(330px, calc(100vw - 32px));
   padding: 7px 9px;
-  border: 1px solid #4c5057;
+  border: 1px solid var(--tooltip-line);
   border-radius: 4px;
-  background: #24262b;
+  background: var(--tooltip-bg);
+  overflow-wrap: anywhere;
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
   color: var(--text);
   content: attr(data-tip);
