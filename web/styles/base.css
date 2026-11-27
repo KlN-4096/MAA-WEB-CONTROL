@@ -2,6 +2,7 @@
   color-scheme: dark;
 
   /* ── 表面 ───────────────────────────────────────────── */
+  --workspace-bg: #101215;
   --bg: #171717;
   --bar: #1f1f1f;
   --panel: #1b1b1b;
@@ -16,6 +17,10 @@
   --text: #f0f0f0;
   --muted: #9a9a9a;
   --text-secondary: var(--muted);
+  --hint-bg: #292b30;
+  --hint-text: #e2e8f0;
+  --tooltip-bg: #24262b;
+  --tooltip-line: #4c5057;
 
   /* ── 描边 ───────────────────────────────────────────── */
   --line: #3b3d42;
@@ -67,9 +72,11 @@ html {
 body {
   margin: 0;
   height: 100%;
-  min-width: 720px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
   overflow: hidden;
-  background: #0f0f0f;
+  background: var(--workspace-bg);
   color: var(--text);
   font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
   font-size: var(--fs);

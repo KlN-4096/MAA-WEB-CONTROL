@@ -1,16 +1,10 @@
 .maaLayout {
   display: grid;
-  /* 中间表单只有 ~330px 宽，超宽屏用 1fr 会把它孤零零丢在一大片空白中间；
-     改为限宽 + 整体居中，多余空间给日志列。 */
-  grid-template-columns: 210px minmax(360px, 520px) minmax(320px, 560px);
-  justify-content: center;
-  gap: 24px;
-  width: 100%;
-  max-width: 1560px;
+  grid-template-columns: 210px minmax(0, 340px) minmax(0, 1fr);
+  gap: 16px;
   height: 100%;
   min-height: 0;
-  margin: 0 auto;
-  padding: 20px 24px;
+  padding: 18px 20px;
 }
 
 .taskColumn {
@@ -288,7 +282,8 @@
 
 .taskEditor {
   display: grid;
-  grid-template-columns: minmax(240px, 330px);
+  width: min(100%, 330px);
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   overflow: visible;
 }
@@ -552,8 +547,8 @@ input[type="checkbox"] {
   height: 14px;
   margin-left: 4px;
   border-radius: 50%;
-  background: #292b30;
-  color: #8f949b;
+  background: var(--hint-bg);
+  color: var(--hint-text);
   cursor: help;
   font-size: 11px;
   line-height: 14px;
@@ -566,11 +561,12 @@ input[type="checkbox"] {
   left: 50%;
   z-index: 50;
   width: max-content;
-  max-width: 340px;
+  max-width: min(340px, calc(100vw - 32px));
   padding: 7px 9px;
-  border: 1px solid #4c5057;
+  border: 1px solid var(--tooltip-line);
   border-radius: 4px;
-  background: #24262b;
+  background: var(--tooltip-bg);
+  overflow-wrap: anywhere;
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
   color: var(--text);
   content: attr(data-tip);
@@ -783,7 +779,7 @@ input[type="checkbox"] {
 }
 
 /* ── 响应式：小屏幕按列堆叠，而不是把日志列裁掉 ─────────── */
-@media (max-width: 1180px) {
+@media (max-width: 959px) {
   .maaLayout {
     grid-template-columns: 210px minmax(0, 1fr);
     height: auto;
@@ -806,7 +802,7 @@ input[type="checkbox"] {
   }
 }
 
-@media (max-width: 820px) {
+@media (max-width: 680px) {
   .maaLayout {
     grid-template-columns: minmax(0, 1fr);
     padding: 16px;
